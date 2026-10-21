@@ -2,6 +2,8 @@ import './style.css';
 import { CadViewer } from './renderer/viewer';
 import { CadWorkerBridge } from './worker/worker_bridge';
 import { CadHud } from './ui/hud';
+import { SketchHud } from './ui/sketch_hud';
+import { SketchManager } from './renderer/sketch_manager';
 import { SolidGenerationRequest, SubShapeSelection } from './types/cad';
 
 declare global {
@@ -9,6 +11,8 @@ declare global {
     __cadViewer?: CadViewer;
     __cadBridge?: CadWorkerBridge;
     __cadHud?: CadHud;
+    __cadSketchManager?: SketchManager;
+    __cadSketchHud?: SketchHud;
   }
 }
 
@@ -55,6 +59,7 @@ async function initApp() {
   // 3. Instantiate CAD Viewer
   viewer = new CadViewer({
     canvas,
+    bridge,
     onSelectionChange: (selection: SubShapeSelection) => {
       hud.updateSelection(selection);
     },
@@ -63,12 +68,22 @@ async function initApp() {
     },
   });
 
+  // 4. Instantiate 2D Sketch HUD
+  const sketchHud = new SketchHud(viewer.sketchManager);
+
+  // Hook up Enter 2D Sketch button
+  document.getElementById('btn-enter-sketch')?.addEventListener('click', () => {
+    viewer.enterSketchMode('XY');
+  });
+
   // Expose global references for Playwright test automation
   window.__cadViewer = viewer;
   window.__cadBridge = bridge;
   window.__cadHud = hud;
+  window.__cadSketchManager = viewer.sketchManager;
+  window.__cadSketchHud = sketchHud;
 
-  // 4. Initial Geometry Generation (Default parametric Box)
+  // 5. Initial Geometry Generation (Default parametric Box)
   await handleGenerate({
     solidType: 'box',
     params: { width: 2.0, height: 2.0, depth: 2.0 },

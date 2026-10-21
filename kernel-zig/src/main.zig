@@ -6,6 +6,9 @@ const topology = @import("brep/topology.zig");
 const box = @import("primitives/box.zig");
 const cylinder = @import("primitives/cylinder.zig");
 const tessellator = @import("tessellation/tessellator.zig");
+pub const main_wasm = @import("main_wasm.zig");
+pub const solver = @import("solver/solver.zig");
+pub const geom = @import("geom/vec2.zig");
 
 pub const CadStatus = c_abi.CadStatus;
 pub const CadBackend = c_abi.CadBackend;
@@ -14,6 +17,17 @@ pub const CadSolidHandle = c_abi.CadSolidHandle;
 pub const CadMesh = c_abi.CadMesh;
 pub const CadBrepStats = c_abi.CadBrepStats;
 pub const CadVec3 = c_abi.CadVec3;
+
+// Sketch Solver Types (Wave 2)
+pub const CadSketchPoint2D = c_abi.CadSketchPoint2D;
+pub const CadSketchLine2D = c_abi.CadSketchLine2D;
+pub const CadSketchArc2D = c_abi.CadSketchArc2D;
+pub const CadSketchCircle2D = c_abi.CadSketchCircle2D;
+pub const CadSketchConstraintType = c_abi.CadSketchConstraintType;
+pub const CadSketchConstraint = c_abi.CadSketchConstraint;
+pub const CadSolveState = c_abi.CadSolveState;
+pub const CadSolverStatus = c_abi.CadSolverStatus;
+pub const CAD_SKETCH_INVALID_ID = c_abi.CAD_SKETCH_INVALID_ID;
 
 // Export internal modules for unit tests
 pub const TopologyMod = topology;
@@ -57,6 +71,7 @@ pub export fn cad_kernel_deinit() CadStatus {
     if (global_mesh.vertex_count > 0) {
         _ = cad_mesh_free(&global_mesh);
     }
+    main_wasm.deinitWasmBuffers();
     return .Ok;
 }
 
@@ -240,4 +255,30 @@ pub export fn cad_wasm_get_edge_ids_ptr() ?[*]const u32 {
 }
 pub export fn cad_wasm_get_edge_ids_len() u32 {
     return global_mesh.edge_segment_count;
+}
+
+// ---------------------------------------------------------------------------
+// Sketch Solver Exports (Wave 2)
+// ---------------------------------------------------------------------------
+
+pub const cad_sketch_solve = main_wasm.cad_sketch_solve;
+pub const cad_sketch_get_dof = main_wasm.cad_sketch_get_dof;
+pub const cad_wasm_sketch_get_status = main_wasm.cad_wasm_sketch_get_status;
+pub const cad_wasm_sketch_get_coords_ptr = main_wasm.cad_wasm_sketch_get_coords_ptr;
+pub const cad_wasm_sketch_get_coords_len = main_wasm.cad_wasm_sketch_get_coords_len;
+pub const cad_wasm_sketch_get_conflicts_ptr = main_wasm.cad_wasm_sketch_get_conflicts_ptr;
+pub const cad_wasm_sketch_get_conflicts_len = main_wasm.cad_wasm_sketch_get_conflicts_len;
+pub const cad_wasm_sketch_get_dof = main_wasm.cad_wasm_sketch_get_dof;
+pub const cad_wasm_sketch_get_solve_state = main_wasm.cad_wasm_sketch_get_solve_state;
+pub const cad_wasm_sketch_get_iterations = main_wasm.cad_wasm_sketch_get_iterations;
+pub const cad_wasm_sketch_get_max_residual = main_wasm.cad_wasm_sketch_get_max_residual;
+
+test {
+    _ = @import("geom/vec2.zig");
+    _ = @import("solver/types.zig");
+    _ = @import("solver/residuals.zig");
+    _ = @import("solver/jacobian.zig");
+    _ = @import("solver/qr.zig");
+    _ = @import("solver/solver.zig");
+    _ = @import("main_wasm.zig");
 }

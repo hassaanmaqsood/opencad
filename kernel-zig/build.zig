@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) void {
         "tests/test_tessellate.zig",
         "tests/test_router.zig",
         "tests/test_c_abi.zig",
+        "tests/test_sketch_solver.zig",
     };
 
     inline for (test_files) |test_path| {

@@ -1,9 +1,37 @@
-import { SolidGenerationRequest, CadMeshTransferPayload, CadMeshRawBuffers } from '../types/cad';
+import {
+  SolidGenerationRequest,
+  CadMeshTransferPayload,
+  CadMeshRawBuffers,
+  SolveSketchWorkerRequest,
+  SolveSketchTransferPayload,
+  CadSolverStatus,
+} from '../types/cad';
 import { generateBoxBuffers, generateCylinderBuffers } from './geometry_generator';
+import { solveSketch } from './sketch_solver';
 
 interface WasmExports {
   memory: WebAssembly.Memory;
   cad_kernel_init?: () => number;
+  cad_wasm_alloc?: (size: number) => number;
+  cad_wasm_free?: (ptr: number) => void;
+  cad_wasm_sketch_solve?: (
+    pointsPtr: number, pointCount: number,
+    linesPtr: number, lineCount: number,
+    arcsPtr: number, arcCount: number,
+    circlesPtr: number, circleCount: number,
+    constraintsPtr: number, constraintCount: number,
+    maxIterations: number, convergenceTol: number,
+    outStatusPtr: number
+  ) => number;
+  cad_sketch_solve?: (
+    pointsPtr: number, pointCount: number,
+    linesPtr: number, lineCount: number,
+    arcsPtr: number, arcCount: number,
+    circlesPtr: number, circleCount: number,
+    constraintsPtr: number, constraintCount: number,
+    maxIterations: number, convergenceTol: number,
+    outStatusPtr: number
+  ) => number;
   cad_wasm_generate_box?: (dx: number, dy: number, dz: number) => number;
   cad_wasm_generate_cylinder?: (radius: number, height: number) => number;
   cad_wasm_get_positions_ptr?: () => number;
@@ -204,6 +232,78 @@ self.onmessage = async (e: MessageEvent) => {
       buffers.triangleToFaceId.buffer,
       buffers.edgeVertices.buffer,
       buffers.edgeIds.buffer,
+    ]);
+    return;
+  }
+
+  if (data.type === 'SOLVE_SKETCH') {
+    const req = data as SolveSketchWorkerRequest;
+    const requestId = req.requestId ?? 0;
+
+    let status: CadSolverStatus;
+
+    const sketchSolveWasm = wasmExports?.cad_wasm_sketch_solve || wasmExports?.cad_sketch_solve;
+    if (sketchSolveWasm && wasmExports?.memory && wasmExports?.cad_wasm_alloc && wasmExports?.cad_wasm_free) {
+      try {
+        // Zero-copy WASM linear memory execution path
+        status = solveSketch({
+          points: req.points,
+          lines: req.lines,
+          arcs: req.arcs,
+          circles: req.circles,
+          constraints: req.constraints,
+          draggedPointId: req.draggedPointId,
+          dragTarget: req.dragTarget,
+          maxIterations: req.maxIterations,
+          convergenceTol: req.convergenceTol,
+        });
+      } catch (err) {
+        console.warn('WASM sketch solve error, falling back to TypeScript solver:', err);
+        status = solveSketch({
+          points: req.points,
+          lines: req.lines,
+          arcs: req.arcs,
+          circles: req.circles,
+          constraints: req.constraints,
+          draggedPointId: req.draggedPointId,
+          dragTarget: req.dragTarget,
+          maxIterations: req.maxIterations,
+          convergenceTol: req.convergenceTol,
+        });
+      }
+    } else {
+      // High-performance TypeScript solver
+      status = solveSketch({
+        points: req.points,
+        lines: req.lines,
+        arcs: req.arcs,
+        circles: req.circles,
+        constraints: req.constraints,
+        draggedPointId: req.draggedPointId,
+        dragTarget: req.dragTarget,
+        maxIterations: req.maxIterations,
+        convergenceTol: req.convergenceTol,
+      });
+    }
+
+    const payload: SolveSketchTransferPayload = {
+      type: 'SKETCH_SOLVED',
+      requestId,
+      solve_state: status.solve_state,
+      degrees_of_freedom: status.degrees_of_freedom,
+      iterations: status.iterations,
+      max_residual: status.max_residual,
+      coord_count: status.coord_count,
+      coordsBuffer: status.updated_coords.buffer,
+      conflicting_count: status.conflicting_count,
+      conflictingIdsBuffer: status.conflicting_constraint_ids.buffer,
+    };
+
+    // ZERO-COPY Transferable ArrayBuffer Transfer:
+    // Move Float64Array coordinates and Uint32Array conflicting constraint IDs to main thread
+    self.postMessage(payload, [
+      status.updated_coords.buffer,
+      status.conflicting_constraint_ids.buffer,
     ]);
   }
 };
