@@ -16,11 +16,19 @@ pub const Router = struct {
         while (i < count) : (i += 1) {
             r.backends[i] = .NativeZig;
         }
+        // Native Zig verified implementations (Milestones 4.1 & 4.2)
+        r.backends[@intCast(@intFromEnum(CadOpType.PrimitiveBox))] = .NativeZig;
+        r.backends[@intCast(@intFromEnum(CadOpType.PrimitiveCylinder))] = .NativeZig;
+        r.backends[@intCast(@intFromEnum(CadOpType.PrimitiveSphere))] = .NativeZig;
+        r.backends[@intCast(@intFromEnum(CadOpType.SketchExtrude))] = .NativeZig;
+
+        // Base initialization default routing
         r.backends[@intCast(@intFromEnum(CadOpType.BooleanUnion))] = .COracle;
         r.backends[@intCast(@intFromEnum(CadOpType.BooleanDifference))] = .COracle;
         r.backends[@intCast(@intFromEnum(CadOpType.BooleanIntersection))] = .COracle;
         r.backends[@intCast(@intFromEnum(CadOpType.Fillet))] = .COracle;
         r.backends[@intCast(@intFromEnum(CadOpType.Chamfer))] = .COracle;
+
         return r;
     }
 
@@ -53,5 +61,12 @@ pub const Router = struct {
     }
 };
 
-pub var global_router: Router = Router.init();
-
+/// Global Strangler-Fig Router instance:
+/// Milestone 4.3 switches BooleanUnion, BooleanDifference, and BooleanIntersection to NativeZig.
+pub var global_router: Router = blk: {
+    var r = Router.init();
+    _ = r.setBackend(.BooleanUnion, .NativeZig);
+    _ = r.setBackend(.BooleanDifference, .NativeZig);
+    _ = r.setBackend(.BooleanIntersection, .NativeZig);
+    break :blk r;
+};

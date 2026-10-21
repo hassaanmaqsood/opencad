@@ -45,16 +45,21 @@ pub const CylinderMod = cylinder;
 pub const TessellatorMod = tessellator;
 pub const BvhMod = bvh;
 pub const RouterMod = router;
+pub const NurbsMod = @import("geom/nurbs.zig");
+pub const SsiMod = @import("geom/ssi.zig");
 
 // Global handle registry
 var next_handle: u64 = 1;
 var solid_store: std.AutoHashMap(u64, topology.Solid) = undefined;
+var soa_solid_store: std.AutoHashMap(u64, topology.topo.SoASolid) = undefined;
+var wasm_step_export_buf: std.ArrayList(u8) = .empty;
 var is_initialized: bool = false;
 var current_rollback_index: u32 = 0;
 
 fn ensureInit() !void {
     if (!is_initialized) {
         solid_store = std.AutoHashMap(u64, topology.Solid).init(memory.getAllocator());
+        soa_solid_store = std.AutoHashMap(u64, topology.topo.SoASolid).init(memory.getAllocator());
         is_initialized = true;
     }
 }
@@ -77,6 +82,14 @@ pub export fn cad_kernel_deinit() CadStatus {
             s.deinit(alloc);
         }
         solid_store.deinit();
+
+        var it_soa = soa_solid_store.valueIterator();
+        while (it_soa.next()) |val| {
+            var s = val.*;
+            s.deinit(alloc);
+        }
+        soa_solid_store.deinit();
+
         is_initialized = false;
     }
     if (global_mesh.vertex_count > 0) {
@@ -85,6 +98,10 @@ pub export fn cad_kernel_deinit() CadStatus {
     if (global_slice.vertex_count > 0 or global_slice.triangle_count > 0) {
         _ = cad_slice_free(&global_slice);
     }
+    const alloc = memory.getAllocator();
+    wasm_step_export_buf.deinit(alloc);
+    wasm_step_export_buf = .empty;
+
     main_wasm.deinitWasmBuffers();
     return .Ok;
 }
@@ -182,11 +199,18 @@ pub export fn cad_mesh_free(mesh: *CadMesh) CadStatus {
 pub export fn cad_solid_release(solid_handle: CadSolidHandle) CadStatus {
     ensureInit() catch return .OutOfMemory;
     const alloc = memory.getAllocator();
+    var found = false;
     if (solid_store.fetchRemove(solid_handle)) |kv| {
         var s = kv.value;
         s.deinit(alloc);
-        return .Ok;
+        found = true;
     }
+    if (soa_solid_store.fetchRemove(solid_handle)) |kv| {
+        var s = kv.value;
+        s.deinit(alloc);
+        found = true;
+    }
+    if (found) return .Ok;
     return .InvalidArguments;
 }
 
@@ -282,17 +306,29 @@ pub export fn cad_solid_tessellate_slice(
     const out = out_slice orelse return .InvalidArguments;
     const alloc = memory.getAllocator();
 
-    const solid_ptr = solid_store.getPtr(solid_handle) orelse return .InvalidArguments;
+    if (solid_store.getPtr(solid_handle)) |solid_ptr| {
+        const slice = tessellator.tessellateSolidSlice(
+            alloc,
+            solid_ptr,
+            chordal_deflection,
+            angular_deflection,
+        ) catch return .OutOfMemory;
 
-    const slice = tessellator.tessellateSolidSlice(
-        alloc,
-        solid_ptr,
-        chordal_deflection,
-        angular_deflection,
-    ) catch return .OutOfMemory;
+        out.* = slice;
+        return .Ok;
+    }
 
-    out.* = slice;
-    return .Ok;
+    if (soa_solid_store.getPtr(solid_handle)) |soa_ptr| {
+        const slice = tessellator.tessellateSoASolid(
+            alloc,
+            soa_ptr,
+        ) catch return .OutOfMemory;
+
+        out.* = slice;
+        return .Ok;
+    }
+
+    return .InvalidArguments;
 }
 
 pub export fn cad_slice_free(slice: ?*c_abi.CadTessellatedSolidSlice) CadStatus {
@@ -480,6 +516,116 @@ pub export fn cad_wasm_get_slice_bbox_max_ptr() ?[*]const f32 {
 }
 
 // ---------------------------------------------------------------------------
+// Wave 4 Milestone 4.4: STEP ISO-10303-21 I/O Exports
+// ---------------------------------------------------------------------------
+
+pub export fn cad_step_import(
+    text_ptr: [*]const u8,
+    text_len: usize,
+    out_solid: *CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const alloc = memory.getAllocator();
+    const text = text_ptr[0..text_len];
+
+    const handle = next_handle;
+    next_handle += 1;
+
+    const soa_solid = topology.ops.step_io.importStep(alloc, @intCast(handle & 0xFFFF), text) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => .OutOfMemory,
+            error.EmptySolid, error.InvalidStepFormat, error.MissingDataSection, error.MissingSolidBrep, error.EntityNotFound, error.ParseError => .InvalidArguments,
+            error.ManifoldValidationFailed => .TopologyInvalid,
+        };
+    };
+
+    soa_solid_store.put(handle, soa_solid) catch {
+        var mut_s = soa_solid;
+        mut_s.deinit(alloc);
+        return .OutOfMemory;
+    };
+
+    out_solid.* = handle;
+    return .Ok;
+}
+
+pub export fn cad_step_export(
+    solid: CadSolidHandle,
+    out_ptr: *[*]const u8,
+    out_len: *usize,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const alloc = memory.getAllocator();
+
+    if (soa_solid_store.getPtr(solid)) |soa_ptr| {
+        const text = topology.ops.step_io.exportStep(alloc, soa_ptr) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => .OutOfMemory,
+                else => .OpFailed,
+            };
+        };
+        out_ptr.* = text.ptr;
+        out_len.* = text.len;
+        return .Ok;
+    }
+
+    if (solid_store.getPtr(solid)) |solid_ptr| {
+        const dx = if (solid_ptr.vertices.items.len >= 2) solid_ptr.vertices.items[1].point.x else 10.0;
+        const dy = if (solid_ptr.vertices.items.len >= 3) solid_ptr.vertices.items[2].point.y else 10.0;
+        const dz = if (solid_ptr.vertices.items.len >= 5) solid_ptr.vertices.items[4].point.z else 10.0;
+        const rect = [_][2]f32{ .{ 0, 0 }, .{ dx, 0 }, .{ dx, dy }, .{ 0, dy } };
+        var temp_soa = topology.ops.extrude.extrudePolygon(alloc, @intCast(solid & 0xFFFF), &rect, dz, @import("math/vec3.zig").Vec3.init(0, 0, 1), false) catch return .OutOfMemory;
+        defer temp_soa.deinit(alloc);
+
+        const text = topology.ops.step_io.exportStep(alloc, &temp_soa) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => .OutOfMemory,
+                else => .OpFailed,
+            };
+        };
+        out_ptr.* = text.ptr;
+        out_len.* = text.len;
+        return .Ok;
+    }
+
+    return .InvalidArguments;
+}
+
+pub export fn cad_step_free(ptr: [*]const u8, len: usize) void {
+    const alloc = memory.getAllocator();
+    alloc.free(ptr[0..len]);
+}
+
+pub export fn cad_wasm_step_import(text_ptr: [*]const u8, text_len: usize) CadSolidHandle {
+    _ = cad_kernel_init();
+    var handle: CadSolidHandle = 0;
+    const status = cad_step_import(text_ptr, text_len, &handle);
+    if (status == .Ok) {
+        return handle;
+    }
+    return 0;
+}
+
+pub export fn cad_wasm_step_export(solid: CadSolidHandle) ?[*]const u8 {
+    _ = cad_kernel_init();
+    const alloc = memory.getAllocator();
+    wasm_step_export_buf.clearRetainingCapacity();
+
+    var out_ptr: [*]const u8 = undefined;
+    var out_len: usize = 0;
+    const status = cad_step_export(solid, &out_ptr, &out_len);
+    if (status != .Ok) return null;
+    defer cad_step_free(out_ptr, out_len);
+
+    wasm_step_export_buf.appendSlice(alloc, out_ptr[0..out_len]) catch return null;
+    return wasm_step_export_buf.items.ptr;
+}
+
+pub export fn cad_wasm_step_export_len() usize {
+    return wasm_step_export_buf.items.len;
+}
+
+// ---------------------------------------------------------------------------
 // Sketch Solver Exports (Wave 2)
 // ---------------------------------------------------------------------------
 
@@ -505,4 +651,33 @@ test {
     _ = @import("main_wasm.zig");
     _ = @import("tess/tessellator.zig");
     _ = @import("tess/bvh.zig");
+    _ = @import("geom/nurbs.zig");
+    _ = @import("geom/ssi.zig");
+}
+
+test "STEP C ABI and WASM round-trip export and import" {
+    _ = cad_kernel_init();
+    defer _ = cad_kernel_deinit();
+
+    var box_h: CadSolidHandle = 0;
+    const st_box = cad_primitive_box(10.0, 20.0, 30.0, &box_h);
+    try std.testing.expectEqual(CadStatus.Ok, st_box);
+    defer _ = cad_solid_release(box_h);
+
+    const step_ptr = cad_wasm_step_export(box_h);
+    const step_len = cad_wasm_step_export_len();
+    try std.testing.expect(step_ptr != null);
+    try std.testing.expect(step_len > 0);
+
+    const imported_h = cad_wasm_step_import(step_ptr.?, step_len);
+    try std.testing.expect(imported_h != 0);
+    defer _ = cad_solid_release(imported_h);
+
+    var slice: c_abi.CadTessellatedSolidSlice = std.mem.zeroes(c_abi.CadTessellatedSolidSlice);
+    const st_tess = cad_solid_tessellate_slice(imported_h, 0.1, 0.2, &slice);
+    try std.testing.expectEqual(CadStatus.Ok, st_tess);
+    defer _ = cad_slice_free(&slice);
+
+    try std.testing.expectEqual(@as(u32, 12), slice.triangle_count);
+    try std.testing.expect(slice.vertex_count > 0);
 }

@@ -19,6 +19,10 @@ pub fn build(b: *std.Build) void {
         "tests/test_c_abi.zig",
         "tests/test_sketch_solver.zig",
         "tests/test_topo_invariants.zig",
+        "tests/test_nurbs.zig",
+        "tests/test_ssi.zig",
+        "tests/test_primitives_ops.zig",
+        "tests/test_booleans.zig",
     };
 
     inline for (test_files) |test_path| {

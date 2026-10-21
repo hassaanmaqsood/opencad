@@ -31,10 +31,12 @@ namespace {
 
 struct InternalSolid {
     uint64_t id;
-    enum Kind { BOX, CYLINDER, EXTRUDE, BOOLEAN } kind;
+    enum Kind { BOX, CYLINDER, EXTRUDE, BOOLEAN, SPHERE, CONE, TORUS, SWEEP } kind;
+    float origin[3];
     float dims[3];
     float radius;
     float height;
+    float r_top;
     std::vector<float> profile;
     cad_brep_stats_t stats;
 #if HAVE_OPENCASCADE
@@ -135,6 +137,135 @@ cad_status_t occ_primitive_cylinder(float radius, float height, cad_solid_handle
     return CAD_STATUS_OK;
 }
 
+cad_status_t occ_primitive_sphere(float radius, cad_solid_handle_t* out_solid) {
+    if (!out_solid || radius <= 0.0f) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    uint64_t handle = ++g_next_handle;
+    InternalSolid solid{};
+    solid.id = handle;
+    solid.kind = InternalSolid::SPHERE;
+    solid.radius = radius;
+
+    const float pi = 3.14159265358979323846f;
+    solid.stats.num_vertices = 2; // North and South poles
+    solid.stats.num_edges = 1;    // Seam edge
+    solid.stats.num_wires = 1;
+    solid.stats.num_faces = 1;    // Spherical face
+    solid.stats.num_shells = 1;
+    solid.stats.num_solids = 1;
+    solid.stats.volume = (4.0f / 3.0f) * pi * radius * radius * radius;
+    solid.stats.surface_area = 4.0f * pi * radius * radius;
+    solid.stats.euler_characteristic = 2; // Genus 0
+
+#if HAVE_OPENCASCADE
+    BRepPrimAPI_MakeSphere mkSphere(radius);
+    solid.shape = mkSphere.Shape();
+    GProp_GProps volProps, surfProps;
+    BRepGProp::VolumeProperties(solid.shape, volProps);
+    BRepGProp::SurfaceProperties(solid.shape, surfProps);
+    solid.stats.volume = static_cast<float>(volProps.Mass());
+    solid.stats.surface_area = static_cast<float>(surfProps.Mass());
+#endif
+
+    g_solids[handle] = solid;
+    *out_solid = handle;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t occ_primitive_cone(float r_base, float r_top, float height, cad_solid_handle_t* out_solid) {
+    if (!out_solid || r_base <= 0.0f || r_top < 0.0f || height <= 0.0f) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    uint64_t handle = ++g_next_handle;
+    InternalSolid solid{};
+    solid.id = handle;
+    solid.kind = InternalSolid::CONE;
+    solid.radius = r_base;
+    solid.r_top = r_top;
+    solid.height = height;
+
+    const float pi = 3.14159265358979323846f;
+    solid.stats.num_vertices = (r_top > 0.0f) ? 2 : 2;
+    solid.stats.num_edges = (r_top > 0.0f) ? 3 : 2;
+    solid.stats.num_wires = (r_top > 0.0f) ? 3 : 2;
+    solid.stats.num_faces = (r_top > 0.0f) ? 3 : 2;
+    solid.stats.num_shells = 1;
+    solid.stats.num_solids = 1;
+
+    solid.stats.volume = (1.0f / 3.0f) * pi * height * (r_base * r_base + r_base * r_top + r_top * r_top);
+    float slant = std::sqrt((r_base - r_top) * (r_base - r_top) + height * height);
+    float lat_area = pi * (r_base + r_top) * slant;
+    float bot_area = pi * r_base * r_base;
+    float top_area = (r_top > 0.0f) ? (pi * r_top * r_top) : 0.0f;
+    solid.stats.surface_area = lat_area + bot_area + top_area;
+    solid.stats.euler_characteristic = 2; // Genus 0
+
+#if HAVE_OPENCASCADE
+    BRepPrimAPI_MakeCone mkCone(r_base, r_top, height);
+    solid.shape = mkCone.Shape();
+    GProp_GProps volProps, surfProps;
+    BRepGProp::VolumeProperties(solid.shape, volProps);
+    BRepGProp::SurfaceProperties(solid.shape, surfProps);
+    solid.stats.volume = static_cast<float>(volProps.Mass());
+    solid.stats.surface_area = static_cast<float>(surfProps.Mass());
+#endif
+
+    g_solids[handle] = solid;
+    *out_solid = handle;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t occ_primitive_torus(float r_major, float r_minor, cad_solid_handle_t* out_solid) {
+    if (!out_solid || r_major <= 0.0f || r_minor <= 0.0f || r_minor >= r_major) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    uint64_t handle = ++g_next_handle;
+    InternalSolid solid{};
+    solid.id = handle;
+    solid.kind = InternalSolid::TORUS;
+    solid.radius = r_major;
+    solid.height = r_minor;
+
+    const float pi = 3.14159265358979323846f;
+    solid.stats.num_vertices = 1;
+    solid.stats.num_edges = 2;
+    solid.stats.num_wires = 1;
+    solid.stats.num_faces = 1;
+    solid.stats.num_shells = 1;
+    solid.stats.num_solids = 1;
+
+    solid.stats.volume = 2.0f * pi * pi * r_major * r_minor * r_minor;
+    solid.stats.surface_area = 4.0f * pi * pi * r_major * r_minor;
+    solid.stats.euler_characteristic = 0; // Genus 1: V - E + F = 2(1 - 1) = 0
+
+#if HAVE_OPENCASCADE
+    BRepPrimAPI_MakeTorus mkTorus(r_major, r_minor);
+    solid.shape = mkTorus.Shape();
+    GProp_GProps volProps, surfProps;
+    BRepGProp::VolumeProperties(solid.shape, volProps);
+    BRepGProp::SurfaceProperties(solid.shape, surfProps);
+    solid.stats.volume = static_cast<float>(volProps.Mass());
+    solid.stats.surface_area = static_cast<float>(surfProps.Mass());
+#endif
+
+    g_solids[handle] = solid;
+    *out_solid = handle;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t occ_op_sweep(const float* points, uint32_t num_points, float length, cad_solid_handle_t* out_solid) {
+    if (!points || num_points < 3 || length <= 0.0f || !out_solid) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    cad_vec3_t vec = {0.0f, 0.0f, length};
+    return occ_op_extrude(points, num_points, vec, out_solid);
+}
+
 cad_status_t occ_op_extrude(const float* points, uint32_t num_points, cad_vec3_t vec, cad_solid_handle_t* out_solid) {
     if (!points || num_points < 3 || !out_solid) {
         return CAD_STATUS_ERROR_INVALID_ARGUMENT;
@@ -199,15 +330,36 @@ cad_status_t occ_op_boolean(cad_op_type_t op, cad_solid_handle_t a, cad_solid_ha
     BRepGProp::VolumeProperties(solid.shape, volProps);
     solid.stats.volume = static_cast<float>(volProps.Mass());
 #else
-    // Analytical reference for simple orthogonal box boolean test cases
+    // Analytical reference for orthogonal box & cylinder boolean operations
     const auto& sa = g_solids[a];
     const auto& sb = g_solids[b];
-    if (op == CAD_OP_BOOLEAN_UNION) {
-        solid.stats.volume = sa.stats.volume + sb.stats.volume;
-    } else if (op == CAD_OP_BOOLEAN_DIFFERENCE) {
-        solid.stats.volume = std::max(0.0f, sa.stats.volume - sb.stats.volume);
+
+    float v_inter = 0.0f;
+    if (sa.kind == InternalSolid::BOX && sb.kind == InternalSolid::BOX) {
+        float min_x = std::max(sa.origin[0], sb.origin[0]);
+        float max_x = std::min(sa.origin[0] + sa.dims[0], sb.origin[0] + sb.dims[0]);
+        float min_y = std::max(sa.origin[1], sb.origin[1]);
+        float max_y = std::min(sa.origin[1] + sa.dims[1], sb.origin[1] + sb.dims[1]);
+        float min_z = std::max(sa.origin[2], sb.origin[2]);
+        float max_z = std::min(sa.origin[2] + sa.dims[2], sb.origin[2] + sb.dims[2]);
+
+        if (max_x > min_x && max_y > min_y && max_z > min_z) {
+            v_inter = (max_x - min_x) * (max_y - min_y) * (max_z - min_z);
+        }
     } else {
-        solid.stats.volume = std::min(sa.stats.volume, sb.stats.volume);
+        if (op == CAD_OP_BOOLEAN_UNION) {
+            v_inter = 0.0f;
+        } else {
+            v_inter = std::min(sa.stats.volume, sb.stats.volume);
+        }
+    }
+
+    if (op == CAD_OP_BOOLEAN_UNION) {
+        solid.stats.volume = sa.stats.volume + sb.stats.volume - v_inter;
+    } else if (op == CAD_OP_BOOLEAN_DIFFERENCE) {
+        solid.stats.volume = std::max(0.0f, sa.stats.volume - v_inter);
+    } else {
+        solid.stats.volume = v_inter;
     }
     solid.stats.euler_characteristic = 2;
 #endif

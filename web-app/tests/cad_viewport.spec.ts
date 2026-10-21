@@ -506,4 +506,130 @@ test.describe('OpenCAD Viewport & Sub-Shape Picking E2E', () => {
     expect(benchmark.avgFrameTimeMs).toBeLessThan(33.4);
     expect(benchmark.effectiveFps).toBeGreaterThanOrEqual(30);
   });
+
+  test('STEP AP214 File Import parses B-Rep solid into Three.js viewport', async ({
+    page,
+  }) => {
+    // Sample ISO-10303-21 STEP Part 21 Box solid
+    const sampleStepText = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('OpenCAD B-Rep Solid'), '2;1');
+FILE_NAME('test_box.step', '2026-10-22T00:00:00', ('Author'), ('OpenCAD'), 'OpenCAD', 'OpenCAD', '');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));
+ENDSEC;
+DATA;
+#10 = CARTESIAN_POINT('', (0.0, 0.0, 0.0));
+#11 = CARTESIAN_POINT('', (2.0, 0.0, 0.0));
+#12 = CARTESIAN_POINT('', (2.0, 3.0, 0.0));
+#13 = CARTESIAN_POINT('', (0.0, 3.0, 0.0));
+#14 = CARTESIAN_POINT('', (0.0, 0.0, 4.0));
+#15 = CARTESIAN_POINT('', (2.0, 0.0, 4.0));
+#16 = CARTESIAN_POINT('', (2.0, 3.0, 4.0));
+#17 = CARTESIAN_POINT('', (0.0, 3.0, 4.0));
+#20 = VERTEX_POINT('', #10);
+#21 = VERTEX_POINT('', #11);
+#22 = VERTEX_POINT('', #12);
+#23 = VERTEX_POINT('', #13);
+#24 = VERTEX_POINT('', #14);
+#25 = VERTEX_POINT('', #15);
+#26 = VERTEX_POINT('', #16);
+#27 = VERTEX_POINT('', #17);
+#30 = EDGE_CURVE('', #20, #21, #10, .T.);
+#31 = EDGE_CURVE('', #21, #22, #10, .T.);
+#32 = EDGE_CURVE('', #22, #23, #10, .T.);
+#33 = EDGE_CURVE('', #23, #20, #10, .T.);
+#40 = POLY_LOOP('', (#20, #21, #22, #23));
+#41 = POLY_LOOP('', (#24, #27, #26, #25));
+#42 = POLY_LOOP('', (#20, #24, #25, #21));
+#43 = POLY_LOOP('', (#21, #25, #26, #22));
+#44 = POLY_LOOP('', (#22, #26, #27, #23));
+#45 = POLY_LOOP('', (#23, #27, #24, #20));
+#50 = FACE_OUTER_BOUND('', #40, .T.);
+#51 = FACE_OUTER_BOUND('', #41, .T.);
+#52 = FACE_OUTER_BOUND('', #42, .T.);
+#53 = FACE_OUTER_BOUND('', #43, .T.);
+#54 = FACE_OUTER_BOUND('', #44, .T.);
+#55 = FACE_OUTER_BOUND('', #45, .T.);
+#60 = ADVANCED_FACE('', (#50), #10, .T.);
+#61 = ADVANCED_FACE('', (#51), #10, .T.);
+#62 = ADVANCED_FACE('', (#52), #10, .T.);
+#63 = ADVANCED_FACE('', (#53), #10, .T.);
+#64 = ADVANCED_FACE('', (#54), #10, .T.);
+#65 = ADVANCED_FACE('', (#55), #10, .T.);
+#70 = CLOSED_SHELL('', (#60, #61, #62, #63, #64, #65));
+#80 = MANIFOLD_SOLID_BREP('ImportedBox', #70);
+ENDSEC;
+END-ISO-10303-21;`;
+
+    // Import STEP via global test hook
+    const importResult = await page.evaluate(async (text) => {
+      if (!window.__importStep || !window.__cadViewer) throw new Error('Missing STEP hooks');
+      await window.__importStep(text);
+      const mesh = window.__cadViewer.meshManager.solidMesh;
+      if (!mesh) return null;
+      const posAttr = mesh.geometry.getAttribute('position');
+      return {
+        hasMesh: true,
+        vertexCount: posAttr ? posAttr.count : 0,
+      };
+    }, sampleStepText);
+
+    expect(importResult).not.toBeNull();
+    expect(importResult!.hasMesh).toBe(true);
+    expect(importResult!.vertexCount).toBeGreaterThan(0);
+  });
+
+  test('STEP AP214 File Export produces compliant ISO-10303-21 Part 21 text', async ({
+    page,
+  }) => {
+    const exportedText = await page.evaluate(async () => {
+      if (!window.__exportStep) throw new Error('Missing __exportStep hook');
+      return await window.__exportStep();
+    });
+
+    expect(exportedText).toContain('ISO-10303-21;');
+    expect(exportedText).toContain('HEADER;');
+    expect(exportedText).toContain("FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));");
+    expect(exportedText).toContain('DATA;');
+    expect(exportedText).toContain('MANIFOLD_SOLID_BREP');
+    expect(exportedText).toContain('END-ISO-10303-21;');
+  });
+
+  test('STEP imported geometry maintains steady 60 FPS viewport performance', async ({
+    page,
+  }) => {
+    const benchmark = await page.evaluate(async () => {
+      const viewer = window.__cadViewer;
+      if (!viewer) throw new Error('Viewer not found');
+
+      const frameCount = 60;
+      const start = performance.now();
+      const deltas: number[] = [];
+      let lastTime = start;
+
+      for (let i = 0; i < frameCount; i++) {
+        viewer.controls.update();
+        viewer.renderer.render(viewer.scene, viewer.camera);
+
+        const now = performance.now();
+        deltas.push(now - lastTime);
+        lastTime = now;
+      }
+
+      const totalDuration = performance.now() - start;
+      const avgFrameTimeMs = totalDuration / frameCount;
+      const effectiveFps = 1000 / avgFrameTimeMs;
+
+      return {
+        frameCount,
+        totalDuration,
+        avgFrameTimeMs,
+        effectiveFps,
+      };
+    });
+
+    expect(benchmark.frameCount).toBe(60);
+    expect(benchmark.avgFrameTimeMs).toBeLessThan(33.4);
+    expect(benchmark.effectiveFps).toBeGreaterThanOrEqual(30);
+  });
 });

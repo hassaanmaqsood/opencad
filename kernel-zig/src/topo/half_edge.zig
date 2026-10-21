@@ -389,8 +389,9 @@ pub const SoASolid = struct {
     /// 2. next.prev == self and prev.next == self
     /// 3. face loop closure with >= 3 edges
     /// 4. non-NaN, non-Inf coordinates
-    /// 5. Euler-Poincaré invariant
-    pub fn validateManifold(self: *const SoASolid) ManifoldError!void {
+    /// 5. Euler-Poincaré invariant for genus
+    pub fn validateManifoldGenus(self: *const SoASolid, genus: u32) ManifoldError!void {
+
         if (self.vertices.len == 0 or self.faces.len == 0 or self.half_edges.len == 0) {
             return error.EmptySolid;
         }
@@ -484,12 +485,19 @@ pub const SoASolid = struct {
             }
         }
 
-        // 4. Validate Euler-Poincaré invariant for genus 0
-        const euler = self.calcEulerPoincare(0);
+        // 4. Validate Euler-Poincaré invariant for given genus
+        const euler = self.calcEulerPoincare(genus);
         if (euler != 0) {
             return error.EulerPoincareViolated;
         }
     }
+
+    /// Asserts half-edge invariants for genus 0 manifold:
+    /// twin.twin == self, next.prev == self, face loop closure, finite coords, Euler-Poincare == 0
+    pub fn validateManifold(self: *const SoASolid) ManifoldError!void {
+        return self.validateManifoldGenus(0);
+    }
+
 
     /// Calculate total surface area and volume of the closed manifold.
     pub fn updateMetrics(self: *SoASolid) void {

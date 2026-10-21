@@ -177,6 +177,157 @@ pub fn tessellateSoAHalfEdgeSlice(
     };
 }
 
+pub fn tessellateSoASolid(
+    allocator: Allocator,
+    soa: *const topology.topo.SoASolid,
+) !CadTessellatedSolidSlice {
+    var pos_list = std.ArrayList(f32).empty;
+    errdefer pos_list.deinit(allocator);
+    var nrm_list = std.ArrayList(f32).empty;
+    errdefer nrm_list.deinit(allocator);
+    var idx_list = std.ArrayList(u32).empty;
+    errdefer idx_list.deinit(allocator);
+    var tri_face_list = std.ArrayList(u64).empty;
+    errdefer tri_face_list.deinit(allocator);
+    var edge_list = std.ArrayList(f32).empty;
+    errdefer edge_list.deinit(allocator);
+    var seg_edge_list = std.ArrayList(u64).empty;
+    errdefer seg_edge_list.deinit(allocator);
+
+    const v_slice = soa.vertices.slice();
+    const pts = v_slice.items(.point);
+
+    var min_pt = [3]f32{ 1e9, 1e9, 1e9 };
+    var max_pt = [3]f32{ -1e9, -1e9, -1e9 };
+
+    for (pts) |p| {
+        if (p.x < min_pt[0]) min_pt[0] = p.x;
+        if (p.x > max_pt[0]) max_pt[0] = p.x;
+        if (p.y < min_pt[1]) min_pt[1] = p.y;
+        if (p.y > max_pt[1]) max_pt[1] = p.y;
+        if (p.z < min_pt[2]) min_pt[2] = p.z;
+        if (p.z > max_pt[2]) max_pt[2] = p.z;
+    }
+
+    var face_verts_buf = std.ArrayList(u32).empty;
+    defer face_verts_buf.deinit(allocator);
+
+    const f_slice = soa.faces.slice();
+    const f_normals = f_slice.items(.normal);
+    const f_loops = f_slice.items(.outer_loop);
+    const f_topos = f_slice.items(.topo_id);
+
+    const l_slice = soa.loops.slice();
+    const l_hes = l_slice.items(.half_edge);
+
+    const he_slice = soa.half_edges.slice();
+    const he_origins = he_slice.items(.origin);
+    const he_nexts = he_slice.items(.next);
+
+    for (0..soa.faces.len) |f_idx| {
+        face_verts_buf.clearRetainingCapacity();
+        const loop_id = f_loops[f_idx];
+        if (loop_id >= soa.loops.len) continue;
+        const start_he = l_hes[loop_id];
+        if (start_he >= soa.half_edges.len) continue;
+
+        var cur = start_he;
+        var guard: u32 = 0;
+        const max_loop: u32 = @intCast(soa.half_edges.len);
+
+        while (guard < max_loop) : (guard += 1) {
+            const v_orig = he_origins[cur];
+            try face_verts_buf.append(allocator, v_orig);
+            cur = he_nexts[cur];
+            if (cur == start_he or cur >= soa.half_edges.len) break;
+        }
+
+        const face_topo = f_topos[f_idx].raw;
+        const nrm = f_normals[f_idx];
+
+        if (face_verts_buf.items.len >= 3) {
+            const fv = face_verts_buf.items;
+            const base_idx: u32 = @intCast(pos_list.items.len / 3);
+
+            for (fv) |vi| {
+                const p = pts[vi];
+                try pos_list.append(allocator, p.x);
+                try pos_list.append(allocator, p.y);
+                try pos_list.append(allocator, p.z);
+                try nrm_list.append(allocator, nrm.x);
+                try nrm_list.append(allocator, nrm.y);
+                try nrm_list.append(allocator, nrm.z);
+            }
+
+            var k: u32 = 1;
+            while (k + 1 < fv.len) : (k += 1) {
+                try idx_list.append(allocator, base_idx);
+                try idx_list.append(allocator, base_idx + k);
+                try idx_list.append(allocator, base_idx + k + 1);
+                try tri_face_list.append(allocator, face_topo);
+            }
+        }
+    }
+
+    // Extract sharp feature edge polylines from edges
+    const e_slice = soa.edges.slice();
+    const e_hes = e_slice.items(.half_edge);
+    const e_topos = e_slice.items(.topo_id);
+    const he_twins = he_slice.items(.twin);
+
+    for (0..soa.edges.len) |e_idx| {
+        const he1 = e_hes[e_idx];
+        if (he1 >= soa.half_edges.len) continue;
+        const he2 = he_twins[he1];
+        if (he2 >= soa.half_edges.len) continue;
+
+        const v0 = pts[he_origins[he1]];
+        const v1 = pts[he_origins[he2]];
+        const topo_id = e_topos[e_idx].raw;
+
+        try edge_list.append(allocator, v0.x);
+        try edge_list.append(allocator, v0.y);
+        try edge_list.append(allocator, v0.z);
+        try edge_list.append(allocator, v1.x);
+        try edge_list.append(allocator, v1.y);
+        try edge_list.append(allocator, v1.z);
+        try seg_edge_list.append(allocator, topo_id);
+    }
+
+    const pos_slice = try pos_list.toOwnedSlice(allocator);
+    errdefer allocator.free(pos_slice);
+    const nrm_slice = try nrm_list.toOwnedSlice(allocator);
+    errdefer allocator.free(nrm_slice);
+    const idx_slice = try idx_list.toOwnedSlice(allocator);
+    errdefer allocator.free(idx_slice);
+    const tri_face_slice = try tri_face_list.toOwnedSlice(allocator);
+    errdefer allocator.free(tri_face_slice);
+
+    var edge_slice: ?[]f32 = null;
+    var seg_edge_slice: ?[]u64 = null;
+    if (edge_list.items.len > 0) {
+        edge_slice = try edge_list.toOwnedSlice(allocator);
+        seg_edge_slice = try seg_edge_list.toOwnedSlice(allocator);
+    } else {
+        edge_list.deinit(allocator);
+        seg_edge_list.deinit(allocator);
+    }
+
+    return CadTessellatedSolidSlice{
+        .positions = pos_slice.ptr,
+        .vertex_count = @intCast(pos_slice.len / 3),
+        .normals = nrm_slice.ptr,
+        .indices = idx_slice.ptr,
+        .triangle_count = @intCast(idx_slice.len / 3),
+        .triangle_to_face_id = tri_face_slice.ptr,
+        .edge_polylines = if (edge_slice) |s| s.ptr else null,
+        .edge_segment_count = if (edge_slice) |s| @intCast(s.len / 6) else 0,
+        .edge_to_topo_id = if (seg_edge_slice) |s| s.ptr else null,
+        .bbox_min = .{ .x = min_pt[0], .y = min_pt[1], .z = min_pt[2] },
+        .bbox_max = .{ .x = max_pt[0], .y = max_pt[1], .z = max_pt[2] },
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Wave 3 Sub-Shape Tessellated Solid Slice Generation
 // ---------------------------------------------------------------------------

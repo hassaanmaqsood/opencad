@@ -111,6 +111,22 @@
         <button id="btn-generate" class="btn-generate" data-testid="btn-generate">Regenerate Solid</button>
         <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;" />
         <button id="btn-enter-sketch" class="btn-sketch" data-testid="btn-enter-sketch">✏️ Enter 2D Sketch Mode</button>
+        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;" />
+        <div class="hud-section-title">STEP AP214 B-Rep</div>
+        <div class="step-btn-group">
+          <button id="btn-import-step" class="btn-step" data-testid="btn-import-step">📥 Import STEP</button>
+          <button id="btn-export-step" class="btn-step" data-testid="btn-export-step">📤 Export STEP</button>
+        </div>
+        <input type="file" id="step-file-input" accept=".step,.stp" style="display: none;" />
+      </div>
+
+      <!-- Drag-and-Drop Visual Overlay (Wave 4) -->
+      <div id="drop-overlay" class="drop-overlay" data-testid="drop-overlay">
+        <div class="drop-overlay-content">
+          <span class="drop-icon">📂</span>
+          <span class="drop-title">Drop .step / .stp file to import</span>
+          <span class="drop-subtitle">AP214 B-Rep Solid Geometry</span>
+        </div>
       </div>
 
       <!-- Bottom Center Sub-Shape Selection HUD -->
