@@ -1,0 +1,12 @@
+{
+  "name": "oracle-fuzzer-qa",
+  "description": "Differential Testing & QA Automation Engineer building continuous fuzzers, validating geometric tolerances against OpenCASCADE/PlaneGCS, and enforcing topological manifold invariants.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "medium",
+  "write_scope": [
+    "oracle-harness/",
+    "kernel-zig/tests/",
+    "scripts/mcp/oracle_fuzzer.sh"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}

@@ -1,0 +1,24 @@
+{
+  "name": "open-parametric-cad-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:puppeteer": "node tests/cad_viewport.puppeteer.js"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@types/node": "^22.8.1",
+    "@types/three": "^0.170.0",
+    "puppeteer-core": "^25.15.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

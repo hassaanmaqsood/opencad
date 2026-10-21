@@ -1,0 +1,14 @@
+{
+  "name": "zig-brep-topo",
+  "description": "Boundary Representation (B-Rep) Topology & Parametric DAG Specialist implementing SoA Half-Edge data structures, Persistent Topological Naming, and CAD operations in Zig.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "high",
+  "write_scope": [
+    "kernel-zig/src/topo/",
+    "kernel-zig/src/ops/",
+    "kernel-zig/src/brep/",
+    "kernel-zig/src/primitives/",
+    "kernel-zig/src/router.zig"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}

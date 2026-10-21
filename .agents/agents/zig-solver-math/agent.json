@@ -1,0 +1,12 @@
+{
+  "name": "zig-solver-math",
+  "description": "Computational Geometry & Numerical Mathematics Specialist implementing native 2D/3D constraint solvers, Shewchuk exact predicates, and SIMD NURBS evaluators in Zig.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "high",
+  "write_scope": [
+    "kernel-zig/src/solver/",
+    "kernel-zig/src/geom/",
+    "kernel-zig/src/math/"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}

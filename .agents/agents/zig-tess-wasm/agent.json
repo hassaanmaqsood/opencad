@@ -1,0 +1,14 @@
+{
+  "name": "zig-tess-wasm",
+  "description": "Tessellation & WebAssembly Performance Engineer responsible for surface triangulation, flat zero-copy memory exports, and WASM binary optimization.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "medium",
+  "write_scope": [
+    "kernel-zig/src/tessellation/",
+    "kernel-zig/src/tess/",
+    "kernel-zig/src/main.zig",
+    "kernel-zig/build.zig",
+    "web-app/public/cad_kernel.wasm"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}

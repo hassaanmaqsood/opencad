@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "wasm-inspector": {
+      "command": "bash",
+      "args": ["scripts/mcp/wasm_inspector.sh"],
+      "description": "Compiles kernel-zig to wasm32, inspects binary footprint, and enumerates exported zero-copy C-ABI symbols"
+    },
+    "cad-oracle-fuzzer": {
+      "command": "bash",
+      "args": ["scripts/mcp/oracle_fuzzer.sh", "25"],
+      "description": "Executes differential fuzzing against OpenCASCADE/PlaneGCS oracle harness, checking <= 1e-7 mm deviation and Euler-Poincaré invariants"
+    },
+    "cpp-ast-slicer": {
+      "command": "python3",
+      "args": ["scripts/mcp/cpp_ast_slicer.py"],
+      "description": "Surgically extracts isolated C++ classes, structs, or functions with bounded line limits to prevent agent context flooding"
+    }
+  }
+}

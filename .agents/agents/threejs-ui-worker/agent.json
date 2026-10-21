@@ -1,0 +1,14 @@
+{
+  "name": "threejs-ui-worker",
+  "description": "Frontend & 3D Graphics Engineer building the Three.js WebGL/WebGPU viewport, zero-copy Web Worker WASM bridge, sub-shape picking, and interactive UI in TypeScript.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "medium",
+  "write_scope": [
+    "web-app/src/",
+    "web-app/tests/",
+    "web-app/index.html",
+    "web-app/vite.config.ts",
+    "web-app/package.json"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "cad-architect",
+  "description": "System Architect responsible for C ABI contracts, algorithm decomposition, cross-boundary review, and mission management.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "high",
+  "write_scope": [
+    "abi/cad_kernel.h",
+    ".antigravity/missions/",
+    ".antigravity/history/",
+    ".antigravity/rules.md",
+    "package.json",
+    "README.md"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}
