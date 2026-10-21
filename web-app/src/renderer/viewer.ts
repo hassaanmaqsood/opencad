@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CadMeshRawBuffers, SubShapeSelection } from '../types/cad';
+import { CadMeshRawBuffers, CadTessellatedSolidSlice, SubShapeSelection } from '../types/cad';
 import { CadWorkerBridge } from '../worker/worker_bridge';
 import { FpsCounter } from './fps_counter';
 import { MeshManager } from './mesh_manager';
@@ -153,10 +153,10 @@ export class CadViewer {
       // Update hover highlight if not locked by active selection
       if (this.currentSelection.type === 'none') {
         if (pick.type === 'face') {
-          this.meshManager.setHighlightedFace(pick.faceId);
+          this.meshManager.setHighlightedFace(pick.topoId ?? pick.faceId);
           this.meshManager.setHighlightedEdge(null);
         } else if (pick.type === 'edge') {
-          this.meshManager.setHighlightedEdge(pick.edgeId);
+          this.meshManager.setHighlightedEdge(pick.topoId ?? pick.edgeId);
           this.meshManager.setHighlightedFace(null);
         } else {
           this.meshManager.setHighlightedFace(null);
@@ -185,10 +185,10 @@ export class CadViewer {
     this.currentSelection = selection;
 
     if (selection.type === 'face') {
-      this.meshManager.setHighlightedFace(selection.faceId);
+      this.meshManager.setHighlightedFace(selection.topoId ?? selection.faceId);
       this.meshManager.setHighlightedEdge(null);
     } else if (selection.type === 'edge') {
-      this.meshManager.setHighlightedEdge(selection.edgeId);
+      this.meshManager.setHighlightedEdge(selection.topoId ?? selection.edgeId);
       this.meshManager.setHighlightedFace(null);
     } else {
       this.meshManager.setHighlightedFace(null);
@@ -202,6 +202,11 @@ export class CadViewer {
 
   public setGeometry(buffers: CadMeshRawBuffers): void {
     this.meshManager.updateGeometry(buffers);
+    this.setSelection({ type: 'none' });
+  }
+
+  public setGeometryFromSlice(slice: CadTessellatedSolidSlice): void {
+    this.meshManager.updateFromSlice(slice);
     this.setSelection({ type: 'none' });
   }
 

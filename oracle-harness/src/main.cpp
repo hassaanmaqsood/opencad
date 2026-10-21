@@ -347,6 +347,326 @@ int main(int argc, char** argv) {
         pass_count++;
     }
 
+    // -----------------------------------------------------------------------
+    // Part 4: Multi-Feature DAG Evaluation Differential Validation (Wave 3)
+    // -----------------------------------------------------------------------
+    std::cout << "\n[INFO] Running Part 4: Multi-feature DAG evaluation differential validation against OpenCASCADE...\n";
+
+    const double PI_CONST = 3.14159265358979323846;
+
+    // Test 4.1: Base Plate Extrude Feature DAG Node
+    {
+        cad_feature_node_t base_node{};
+        base_node.feature_id = 1;
+        base_node.type = CAD_FEATURE_EXTRUDE;
+        base_node.is_suppressed = 0;
+        base_node.parent_count = 0;
+        base_node.params.extrude.distance = 10.0;
+        base_node.params.extrude.direction = {0.0f, 0.0f, 1.0f};
+
+        cad_solid_handle_t out_solid = CAD_INVALID_HANDLE;
+        cad_status_t status = occ_dag_evaluate(&base_node, 1, 0, &out_solid);
+        if (status == CAD_STATUS_OK && out_solid != CAD_INVALID_HANDLE) {
+            cad_brep_stats_t stats{};
+            occ_solid_get_stats(out_solid, &stats);
+            double expected_vol = 50.0 * 40.0 * 10.0;
+            double vol_err = std::abs(static_cast<double>(stats.volume) - expected_vol);
+
+            if (vol_err <= 1e-5 && stats.euler_characteristic == 2 && stats.num_faces == 6) {
+                std::cout << "[PASS] DAG Extrude Base Plate invariant verified (vol: "
+                          << stats.volume << ", Euler: " << stats.euler_characteristic << ", delta <= 1e-5).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] DAG Extrude Base Plate volume or topology mismatch (vol: "
+                          << stats.volume << ", err: " << vol_err << ").\n";
+                fail_count++;
+            }
+            occ_solid_release(out_solid);
+        } else {
+            std::cerr << "[FAIL] DAG Extrude Base Plate evaluation failed (status: " << status << ").\n";
+            fail_count++;
+        }
+    }
+
+    // Test 4.2: Base Plate + Cylindrical Boss (Boolean Union Feature)
+    {
+        // 1. Create and register boss tool solid (r=5, h=10)
+        cad_solid_handle_t boss_handle = CAD_INVALID_HANDLE;
+        occ_primitive_cylinder(5.0f, 10.0f, &boss_handle);
+        occ_dag_register_feature_solid(10, boss_handle);
+
+        cad_feature_node_t nodes[2]{};
+        // Node 0: Base plate
+        nodes[0].feature_id = 1;
+        nodes[0].type = CAD_FEATURE_EXTRUDE;
+        nodes[0].params.extrude.distance = 10.0;
+        nodes[0].params.extrude.direction = {0.0f, 0.0f, 1.0f};
+
+        // Node 1: Boolean Union with tool feature 10
+        nodes[1].feature_id = 2;
+        nodes[1].type = CAD_FEATURE_BOOLEAN_UNION;
+        nodes[1].parent_count = 1;
+        nodes[1].parent_ids[0] = 1;
+        nodes[1].params.boolean_op.tool_feature_id = 10;
+
+        cad_solid_handle_t out_solid = CAD_INVALID_HANDLE;
+        cad_status_t status = occ_dag_evaluate(nodes, 2, 1, &out_solid);
+        if (status == CAD_STATUS_OK && out_solid != CAD_INVALID_HANDLE) {
+            cad_brep_stats_t stats{};
+            occ_solid_get_stats(out_solid, &stats);
+            cad_brep_stats_t boss_stats{};
+            occ_solid_get_stats(boss_handle, &boss_stats);
+            float expected_vol = (50.0f * 40.0f * 10.0f) + boss_stats.volume;
+            float vol_err = std::abs(stats.volume - expected_vol);
+
+            if (vol_err <= 1e-5f && stats.euler_characteristic == 2) {
+                std::cout << "[PASS] DAG Boolean Union Boss verified (vol: "
+                          << stats.volume << ", delta: " << vol_err << " <= 1e-5).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] DAG Boolean Union Boss mismatch (vol: "
+                          << stats.volume << ", expected: " << expected_vol << ", err: " << vol_err << ").\n";
+                fail_count++;
+            }
+            occ_solid_release(out_solid);
+        } else {
+            std::cerr << "[FAIL] DAG Boolean Union evaluation failed.\n";
+            fail_count++;
+        }
+        occ_solid_release(boss_handle);
+    }
+
+    // Test 4.3: Base Plate + Cylindrical Hole Cut (Boolean Difference Feature)
+    {
+        // 1. Create and register hole tool solid (r=4, h=10)
+        cad_solid_handle_t hole_handle = CAD_INVALID_HANDLE;
+        occ_primitive_cylinder(4.0f, 10.0f, &hole_handle);
+        occ_dag_register_feature_solid(20, hole_handle);
+
+        cad_feature_node_t nodes[2]{};
+        nodes[0].feature_id = 1;
+        nodes[0].type = CAD_FEATURE_EXTRUDE;
+        nodes[0].params.extrude.distance = 10.0;
+        nodes[0].params.extrude.direction = {0.0f, 0.0f, 1.0f};
+
+        nodes[1].feature_id = 3;
+        nodes[1].type = CAD_FEATURE_BOOLEAN_CUT;
+        nodes[1].parent_count = 1;
+        nodes[1].parent_ids[0] = 1;
+        nodes[1].params.boolean_op.tool_feature_id = 20;
+
+        cad_solid_handle_t out_solid = CAD_INVALID_HANDLE;
+        cad_status_t status = occ_dag_evaluate(nodes, 2, 1, &out_solid);
+        if (status == CAD_STATUS_OK && out_solid != CAD_INVALID_HANDLE) {
+            cad_brep_stats_t stats{};
+            occ_solid_get_stats(out_solid, &stats);
+            cad_brep_stats_t hole_stats{};
+            occ_solid_get_stats(hole_handle, &hole_stats);
+            float expected_vol = (50.0f * 40.0f * 10.0f) - hole_stats.volume;
+            float vol_err = std::abs(stats.volume - expected_vol);
+
+            if (vol_err <= 1e-5f) {
+                std::cout << "[PASS] DAG Boolean Cut Hole verified (vol: "
+                          << stats.volume << ", delta: " << vol_err << " <= 1e-5).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] DAG Boolean Cut Hole mismatch (vol: "
+                          << stats.volume << ", expected: " << expected_vol << ", err: " << vol_err << ").\n";
+                fail_count++;
+            }
+            occ_solid_release(out_solid);
+        } else {
+            std::cerr << "[FAIL] DAG Boolean Cut evaluation failed.\n";
+            fail_count++;
+        }
+        occ_solid_release(hole_handle);
+    }
+
+    // Test 4.4: DAG Rollback Bar Verification (Rolling back through feature history)
+    {
+        // Tools:
+        // Boss tool (Feature 30): Cylinder r=6, h=10
+        // Pocket tool (Feature 40): Box 10 x 10 x 5 -> vol = 500
+        cad_solid_handle_t boss_h = CAD_INVALID_HANDLE;
+        occ_primitive_cylinder(6.0f, 10.0f, &boss_h);
+        occ_dag_register_feature_solid(30, boss_h);
+        cad_brep_stats_t b_stats{};
+        occ_solid_get_stats(boss_h, &b_stats);
+
+        cad_solid_handle_t pocket_h = CAD_INVALID_HANDLE;
+        occ_primitive_box(10.0f, 10.0f, 5.0f, &pocket_h);
+        occ_dag_register_feature_solid(40, pocket_h);
+        cad_brep_stats_t p_stats{};
+        occ_solid_get_stats(pocket_h, &p_stats);
+
+        cad_feature_node_t nodes[3]{};
+        // Node 0: Base plate 50 x 40 x 10
+        nodes[0].feature_id = 1;
+        nodes[0].type = CAD_FEATURE_EXTRUDE;
+        nodes[0].params.extrude.distance = 10.0;
+        nodes[0].params.extrude.direction = {0.0f, 0.0f, 1.0f};
+
+        // Node 1: Union Boss (tool 30)
+        nodes[1].feature_id = 2;
+        nodes[1].type = CAD_FEATURE_BOOLEAN_UNION;
+        nodes[1].parent_count = 1;
+        nodes[1].parent_ids[0] = 1;
+        nodes[1].params.boolean_op.tool_feature_id = 30;
+
+        // Node 2: Cut Pocket (tool 40)
+        nodes[2].feature_id = 3;
+        nodes[2].type = CAD_FEATURE_BOOLEAN_CUT;
+        nodes[2].parent_count = 1;
+        nodes[2].parent_ids[0] = 2;
+        nodes[2].params.boolean_op.tool_feature_id = 40;
+
+        bool rollback_pass = true;
+
+        // Rollback to 0: Base plate only
+        cad_solid_handle_t s0 = CAD_INVALID_HANDLE;
+        occ_dag_evaluate(nodes, 3, 0, &s0);
+        cad_brep_stats_t stats0{};
+        occ_solid_get_stats(s0, &stats0);
+        float exp0 = 20000.0f;
+        if (std::abs(stats0.volume - exp0) > 1e-5f) rollback_pass = false;
+        occ_solid_release(s0);
+
+        // Rollback to 1: Base + Boss
+        cad_solid_handle_t s1 = CAD_INVALID_HANDLE;
+        occ_dag_evaluate(nodes, 3, 1, &s1);
+        cad_brep_stats_t stats1{};
+        occ_solid_get_stats(s1, &stats1);
+        float exp1 = 20000.0f + b_stats.volume;
+        if (std::abs(stats1.volume - exp1) > 1e-5f) rollback_pass = false;
+        occ_solid_release(s1);
+
+        // Roll forward to 2: Base + Boss - Pocket
+        cad_solid_handle_t s2 = CAD_INVALID_HANDLE;
+        occ_dag_evaluate(nodes, 3, 2, &s2);
+        cad_brep_stats_t stats2{};
+        occ_solid_get_stats(s2, &stats2);
+        float exp2 = 20000.0f + b_stats.volume - p_stats.volume;
+        if (std::abs(stats2.volume - exp2) > 1e-5f) rollback_pass = false;
+        occ_solid_release(s2);
+
+        if (rollback_pass) {
+            std::cout << "[PASS] DAG Rollback Bar differential verification across all rollback markers (delta <= 1e-5).\n";
+            pass_count++;
+        } else {
+            std::cerr << "[FAIL] DAG Rollback Bar verification failed.\n";
+            fail_count++;
+        }
+
+        // Test 4.5: Feature Suppression
+        nodes[1].is_suppressed = 1; // Suppress Union Boss
+        cad_solid_handle_t s_supp = CAD_INVALID_HANDLE;
+        occ_dag_evaluate(nodes, 3, 2, &s_supp);
+        cad_brep_stats_t stats_supp{};
+        occ_solid_get_stats(s_supp, &stats_supp);
+        float exp_supp = 20000.0f - p_stats.volume; // Base plate - Pocket (boss skipped)
+        float supp_err = std::abs(stats_supp.volume - exp_supp);
+        if (supp_err <= 1e-5f) {
+            std::cout << "[PASS] DAG Feature suppression differential evaluation verified (vol: "
+                      << stats_supp.volume << ", delta <= 1e-5).\n";
+            pass_count++;
+        } else {
+            std::cerr << "[FAIL] DAG Feature suppression failed (vol: "
+                      << stats_supp.volume << ", exp: " << exp_supp << ").\n";
+            fail_count++;
+        }
+        occ_solid_release(s_supp);
+
+        occ_solid_release(boss_h);
+        occ_solid_release(pocket_h);
+    }
+
+    // Test 4.6: Multi-Feature DAG Differential Fuzzing Suite (25 iterations)
+    {
+        std::cout << "[INFO] Running multi-feature DAG differential fuzzing suite (25 iterations)...\n";
+        uint32_t dag_fuzz_passed = 0;
+        float max_dag_residual = 0.0f;
+
+        for (uint32_t iter = 0; iter < 25; ++iter) {
+            float dx = 20.0f + (iter * 1.5f);
+            float dy = 15.0f + (iter * 1.0f);
+            float dz = 10.0f + (iter * 0.5f);
+            float tool_r = 2.0f + (iter * 0.2f);
+            float tool_h = dz;
+
+            // Register dynamic cylinder tool
+            cad_solid_handle_t tool_hdl = CAD_INVALID_HANDLE;
+            occ_primitive_cylinder(tool_r, tool_h, &tool_hdl);
+            cad_brep_stats_t tool_stats{};
+            occ_solid_get_stats(tool_hdl, &tool_stats);
+
+            uint32_t tool_feat_id = 1000 + iter;
+            occ_dag_register_feature_solid(tool_feat_id, tool_hdl);
+
+            // Register custom 2D sketch profile for base
+            float sk_pts[8] = {
+                0.0f, 0.0f,
+                dx, 0.0f,
+                dx, dy,
+                0.0f, dy
+            };
+            uint32_t sk_feat_id = 2000 + iter;
+            occ_dag_register_sketch(sk_feat_id, sk_pts, 4);
+
+            cad_feature_node_t fuzz_nodes[2]{};
+            fuzz_nodes[0].feature_id = 100;
+            fuzz_nodes[0].type = CAD_FEATURE_EXTRUDE;
+            fuzz_nodes[0].parent_count = 1;
+            fuzz_nodes[0].parent_ids[0] = sk_feat_id;
+            fuzz_nodes[0].params.extrude.distance = dz;
+            fuzz_nodes[0].params.extrude.direction = {0.0f, 0.0f, 1.0f};
+
+            bool is_union = (iter % 2 == 0);
+            fuzz_nodes[1].feature_id = 101;
+            fuzz_nodes[1].type = is_union ? CAD_FEATURE_BOOLEAN_UNION : CAD_FEATURE_BOOLEAN_CUT;
+            fuzz_nodes[1].parent_count = 1;
+            fuzz_nodes[1].parent_ids[0] = 100;
+            fuzz_nodes[1].params.boolean_op.tool_feature_id = tool_feat_id;
+
+            cad_solid_handle_t fuzz_solid = CAD_INVALID_HANDLE;
+            cad_status_t f_status = occ_dag_evaluate(fuzz_nodes, 2, 1, &fuzz_solid);
+
+            if (f_status == CAD_STATUS_OK && fuzz_solid != CAD_INVALID_HANDLE) {
+                cad_brep_stats_t f_stats{};
+                occ_solid_get_stats(fuzz_solid, &f_stats);
+
+                float base_vol = dx * dy * dz;
+                float expected_vol = is_union ? (base_vol + tool_stats.volume) : (base_vol - tool_stats.volume);
+                float err = std::abs(f_stats.volume - expected_vol);
+
+                if (err > max_dag_residual) max_dag_residual = err;
+
+                if (err <= 1e-5f) {
+                    dag_fuzz_passed++;
+                } else {
+                    std::cerr << "[FAIL] DAG fuzz iter " << iter << " exceeded tolerance (err: " << err << ")\n";
+                    fail_count++;
+                    occ_solid_release(fuzz_solid);
+                    occ_solid_release(tool_hdl);
+                    break;
+                }
+                occ_solid_release(fuzz_solid);
+            } else {
+                std::cerr << "[FAIL] DAG fuzz iter " << iter << " evaluation returned error\n";
+                fail_count++;
+                occ_solid_release(tool_hdl);
+                break;
+            }
+            occ_solid_release(tool_hdl);
+        }
+
+        if (dag_fuzz_passed == 25) {
+            std::cout << "[PASS] All 25 multi-feature DAG fuzz iterations passed differential validation (max delta: "
+                      << max_dag_residual << " <= 1e-5).\n";
+            pass_count++;
+        }
+    }
+
+
     std::cout << "\n========================================================\n";
     std::cout << "Differential Harness Results: " << pass_count << " passed, " << fail_count << " failed.\n";
     std::cout << "========================================================\n";

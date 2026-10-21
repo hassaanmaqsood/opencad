@@ -5,15 +5,23 @@ import {
   SolveSketchWorkerRequest,
   SolveSketchTransferPayload,
   CadSolverStatus,
+  CadFeatureNode,
+  CadTessellatedSolidSlicePayload,
+  EvaluateDagWorkerRequest,
+  SetRollbackIndexWorkerRequest,
 } from '../types/cad';
 import { generateBoxBuffers, generateCylinderBuffers } from './geometry_generator';
 import { solveSketch } from './sketch_solver';
+import { evaluateFeatureDag, getDefaultDemoFeatureDag } from './dag_evaluator';
 
 interface WasmExports {
   memory: WebAssembly.Memory;
   cad_kernel_init?: () => number;
   cad_wasm_alloc?: (size: number) => number;
   cad_wasm_free?: (ptr: number) => void;
+  cad_dag_evaluate?: (nodesPtr: number, nodeCount: number, rollbackIndex: number, outSolidPtr: number) => number;
+  cad_dag_set_rollback_index?: (rollbackIndex: number) => number;
+  cad_solid_tessellate_slice?: (solidHandle: number | bigint, chordalTol: number, angularTol: number, outSlicePtr: number) => number;
   cad_wasm_sketch_solve?: (
     pointsPtr: number, pointCount: number,
     linesPtr: number, lineCount: number,
@@ -67,6 +75,9 @@ interface WasmExports {
 
 let wasmInstance: WebAssembly.Instance | null = null;
 let wasmExports: WasmExports | null = null;
+
+let cachedDagNodes: CadFeatureNode[] = getDefaultDemoFeatureDag();
+let cachedRollbackIndex: number = cachedDagNodes.length - 1;
 
 /**
  * Initializes an optional WebAssembly binary conforming to cad_kernel.h.
@@ -305,5 +316,71 @@ self.onmessage = async (e: MessageEvent) => {
       status.updated_coords.buffer,
       status.conflicting_constraint_ids.buffer,
     ]);
+    return;
+  }
+
+  if (data.type === 'EVALUATE_DAG') {
+    const req = data as EvaluateDagWorkerRequest;
+    const requestId = req.requestId ?? 0;
+    cachedDagNodes = req.nodes || getDefaultDemoFeatureDag();
+    cachedRollbackIndex = req.rollbackIndex !== undefined ? req.rollbackIndex : cachedDagNodes.length - 1;
+
+    const slice = evaluateFeatureDag(cachedDagNodes, cachedRollbackIndex);
+
+    const payload: CadTessellatedSolidSlicePayload = {
+      type: 'DAG_EVALUATED',
+      requestId,
+      positions: slice.positions.buffer,
+      normals: slice.normals.buffer,
+      indices: slice.indices.buffer,
+      triangleToFaceId: slice.triangleToFaceId.buffer,
+      edgePolylines: slice.edgePolylines.buffer,
+      edgeToTopoId: slice.edgeToTopoId.buffer,
+      bbox: slice.bbox,
+      metadata: slice.metadata,
+    };
+
+    // ZERO-COPY Transferable ArrayBuffer Transfer
+    self.postMessage(payload, [
+      slice.positions.buffer,
+      slice.normals.buffer,
+      slice.indices.buffer,
+      slice.triangleToFaceId.buffer,
+      slice.edgePolylines.buffer,
+      slice.edgeToTopoId.buffer,
+    ]);
+    return;
+  }
+
+  if (data.type === 'SET_ROLLBACK_INDEX') {
+    const req = data as SetRollbackIndexWorkerRequest;
+    const requestId = req.requestId ?? 0;
+    cachedRollbackIndex = req.rollbackIndex;
+
+    const slice = evaluateFeatureDag(cachedDagNodes, cachedRollbackIndex);
+
+    const payload: CadTessellatedSolidSlicePayload = {
+      type: 'DAG_EVALUATED',
+      requestId,
+      positions: slice.positions.buffer,
+      normals: slice.normals.buffer,
+      indices: slice.indices.buffer,
+      triangleToFaceId: slice.triangleToFaceId.buffer,
+      edgePolylines: slice.edgePolylines.buffer,
+      edgeToTopoId: slice.edgeToTopoId.buffer,
+      bbox: slice.bbox,
+      metadata: slice.metadata,
+    };
+
+    // ZERO-COPY Transferable ArrayBuffer Transfer
+    self.postMessage(payload, [
+      slice.positions.buffer,
+      slice.normals.buffer,
+      slice.indices.buffer,
+      slice.triangleToFaceId.buffer,
+      slice.edgePolylines.buffer,
+      slice.edgeToTopoId.buffer,
+    ]);
+    return;
   }
 };

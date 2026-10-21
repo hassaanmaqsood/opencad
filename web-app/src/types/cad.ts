@@ -52,6 +52,8 @@ export type SubShapeSelection =
   | {
       type: 'face';
       faceId: number;
+      topoId?: bigint;
+      decodedTopo?: DecodedCadTopoId;
       point: [number, number, number];
       normal?: [number, number, number];
       label?: string;
@@ -59,6 +61,8 @@ export type SubShapeSelection =
   | {
       type: 'edge';
       edgeId: number;
+      topoId?: bigint;
+      decodedTopo?: DecodedCadTopoId;
       point: [number, number, number];
       label?: string;
     };
@@ -195,4 +199,235 @@ export interface SolveSketchTransferPayload {
   conflicting_count: number;
   conflictingIdsBuffer: ArrayBufferLike;
 }
+
+/* ------------------------------------------------------------------------- */
+/* Wave 3: Parametric Feature DAG, Persistent Naming & Sub-Shape Slices       */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Sub-shape classification matching abi/cad_kernel.h
+ */
+export enum CadSubshapeType {
+  VERTEX = 0,
+  EDGE = 1,
+  FACE = 2,
+  SHELL = 3,
+}
+
+/**
+ * Disambiguation topological flags for sub-shapes
+ */
+export enum CadTopoFlags {
+  NONE = 0,
+  START_CAP = 1,
+  END_CAP = 2,
+  LATERAL = 3,
+  FILLET = 4,
+  CHAMFER = 5,
+}
+
+/**
+ * Types of parametric modeling features in the DAG matching abi/cad_kernel.h
+ */
+export enum CadFeatureType {
+  SKETCH = 0,
+  EXTRUDE = 1,
+  REVOLVE = 2,
+  BOOLEAN_UNION = 3,
+  BOOLEAN_CUT = 4,
+  BOOLEAN_INTERSECT = 5,
+  FILLET = 6,
+  CHAMFER = 7,
+}
+
+/**
+ * 64-bit Persistent Topological Identifier (CadTopoId) decoded representation.
+ * Encodes origin_feature_id (16b), source_sketch_entity_id (16b), op_type (8b),
+ * subshape_type (4b), flags (4b), subshape_hash (16b).
+ */
+export interface DecodedCadTopoId {
+  origin_feature_id: number;
+  source_sketch_entity_id: number;
+  op_type: number;
+  subshape_type: CadSubshapeType;
+  flags: number;
+  subshape_hash: number;
+  raw: bigint;
+}
+
+/**
+ * Encodes persistent topological components into a 64-bit integer (CadTopoId).
+ */
+export function makeCadTopoId(
+  originFeatureId: number,
+  sourceSketchEntityId: number,
+  opType: number,
+  subshapeType: CadSubshapeType,
+  flags: number = 0,
+  subshapeHash: number = 0
+): bigint {
+  const fId = BigInt(originFeatureId & 0xffff);
+  const sId = BigInt(sourceSketchEntityId & 0xffff) << 16n;
+  const op = BigInt(opType & 0xff) << 32n;
+  const sub = BigInt(subshapeType & 0x0f) << 40n;
+  const flg = BigInt(flags & 0x0f) << 44n;
+  const hsh = BigInt(subshapeHash & 0xffff) << 48n;
+  return fId | sId | op | sub | flg | hsh;
+}
+
+/**
+ * Decodes a 64-bit integer into its constituent persistent topological fields.
+ */
+export function decodeCadTopoId(raw: bigint | number): DecodedCadTopoId {
+  const rawBig = typeof raw === 'bigint' ? raw : BigInt(raw);
+  return {
+    origin_feature_id: Number(rawBig & 0xffffn),
+    source_sketch_entity_id: Number((rawBig >> 16n) & 0xffffn),
+    op_type: Number((rawBig >> 32n) & 0xffn),
+    subshape_type: Number((rawBig >> 40n) & 0x0fn) as CadSubshapeType,
+    flags: Number((rawBig >> 44n) & 0x0fn),
+    subshape_hash: Number((rawBig >> 48n) & 0xffffn),
+    raw: rawBig,
+  };
+}
+
+/**
+ * Formats a 64-bit CadTopoId into a human-readable display string.
+ */
+export function formatCadTopoId(raw: bigint | number): string {
+  const decoded = decodeCadTopoId(raw);
+  const hex = '0x' + decoded.raw.toString(16).padStart(16, '0');
+  const typeStr =
+    decoded.subshape_type === CadSubshapeType.FACE
+      ? 'Face'
+      : decoded.subshape_type === CadSubshapeType.EDGE
+      ? 'Edge'
+      : decoded.subshape_type === CadSubshapeType.VERTEX
+      ? 'Vertex'
+      : 'Shell';
+
+  let flagStr = '';
+  if (decoded.flags === CadTopoFlags.START_CAP) flagStr = ' (Start/Bottom Cap)';
+  else if (decoded.flags === CadTopoFlags.END_CAP) flagStr = ' (End/Top Cap)';
+  else if (decoded.flags === CadTopoFlags.LATERAL) flagStr = ' (Lateral Side)';
+  else if (decoded.flags === CadTopoFlags.FILLET) flagStr = ' (Fillet Transition)';
+  else if (decoded.flags === CadTopoFlags.CHAMFER) flagStr = ' (Chamfer Bevel)';
+
+  return `Feature #${decoded.origin_feature_id} • ${typeStr}${flagStr} • [${hex}]`;
+}
+
+/**
+ * Parametric feature node within the directed acyclic graph (DAG)
+ */
+export interface CadFeatureNode {
+  feature_id: number;
+  name: string;
+  type: CadFeatureType;
+  is_suppressed: boolean;
+  parent_ids: number[];
+  target_topo_ids?: bigint[];
+  params: {
+    extrude?: {
+      distance: number;
+      direction?: [number, number, number];
+      symmetric?: boolean;
+    };
+    revolve?: {
+      angle_rad: number;
+      axis_origin?: [number, number, number];
+      axis_direction?: [number, number, number];
+    };
+    fillet?: {
+      radius: number;
+    };
+    chamfer?: {
+      distance: number;
+      angle_rad?: number;
+    };
+    boolean_op?: {
+      tool_feature_id: number;
+    };
+    sketch?: {
+      plane?: 'XY' | 'XZ' | 'YZ';
+      profileType?: 'rectangle' | 'circle' | 'polygon';
+      width?: number;
+      height?: number;
+      radius?: number;
+      points?: CadSketchPoint2D[];
+      lines?: CadSketchLine2D[];
+    };
+  };
+}
+
+/**
+ * Metadata accompanying zero-copy tessellated solid slice
+ */
+export interface CadTessellatedSliceMetadata {
+  vertexCount: number;
+  triangleCount: number;
+  edgeSegmentCount: number;
+  faceCount: number;
+  rollbackIndex: number;
+  activeFeatureCount: number;
+  totalFeatureCount: number;
+  lastEvaluatedFeatureName: string;
+  solidType?: string;
+  generatedAt: number;
+}
+
+/**
+ * Transferable zero-copy payload from worker conforming to cad_tessellated_solid_slice_t
+ */
+export interface CadTessellatedSolidSlicePayload {
+  type: 'DAG_EVALUATED';
+  requestId?: number;
+  positions: ArrayBufferLike;
+  normals: ArrayBufferLike;
+  indices: ArrayBufferLike;
+  triangleToFaceId: ArrayBufferLike; // BigUint64Array buffer
+  edgePolylines: ArrayBufferLike;
+  edgeToTopoId: ArrayBufferLike;     // BigUint64Array buffer
+  bbox: {
+    min: [number, number, number];
+    max: [number, number, number];
+  };
+  metadata: CadTessellatedSliceMetadata;
+}
+
+/**
+ * Client-side typed views over the zero-copy tessellated buffers
+ */
+export interface CadTessellatedSolidSlice {
+  positions: Float32Array;
+  normals: Float32Array;
+  indices: Uint32Array;
+  triangleToFaceId: BigUint64Array;
+  edgePolylines: Float32Array;
+  edgeToTopoId: BigUint64Array;
+  bbox: {
+    min: [number, number, number];
+    max: [number, number, number];
+  };
+  metadata: CadTessellatedSliceMetadata;
+}
+
+/**
+ * Request payload sent to CAD Web Worker for evaluating the DAG
+ */
+export interface EvaluateDagWorkerRequest {
+  type: 'EVALUATE_DAG';
+  requestId?: number;
+  nodes: CadFeatureNode[];
+  rollbackIndex: number;
+}
+
+/**
+ * Request payload sent to CAD Web Worker for moving the rollback bar
+ */
+export interface SetRollbackIndexWorkerRequest {
+  type: 'SET_ROLLBACK_INDEX';
+  requestId?: number;
+  rollbackIndex: number;
+}
+
 

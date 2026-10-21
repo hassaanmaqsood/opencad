@@ -7,6 +7,11 @@ import {
   SolidGenerationRequest,
   SolveSketchTransferPayload,
   SolveSketchWorkerRequest,
+  CadFeatureNode,
+  CadTessellatedSolidSlice,
+  CadTessellatedSolidSlicePayload,
+  EvaluateDagWorkerRequest,
+  SetRollbackIndexWorkerRequest,
 } from '../types/cad';
 
 export class CadWorkerBridge {
@@ -22,6 +27,13 @@ export class CadWorkerBridge {
     number,
     {
       resolve: (value: CadSolverStatus) => void;
+      reject: (reason?: any) => void;
+    }
+  >();
+  private pendingDagRequests = new Map<
+    number,
+    {
+      resolve: (value: CadTessellatedSolidSlice) => void;
       reject: (reason?: any) => void;
     }
   >();
@@ -61,6 +73,28 @@ export class CadWorkerBridge {
 
         pending.resolve(rawBuffers);
       }
+    } else if (data.type === 'DAG_EVALUATED') {
+      const payload = data as CadTessellatedSolidSlicePayload;
+      const requestId = payload.requestId ?? 0;
+      const pending = this.pendingDagRequests.get(requestId);
+
+      if (pending) {
+        this.pendingDagRequests.delete(requestId);
+
+        // Convert transferred ArrayBuffers directly to 64-bit TypedArray views in O(1)
+        const slice: CadTessellatedSolidSlice = {
+          positions: new Float32Array(payload.positions),
+          normals: new Float32Array(payload.normals),
+          indices: new Uint32Array(payload.indices),
+          triangleToFaceId: new BigUint64Array(payload.triangleToFaceId),
+          edgePolylines: new Float32Array(payload.edgePolylines),
+          edgeToTopoId: new BigUint64Array(payload.edgeToTopoId),
+          bbox: payload.bbox,
+          metadata: payload.metadata,
+        };
+
+        pending.resolve(slice);
+      }
     } else if (data.type === 'SKETCH_SOLVED') {
       const payload = data as SolveSketchTransferPayload;
       const requestId = payload.requestId ?? 0;
@@ -95,6 +129,11 @@ export class CadWorkerBridge {
         this.pendingSketchRequests.delete(requestId);
         pendingSketch.reject(new Error(data.error || 'Worker sketch error'));
       }
+      const pendingDag = this.pendingDagRequests.get(requestId);
+      if (pendingDag) {
+        this.pendingDagRequests.delete(requestId);
+        pendingDag.reject(new Error(data.error || 'Worker DAG error'));
+      }
     }
   }
 
@@ -108,6 +147,42 @@ export class CadWorkerBridge {
       req.reject(new Error(`Worker encountered error: ${e.message}`));
       this.pendingSketchRequests.delete(id);
     }
+    for (const [id, req] of this.pendingDagRequests.entries()) {
+      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      this.pendingDagRequests.delete(id);
+    }
+  }
+
+  public async evaluateDag(
+    nodes: CadFeatureNode[],
+    rollbackIndex: number
+  ): Promise<CadTessellatedSolidSlice> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise<CadTessellatedSolidSlice>((resolve, reject) => {
+      this.pendingDagRequests.set(requestId, { resolve, reject });
+      const req: EvaluateDagWorkerRequest = {
+        type: 'EVALUATE_DAG',
+        requestId,
+        nodes,
+        rollbackIndex,
+      };
+      this.worker.postMessage(req);
+    });
+  }
+
+  public async setRollbackIndex(rollbackIndex: number): Promise<CadTessellatedSolidSlice> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise<CadTessellatedSolidSlice>((resolve, reject) => {
+      this.pendingDagRequests.set(requestId, { resolve, reject });
+      const req: SetRollbackIndexWorkerRequest = {
+        type: 'SET_ROLLBACK_INDEX',
+        requestId,
+        rollbackIndex,
+      };
+      this.worker.postMessage(req);
+    });
   }
 
   public async generateSolid(request: SolidGenerationRequest): Promise<CadMeshRawBuffers> {

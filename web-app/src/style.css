@@ -528,3 +528,228 @@ html, body {
   padding-left: 14px;
   line-height: 1.5;
 }
+
+/* ------------------------------------------------------------------------- */
+/* Feature Tree & Draggable Rollback Bar (Wave 3)                            */
+/* ------------------------------------------------------------------------- */
+.feature-tree-panel {
+  top: 220px;
+  left: 16px;
+  width: 280px;
+  max-height: calc(100vh - 240px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.tree-header-title {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tree-subtitle {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.tree-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.feature-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 4px;
+  margin-bottom: 10px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--bg-panel-subtle);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.feature-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.feature-item.rolled-back {
+  opacity: 0.35;
+  filter: grayscale(0.7);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.feature-item.rolled-back .feature-name {
+  text-decoration: line-through;
+}
+
+.feature-item.suppressed {
+  opacity: 0.6;
+  border-style: dashed;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.feature-type-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.feature-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.4px;
+}
+
+.rolled-back-badge {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.suppressed-badge {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-suppress {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.65;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.btn-suppress:hover {
+  opacity: 1.0;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Draggable Rollback Bar */
+.rollback-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  cursor: ns-resize;
+  user-select: none;
+  position: relative;
+  z-index: 5;
+}
+
+.rollback-line {
+  flex: 1;
+  height: 2px;
+  background: var(--accent-gold);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.rollback-handle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-gold);
+  color: #121316;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: ns-resize;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.rollback-handle:hover {
+  transform: scale(1.04);
+  box-shadow: 0 3px 12px rgba(245, 158, 11, 0.8);
+}
+
+.rollback-grip {
+  font-size: 11px;
+}
+
+body.dragging-rollback,
+body.dragging-rollback * {
+  cursor: ns-resize !important;
+}
+
+.tree-footer {
+  border-top: 1px solid var(--bg-panel-border);
+  padding-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.btn-tree-action {
+  flex: 1;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-tree-action:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+

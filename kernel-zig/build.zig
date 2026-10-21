@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
         "tests/test_router.zig",
         "tests/test_c_abi.zig",
         "tests/test_sketch_solver.zig",
+        "tests/test_topo_invariants.zig",
     };
 
     inline for (test_files) |test_path| {
@@ -61,4 +62,10 @@ pub fn build(b: *std.Build) void {
     wasm.rdynamic = true;
 
     b.installArtifact(wasm);
+
+    // Copy compiled wasm to web-app/public/cad_kernel.wasm
+    const copy_cmd = b.addSystemCommand(&[_][]const u8{ "cp" });
+    copy_cmd.addFileArg(wasm.getEmittedBin());
+    copy_cmd.addArg("../web-app/public/cad_kernel.wasm");
+    b.getInstallStep().dependOn(&copy_cmd.step);
 }
