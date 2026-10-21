@@ -17,6 +17,9 @@ declare global {
     __cadSketchHud?: SketchHud;
     __cadFeatureTree?: FeatureTree;
     __evaluateDag?: (rollbackIndex?: number) => Promise<void>;
+    __importStep?: (stepText: string) => Promise<void>;
+    __exportStep?: () => Promise<string>;
+    __lastExportedStep?: string;
   }
 }
 
@@ -114,6 +117,88 @@ async function initApp() {
     },
   });
 
+  // 6. Wave 4: STEP AP214 Import, Export & Drag-and-Drop
+  const handleImportStep = async (stepText: string) => {
+    try {
+      const slice = await bridge.importStep(stepText);
+      viewer.setGeometryFromSlice(slice);
+      hud.updateMetadata(slice.metadata);
+    } catch (err) {
+      console.error('Failed to import STEP solid:', err);
+    }
+  };
+
+  const handleExportStep = async (): Promise<string> => {
+    try {
+      const stepText = await bridge.exportStep();
+      window.__lastExportedStep = stepText;
+
+      // Trigger browser file download
+      const blob = new Blob([stepText], { type: 'application/step' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'opencad_solid.step';
+      a.setAttribute('data-testid', 'step-download-link');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      return stepText;
+    } catch (err) {
+      console.error('Failed to export STEP solid:', err);
+      return '';
+    }
+  };
+
+  // Wire buttons
+  document.getElementById('btn-export-step')?.addEventListener('click', () => {
+    handleExportStep();
+  });
+
+  const fileInput = document.getElementById('step-file-input') as HTMLInputElement | null;
+  document.getElementById('btn-import-step')?.addEventListener('click', () => {
+    fileInput?.click();
+  });
+
+  fileInput?.addEventListener('change', async () => {
+    if (fileInput.files && fileInput.files.length > 0) {
+      const file = fileInput.files[0];
+      const text = await file.text();
+      await handleImportStep(text);
+      fileInput.value = ''; // reset so same file can be re-selected
+    }
+  });
+
+  // Native Drag-and-Drop support on Viewport
+  const dropOverlay = document.getElementById('drop-overlay');
+
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+      dropOverlay?.classList.add('active');
+    }
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+      dropOverlay?.classList.remove('active');
+    }
+  });
+
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropOverlay?.classList.remove('active');
+    if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.name.endsWith('.step') || file.name.endsWith('.stp') || file.type.includes('step')) {
+        const text = await file.text();
+        await handleImportStep(text);
+      }
+    }
+  });
+
   // Expose global references for Playwright test automation
   window.__cadViewer = viewer;
   window.__cadBridge = bridge;
@@ -122,8 +207,10 @@ async function initApp() {
   window.__cadSketchHud = sketchHud;
   window.__cadFeatureTree = featureTree;
   window.__evaluateDag = handleEvaluateDag;
+  window.__importStep = handleImportStep;
+  window.__exportStep = handleExportStep;
 
-  // 6. Initial Geometry Generation (Default parametric Box)
+  // 7. Initial Geometry Generation (Default parametric Box)
   await handleGenerate({
     solidType: 'box',
     params: { width: 2.0, height: 2.0, depth: 2.0 },

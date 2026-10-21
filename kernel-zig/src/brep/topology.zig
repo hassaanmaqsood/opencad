@@ -103,11 +103,14 @@ pub const Solid = struct {
 
 pub const topo = @import("../topo/mod.zig");
 pub const ops = @import("../ops/mod.zig");
+pub const primitives = @import("../primitives/mod.zig");
 
 test {
     _ = topo;
     _ = ops;
+    _ = primitives;
 }
+
 
 
 

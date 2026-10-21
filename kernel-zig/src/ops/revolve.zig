@@ -223,6 +223,184 @@ pub fn revolveProfile(
     return solid;
 }
 
+/// Revolves an arbitrary 3D closed wire around an arbitrary 3D axis by a given angle (radians).
+/// Uses Rodrigues' rotation formula to rotate 3D points.
+pub fn revolveWire3D(
+    allocator: Allocator,
+    feature_id: u16,
+    wire_points: []const Vec3,
+    axis_origin: Vec3,
+    axis_direction: Vec3,
+    angle_rad: f64,
+    segments_opt: ?u32,
+) RevolveError!SoASolid {
+    if (@abs(angle_rad) <= 1e-6) return error.InvalidAngle;
+    if (axis_direction.norm() <= 1e-6) return error.InvalidAxis;
+    const n_pts = wire_points.len;
+    if (n_pts < 3) return error.DegeneratePolygon;
+
+    const num_slices = segments_opt orelse 16;
+    if (num_slices < 3) return error.DegeneratePolygon;
+
+    const k_axis = axis_direction.normalize();
+    const is_full = @abs(@abs(angle_rad) - 2.0 * std.math.pi) < 1e-4;
+    const sweep_angle: f32 = @floatCast(angle_rad);
+
+    var solid = SoASolid.init();
+    errdefer solid.deinit(allocator);
+
+    const solid_topo = CadTopoId.init(feature_id, 0, 2, .Shell, 0, 0);
+    const solid_id = solid.addSolid(allocator, solid_topo) catch return error.OutOfMemory;
+    const shell_id = solid.addShell(allocator, solid_id, true, solid_topo) catch return error.OutOfMemory;
+
+    const slice_count = if (is_full) num_slices else num_slices + 1;
+    const grid_v = try allocator.alloc(VertexId, slice_count * n_pts);
+    defer allocator.free(grid_v);
+
+    for (0..slice_count) |s_idx| {
+        const theta = @as(f32, @floatFromInt(s_idx)) * (sweep_angle / @as(f32, @floatFromInt(num_slices)));
+        const cos_t = @cos(theta);
+        const sin_t = @sin(theta);
+
+        for (0..n_pts) |p_idx| {
+            const p = wire_points[p_idx];
+            const v = p.sub(axis_origin);
+
+            // Rodrigues' rotation formula:
+            // v_rot = v * cos(theta) + (k x v) * sin(theta) + k * (k . v) * (1 - cos(theta))
+            const term1 = v.scale(cos_t);
+            const term2 = k_axis.cross(v).scale(sin_t);
+            const term3 = k_axis.scale(k_axis.dot(v) * (1.0 - cos_t));
+            const p_rot = axis_origin.add(term1).add(term2).add(term3);
+
+            const topo_flag: u4 = if (s_idx == 0) FLAG_START_CAP else if (s_idx == slice_count - 1 and !is_full) FLAG_END_CAP else FLAG_LATERAL;
+            const v_topo = CadTopoId.init(feature_id, @intCast(p_idx), 2, .Vertex, topo_flag, hashPoint(p_rot));
+            grid_v[s_idx * n_pts + p_idx] = solid.addVertex(allocator, p_rot, v_topo) catch return error.OutOfMemory;
+        }
+    }
+
+    // Quad lateral faces
+    const num_quad_slices = num_slices;
+    for (0..num_quad_slices) |s_idx| {
+        const next_s = (s_idx + 1) % slice_count;
+
+        for (0..n_pts) |p_idx| {
+            const next_p = (p_idx + 1) % n_pts;
+
+            const v0 = grid_v[s_idx * n_pts + p_idx];
+            const v1 = grid_v[s_idx * n_pts + next_p];
+            const v2 = grid_v[next_s * n_pts + next_p];
+            const v3 = grid_v[next_s * n_pts + p_idx];
+
+            const p0 = solid.vertices.slice().items(.point)[v0];
+            const p1 = solid.vertices.slice().items(.point)[v1];
+            const p3 = solid.vertices.slice().items(.point)[v3];
+
+            const nrm = (p1.sub(p0)).cross(p3.sub(p0)).normalize();
+            const lat_topo = CadTopoId.init(
+                feature_id,
+                @intCast(p_idx),
+                2,
+                .Face,
+                FLAG_LATERAL,
+                hashFace(nrm, FLAG_LATERAL),
+            );
+
+            const face_id = solid.addFace(allocator, shell_id, nrm, .Cylinder, lat_topo) catch return error.OutOfMemory;
+            const loop_id = solid.addLoop(allocator, face_id, true, lat_topo) catch return error.OutOfMemory;
+            solid.faces.slice().items(.outer_loop)[face_id] = loop_id;
+
+            const he0 = solid.addHalfEdge(allocator, v0, loop_id, lat_topo) catch return error.OutOfMemory;
+            const he1 = solid.addHalfEdge(allocator, v1, loop_id, lat_topo) catch return error.OutOfMemory;
+            const he2 = solid.addHalfEdge(allocator, v2, loop_id, lat_topo) catch return error.OutOfMemory;
+            const he3 = solid.addHalfEdge(allocator, v3, loop_id, lat_topo) catch return error.OutOfMemory;
+
+            solid.setNextPrev(he0, he1);
+            solid.setNextPrev(he1, he2);
+            solid.setNextPrev(he2, he3);
+            solid.setNextPrev(he3, he0);
+
+            solid.loops.slice().items(.half_edge)[loop_id] = he0;
+        }
+    }
+
+    // Connect internal quad twins
+    for (0..num_quad_slices) |s_idx| {
+        const next_s = (s_idx + 1) % slice_count;
+
+        for (0..n_pts) |p_idx| {
+            const next_p = (p_idx + 1) % n_pts;
+
+            const base_he = @as(HalfEdgeId, @intCast((s_idx * n_pts + p_idx) * 4));
+            const he1 = base_he + 1;
+
+            const next_p_base = @as(HalfEdgeId, @intCast((s_idx * n_pts + next_p) * 4));
+            const he3_twin = next_p_base + 3;
+
+            const e_topo1 = CadTopoId.init(feature_id, @intCast(p_idx), 2, .Edge, FLAG_LATERAL, 0);
+            const e1 = solid.addEdge(allocator, he1, e_topo1) catch return error.OutOfMemory;
+            solid.setTwins(he1, he3_twin, e1);
+
+            if (is_full or next_s < num_quad_slices) {
+                const he2 = base_he + 2;
+                const next_s_base = @as(HalfEdgeId, @intCast((next_s * n_pts + p_idx) * 4));
+                const next_s_he0 = next_s_base + 0;
+
+                const e_topo2 = CadTopoId.init(feature_id, @intCast(p_idx), 2, .Edge, FLAG_LATERAL, 0);
+                const e2 = solid.addEdge(allocator, next_s_he0, e_topo2) catch return error.OutOfMemory;
+                solid.setTwins(next_s_he0, he2, e2);
+            }
+        }
+    }
+
+    // Partial revolution start and end caps
+    if (!is_full) {
+        // Start cap (s = 0)
+        const v_mid0 = wire_points[0].sub(axis_origin);
+        const start_normal = k_axis.cross(v_mid0).normalize().scale(-1.0);
+        const start_cap_topo = CadTopoId.init(feature_id, 0, 2, .Face, FLAG_START_CAP, hashFace(start_normal, FLAG_START_CAP));
+        const start_face = solid.addFace(allocator, shell_id, start_normal, .Plane, start_cap_topo) catch return error.OutOfMemory;
+        const start_loop = solid.addLoop(allocator, start_face, true, start_cap_topo) catch return error.OutOfMemory;
+        solid.faces.slice().items(.outer_loop)[start_face] = start_loop;
+
+        var prev_he: ?HalfEdgeId = null;
+        var first_he: HalfEdgeId = 0;
+        for (0..n_pts) |k| {
+            const p_idx = (n_pts - k) % n_pts;
+            const v = grid_v[0 * n_pts + p_idx];
+            const he = solid.addHalfEdge(allocator, v, start_loop, start_cap_topo) catch return error.OutOfMemory;
+            if (k == 0) first_he = he;
+            if (prev_he) |prv| solid.setNextPrev(prv, he);
+            prev_he = he;
+        }
+        if (prev_he) |prv| solid.setNextPrev(prv, first_he);
+        solid.loops.slice().items(.half_edge)[start_loop] = first_he;
+
+        // End cap (s = slice_count - 1)
+        const end_normal = start_normal.scale(-1.0);
+        const end_cap_topo = CadTopoId.init(feature_id, 0, 2, .Face, FLAG_END_CAP, hashFace(end_normal, FLAG_END_CAP));
+        const end_face = solid.addFace(allocator, shell_id, end_normal, .Plane, end_cap_topo) catch return error.OutOfMemory;
+        const end_loop = solid.addLoop(allocator, end_face, true, end_cap_topo) catch return error.OutOfMemory;
+        solid.faces.slice().items(.outer_loop)[end_face] = end_loop;
+
+        prev_he = null;
+        var end_first_he: HalfEdgeId = 0;
+        for (0..n_pts) |p_idx| {
+            const v = grid_v[(slice_count - 1) * n_pts + p_idx];
+            const he = solid.addHalfEdge(allocator, v, end_loop, end_cap_topo) catch return error.OutOfMemory;
+            if (p_idx == 0) end_first_he = he;
+            if (prev_he) |prv| solid.setNextPrev(prv, he);
+            prev_he = he;
+        }
+        if (prev_he) |prv| solid.setNextPrev(prv, end_first_he);
+        solid.loops.slice().items(.half_edge)[end_loop] = end_first_he;
+    }
+
+    solid.updateMetrics();
+    return solid;
+}
+
+
 test "Revolve square into torus B-Rep" {
     const allocator = std.testing.allocator;
 
@@ -255,3 +433,34 @@ test "Revolve square into torus B-Rep" {
     try std.testing.expect(solid.volume > 0.0);
     try std.testing.expect(solid.surface_area > 0.0);
 }
+
+test "Revolve wire in 3D: 180-degree partial revolution" {
+    const allocator = std.testing.allocator;
+
+    const wire = [_]Vec3{
+        Vec3.init(5, 0, -2),
+        Vec3.init(7, 0, -2),
+        Vec3.init(7, 0, 2),
+        Vec3.init(5, 0, 2),
+    };
+
+    var solid = try revolveWire3D(
+        allocator,
+        10,
+        &wire,
+        Vec3.init(0, 0, 0),
+        Vec3.init(0, 0, 1),
+        std.math.pi, // 180 degrees
+        8,
+    );
+    defer solid.deinit(allocator);
+
+    // 4 points * 9 slices = 36 vertices
+    // 8 quad slices * 4 quads + 2 caps = 34 faces
+    try std.testing.expectEqual(@as(usize, 36), solid.vertices.len);
+    try std.testing.expectEqual(@as(usize, 34), solid.faces.len);
+
+    try std.testing.expect(solid.volume > 0.0);
+    try std.testing.expect(solid.surface_area > 0.0);
+}
+

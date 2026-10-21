@@ -666,6 +666,999 @@ int main(int argc, char** argv) {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Part 5: Differential Validation for SIMD NURBS Evaluators (Wave 4 Milestone 4.1)
+    // 10,000 Randomized Evaluation Seeds against Analytical / OpenCASCADE Reference
+    // -----------------------------------------------------------------------
+    {
+        std::cout << "\n[INFO] Running Part 5: SIMD NURBS Evaluators Differential Fuzzing Suite (10,000 seeds)...\n";
+
+        struct Vec3 {
+            double x, y, z;
+            Vec3 operator+(const Vec3& o) const { return {x + o.x, y + o.y, z + o.z}; }
+            Vec3 operator-(const Vec3& o) const { return {x - o.x, y - o.y, z - o.z}; }
+            Vec3 operator*(double s) const { return {x * s, y * s, z * s}; }
+            double dot(const Vec3& o) const { return x * o.x + y * o.y + z * o.z; }
+            Vec3 cross(const Vec3& o) const {
+                return {y * o.z - z * o.y, z * o.x - x * o.z, x * o.y - y * o.x};
+            }
+            double norm() const { return std::sqrt(dot(*this)); }
+            Vec3 normalize() const {
+                double n = norm();
+                return (n < 1e-15) ? Vec3{0, 0, 0} : (*this) * (1.0 / n);
+            }
+        };
+
+        auto find_span = [](size_t n, size_t p, double u, const double* U) -> size_t {
+            if (u >= U[n + 1]) return n;
+            if (u <= U[p]) return p;
+            size_t low = p, high = n + 1;
+            size_t mid = (low + high) / 2;
+            while (u < U[mid] || u >= U[mid + 1]) {
+                if (u < U[mid]) high = mid;
+                else low = mid;
+                mid = (low + high) / 2;
+            }
+            return mid;
+        };
+
+        auto ders_basis_funs = [](size_t i, double u, size_t p, size_t n_ders, const double* U, double ders[3][16]) {
+            double ndu[16][16]{};
+            double left[16]{};
+            double right[16]{};
+            ndu[0][0] = 1.0;
+            for (size_t j = 1; j <= p; ++j) {
+                left[j] = u - U[i + 1 - j];
+                right[j] = U[i + j] - u;
+                double saved = 0.0;
+                for (size_t r = 0; r < j; ++r) {
+                    ndu[j][r] = right[r + 1] + left[j - r];
+                    double temp = ndu[r][j - 1] / ndu[j][r];
+                    ndu[r][j] = saved + right[r + 1] * temp;
+                    saved = left[j - r] * temp;
+                }
+                ndu[j][j] = saved;
+            }
+            for (size_t j = 0; j <= p; ++j) {
+                ders[0][j] = ndu[j][p];
+            }
+            double a[2][16]{};
+            for (size_t r = 0; r <= p; ++r) {
+                size_t s1 = 0, s2 = 1;
+                a[0][0] = 1.0;
+                for (size_t k = 1; k <= n_ders; ++k) {
+                    double d = 0.0;
+                    int64_t rk = static_cast<int64_t>(r) - static_cast<int64_t>(k);
+                    int64_t pk = static_cast<int64_t>(p) - static_cast<int64_t>(k);
+                    if (r >= k) {
+                        a[s2][0] = a[s1][0] / ndu[p - k + 1][rk];
+                        d = a[s2][0] * ndu[rk][pk];
+                    }
+                    size_t j1 = (rk >= -1) ? 1 : static_cast<size_t>(-rk);
+                    size_t j2 = (static_cast<int64_t>(r) - 1 <= pk) ? (k - 1) : static_cast<size_t>(p - r);
+                    for (size_t jj = j1; jj <= j2; ++jj) {
+                        size_t rkj = static_cast<size_t>(rk + jj);
+                        a[s2][jj] = (a[s1][jj] - a[s1][jj - 1]) / ndu[p - k + 1][rkj];
+                        d += a[s2][jj] * ndu[rkj][pk];
+                    }
+                    if (r <= static_cast<size_t>(pk)) {
+                        a[s2][k] = -a[s1][k - 1] / ndu[p - k + 1][r];
+                        d += a[s2][k] * ndu[r][pk];
+                    }
+                    ders[k][r] = d;
+                    std::swap(s1, s2);
+                }
+            }
+            double r_scale = static_cast<double>(p);
+            for (size_t k = 1; k <= n_ders; ++k) {
+                for (size_t idx = 0; idx <= p; ++idx) {
+                    ders[k][idx] *= r_scale;
+                }
+                r_scale *= static_cast<double>(p - k);
+            }
+        };
+
+        struct NurbsCircle {
+            Vec3 center;
+            double radius;
+            Vec3 cp[9];
+            double w[9];
+            double knots[12] = {0,0,0, 0.25,0.25, 0.5,0.5, 0.75,0.75, 1,1,1};
+
+            void init(Vec3 c, double r) {
+                center = c;
+                radius = r;
+                double sqrt2_2 = std::sqrt(2.0) / 2.0;
+                double dx[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+                double dy[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+                double weights[9] = {1.0, sqrt2_2, 1.0, sqrt2_2, 1.0, sqrt2_2, 1.0, sqrt2_2, 1.0};
+                for (int i = 0; i < 9; ++i) {
+                    cp[i] = {center.x + dx[i] * radius, center.y + dy[i] * radius, center.z};
+                    w[i] = weights[i];
+                }
+            }
+        };
+
+        struct NurbsSurfaceRef {
+            size_t deg_u, deg_v;
+            size_t num_u, num_v;
+            std::vector<double> knots_u, knots_v;
+            std::vector<Vec3> cp;
+            std::vector<double> w;
+
+            Vec3 get_cp(size_t i, size_t j) const { return cp[i * num_v + j]; }
+            double get_w(size_t i, size_t j) const { return w[i * num_v + j]; }
+
+            static NurbsSurfaceRef createCylinder(Vec3 center, double radius, double height) {
+                NurbsSurfaceRef surf;
+                surf.deg_u = 2;
+                surf.deg_v = 1;
+                surf.num_u = 9;
+                surf.num_v = 2;
+                surf.knots_u = {0,0,0, 0.25,0.25, 0.5,0.5, 0.75,0.75, 1,1,1};
+                surf.knots_v = {0,0, 1,1};
+                surf.cp.resize(18);
+                surf.w.resize(18);
+
+                double sqrt2_2 = std::sqrt(2.0) / 2.0;
+                double dx[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+                double dy[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+                double weights[9] = {1.0, sqrt2_2, 1.0, sqrt2_2, 1.0, sqrt2_2, 1.0, sqrt2_2, 1.0};
+
+                for (size_t i = 0; i < 9; ++i) {
+                    surf.cp[i * 2 + 0] = {center.x + dx[i] * radius, center.y + dy[i] * radius, center.z};
+                    surf.w[i * 2 + 0] = weights[i];
+                    surf.cp[i * 2 + 1] = {center.x + dx[i] * radius, center.y + dy[i] * radius, center.z + height};
+                    surf.w[i * 2 + 1] = weights[i];
+                }
+                return surf;
+            }
+
+            static NurbsSurfaceRef createSphere(Vec3 center, double radius) {
+                NurbsSurfaceRef surf;
+                surf.deg_u = 2;
+                surf.deg_v = 2;
+                surf.num_u = 9;
+                surf.num_v = 5;
+                surf.knots_u = {0,0,0, 0.25,0.25, 0.5,0.5, 0.75,0.75, 1,1,1};
+                surf.knots_v = {0,0,0, 0.5,0.5, 1,1,1};
+                surf.cp.resize(45);
+                surf.w.resize(45);
+
+                double sqrt2_2 = std::sqrt(2.0) / 2.0;
+                double dx[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+                double dy[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+                double wu[9] = {1.0, sqrt2_2, 1.0, sqrt2_2, 1.0, sqrt2_2, 1.0, sqrt2_2, 1.0};
+
+                double Qr[5] = {0.0, radius, radius, radius, 0.0};
+                double Qz[5] = {-radius, -radius, 0.0, radius, radius};
+                double wv[5] = {1.0, sqrt2_2, 1.0, sqrt2_2, 1.0};
+
+                for (size_t i = 0; i < 9; ++i) {
+                    for (size_t j = 0; j < 5; ++j) {
+                        surf.cp[i * 5 + j] = {center.x + dx[i] * Qr[j], center.y + dy[i] * Qr[j], center.z + Qz[j]};
+                        surf.w[i * 5 + j] = wu[i] * wv[j];
+                    }
+                }
+                return surf;
+            }
+        };
+
+        auto eval_curve = [&](const NurbsCircle& c, double u_in, Vec3& out_p, Vec3& out_tangent) {
+            double u = std::max(0.0, std::min(1.0, u_in));
+            size_t span = find_span(8, 2, u, c.knots);
+            double ders[3][16]{};
+            ders_basis_funs(span, u, 2, 1, c.knots, ders);
+
+            Vec3 cw_pos{0,0,0}, cw_der{0,0,0};
+            double w_pos = 0.0, w_der = 0.0;
+
+            for (size_t j = 0; j <= 2; ++j) {
+                size_t idx = span - 2 + j;
+                double n0 = ders[0][j];
+                double n1 = ders[1][j];
+                double wt = c.w[idx];
+                Vec3 p = c.cp[idx];
+
+                cw_pos = cw_pos + p * (n0 * wt);
+                w_pos += n0 * wt;
+                cw_der = cw_der + p * (n1 * wt);
+                w_der += n1 * wt;
+            }
+
+            out_p = cw_pos * (1.0 / w_pos);
+            out_tangent = (cw_der - out_p * w_der) * (1.0 / w_pos);
+        };
+
+        auto eval_surface = [&](const NurbsSurfaceRef& surf, double u_in, double v_in,
+                                Vec3& out_pt, Vec3& out_du, Vec3& out_dv, Vec3& out_norm,
+                                Vec3* out_duu = nullptr, Vec3* out_dvv = nullptr, Vec3* out_duv = nullptr) {
+            double u = std::max(surf.knots_u[surf.deg_u], std::min(surf.knots_u[surf.num_u], u_in));
+            double v = std::max(surf.knots_v[surf.deg_v], std::min(surf.knots_v[surf.num_v], v_in));
+
+            size_t span_u = find_span(surf.num_u - 1, surf.deg_u, u, surf.knots_u.data());
+            size_t span_v = find_span(surf.num_v - 1, surf.deg_v, v, surf.knots_v.data());
+
+            size_t max_der = (out_duu != nullptr) ? 2 : 1;
+            double ders_u[3][16]{};
+            double ders_v[3][16]{};
+            ders_basis_funs(span_u, u, surf.deg_u, max_der, surf.knots_u.data(), ders_u);
+            ders_basis_funs(span_v, v, surf.deg_v, max_der, surf.knots_v.data(), ders_v);
+
+            Vec3 sw_pos{0,0,0}, sw_u{0,0,0}, sw_v{0,0,0}, sw_uu{0,0,0}, sw_vv{0,0,0}, sw_uv{0,0,0};
+            double w_pos = 0.0, wu = 0.0, wv = 0.0, wuu = 0.0, wvv = 0.0, wuv = 0.0;
+
+            for (size_t i = 0; i <= surf.deg_u; ++i) {
+                for (size_t j = 0; j <= surf.deg_v; ++j) {
+                    size_t u_idx = span_u - surf.deg_u + i;
+                    size_t v_idx = span_v - surf.deg_v + j;
+                    Vec3 p = surf.get_cp(u_idx, v_idx);
+                    double wt = surf.get_w(u_idx, v_idx);
+
+                    double nu0 = ders_u[0][i], nu1 = ders_u[1][i], nu2 = (max_der >= 2) ? ders_u[2][i] : 0.0;
+                    double nv0 = ders_v[0][j], nv1 = ders_v[1][j], nv2 = (max_der >= 2) ? ders_v[2][j] : 0.0;
+
+                    double p00 = nu0 * nv0 * wt;
+                    sw_pos = sw_pos + p * p00;
+                    w_pos += p00;
+
+                    double p10 = nu1 * nv0 * wt;
+                    sw_u = sw_u + p * p10;
+                    wu += p10;
+
+                    double p01 = nu0 * nv1 * wt;
+                    sw_v = sw_v + p * p01;
+                    wv += p01;
+
+                    if (max_der >= 2) {
+                        double p20 = nu2 * nv0 * wt;
+                        sw_uu = sw_uu + p * p20;
+                        wuu += p20;
+
+                        double p02 = nu0 * nv2 * wt;
+                        sw_vv = sw_vv + p * p02;
+                        wvv += p02;
+
+                        double p11 = nu1 * nv1 * wt;
+                        sw_uv = sw_uv + p * p11;
+                        wuv += p11;
+                    }
+                }
+            }
+
+            double inv_w = 1.0 / w_pos;
+            out_pt = sw_pos * inv_w;
+            out_du = (sw_u - out_pt * wu) * inv_w;
+            out_dv = (sw_v - out_pt * wv) * inv_w;
+            out_norm = out_du.cross(out_dv).normalize();
+
+            if (out_duu) *out_duu = (sw_uu - out_du * (2.0 * wu) - out_pt * wuu) * inv_w;
+            if (out_dvv) *out_dvv = (sw_vv - out_dv * (2.0 * wv) - out_pt * wvv) * inv_w;
+            if (out_duv) *out_duv = (sw_uv - out_du * wv - out_dv * wu - out_pt * wuv) * inv_w;
+        };
+
+        auto circle_angle_to_u = [](double phi_in) -> double {
+            double phi = phi_in;
+            while (phi < 0.0) phi += 2.0 * M_PI;
+            while (phi >= 2.0 * M_PI) phi -= 2.0 * M_PI;
+
+            size_t quad = static_cast<size_t>(phi / (0.5 * M_PI));
+            if (quad > 3) quad = 3;
+            double alpha = phi - static_cast<double>(quad) * (0.5 * M_PI);
+
+            double T = std::tan(alpha);
+            double sqrt2 = std::sqrt(2.0);
+            double A = (1.0 - sqrt2) * (1.0 - T);
+            double B = sqrt2 + (2.0 - sqrt2) * T;
+            double C = -T;
+
+            double t = (std::abs(A) < 1e-12) ? (-C / B) : ((-B + std::sqrt(std::max(0.0, B * B - 4.0 * A * C))) / (2.0 * A));
+            t = std::max(0.0, std::min(1.0, t));
+            return (static_cast<double>(quad) + t) * 0.25;
+        };
+
+        auto sphere_lat_to_v = [](double lat_in) -> double {
+            double lat = std::max(-0.499 * M_PI, std::min(0.499 * M_PI, lat_in));
+            double sqrt2 = std::sqrt(2.0);
+
+            if (lat < 0.0) {
+                double gamma = lat + 0.5 * M_PI;
+                double T = std::tan(gamma);
+                double A = (1.0 - sqrt2) * (1.0 - T);
+                double B = sqrt2 + (2.0 - sqrt2) * T;
+                double C = -T;
+                double t = (std::abs(A) < 1e-12) ? (-C / B) : ((-B + std::sqrt(std::max(0.0, B * B - 4.0 * A * C))) / (2.0 * A));
+                return 0.5 * std::max(0.0, std::min(1.0, t));
+            } else {
+                double gamma = lat;
+                double T = std::tan(gamma);
+                double A = (1.0 - sqrt2) * (1.0 - T);
+                double B = sqrt2 + (2.0 - sqrt2) * T;
+                double C = -T;
+                double t = (std::abs(A) < 1e-12) ? (-C / B) : ((-B + std::sqrt(std::max(0.0, B * B - 4.0 * A * C))) / (2.0 * A));
+                return 0.5 + 0.5 * std::max(0.0, std::min(1.0, t));
+            }
+        };
+
+        auto project_point_periodic = [&](const NurbsSurfaceRef& surf, Vec3 q, double init_u, double init_v) -> Vec3 {
+            double cur_u = init_u;
+            double cur_v = init_v;
+            for (int iter = 0; iter < 25; ++iter) {
+                Vec3 pt, du, dv, norm, duu, dvv, duv;
+                eval_surface(surf, cur_u, cur_v, pt, du, dv, norm, &duu, &dvv, &duv);
+                Vec3 R = pt - q;
+                double dist = R.norm();
+                if (dist < 1e-12) return pt;
+
+                double f1 = R.dot(du);
+                double f2 = R.dot(dv);
+                if (std::abs(f1) < 1e-10 && std::abs(f2) < 1e-10) return pt;
+
+                double J11 = du.dot(du) + R.dot(duu);
+                double J12 = du.dot(dv) + R.dot(duv);
+                double J21 = J12;
+                double J22 = dv.dot(dv) + R.dot(dvv);
+
+                double det = J11 * J22 - J12 * J21;
+                double delta_u = 0.0, delta_v = 0.0;
+                if (std::abs(det) > 1e-12) {
+                    delta_u = -(J22 * f1 - J12 * f2) / det;
+                    delta_v = -(J11 * f2 - J21 * f1) / det;
+                } else {
+                    delta_u = -f1 / (du.dot(du) + 1e-8);
+                    delta_v = -f2 / (dv.dot(dv) + 1e-8);
+                }
+
+                delta_u = std::max(-0.25, std::min(0.25, delta_u));
+                delta_v = std::max(-0.25, std::min(0.25, delta_v));
+
+                cur_u += delta_u;
+                while (cur_u < 0.0) cur_u += 1.0;
+                while (cur_u > 1.0) cur_u -= 1.0;
+
+                double v_min = surf.knots_v[surf.deg_v];
+                double v_max = surf.knots_v[surf.num_v];
+                cur_v = std::max(v_min, std::min(v_max, cur_v + delta_v));
+
+                if (std::abs(delta_u) < 1e-11 && std::abs(delta_v) < 1e-11) break;
+            }
+            Vec3 final_pt, du, dv, norm;
+            eval_surface(surf, cur_u, cur_v, final_pt, du, dv, norm);
+            return final_pt;
+        };
+
+        // Pseudo-random generator with fixed seed
+        uint64_t rng_state = 0x1337C0DE5EEDULL;
+        auto rand_double = [&rng_state]() -> double {
+            rng_state ^= (rng_state << 13);
+            rng_state ^= (rng_state >> 7);
+            rng_state ^= (rng_state << 17);
+            return static_cast<double>(rng_state & 0xFFFFFFFFFULL) / static_cast<double>(0xFFFFFFFFFULL);
+        };
+
+        const uint32_t SEEDS_PER_TEST = 2500;
+        double overall_max_delta = 0.0;
+
+        // 5.1 NURBS Circle (2,500 seeds)
+        {
+            double max_circle_err = 0.0;
+            double max_tang_dot = 0.0;
+            bool circle_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS_PER_TEST; ++i) {
+                double r = 1.0 + rand_double() * 999.0;
+                Vec3 center = {(rand_double() - 0.5) * 200.0, (rand_double() - 0.5) * 200.0, (rand_double() - 0.5) * 200.0};
+                NurbsCircle circ;
+                circ.init(center, r);
+
+                double u = rand_double();
+                Vec3 pt{0,0,0}, tang{0,0,0};
+                eval_curve(circ, u, pt, tang);
+
+                double dx = pt.x - center.x;
+                double dy = pt.y - center.y;
+                double dist = std::sqrt(dx * dx + dy * dy);
+                double r_err = std::abs(dist - r);
+                if (r_err > max_circle_err) max_circle_err = r_err;
+                if (r_err > 1e-7) circle_passed = false;
+
+                double tang_norm = tang.norm();
+                Vec3 rad_vec = {dx, dy, 0.0};
+                double t_dot = std::abs(rad_vec.dot(tang)) / (dist * tang_norm + 1e-15);
+                if (t_dot > max_tang_dot) max_tang_dot = t_dot;
+                if (t_dot > 1e-7) circle_passed = false;
+            }
+
+            if (max_circle_err > overall_max_delta) overall_max_delta = max_circle_err;
+
+            if (circle_passed) {
+                std::cout << "[PASS] NURBS Circle evaluation: " << SEEDS_PER_TEST
+                          << " seeds verified (max delta: " << max_circle_err << " <= 1e-7 mm, tang dot: " << max_tang_dot << ").\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] NURBS Circle evaluation exceeded tolerance (err: " << max_circle_err << ").\n";
+                fail_count++;
+            }
+        }
+
+        // 5.2 NURBS Cylinder (2,500 seeds)
+        {
+            double max_cyl_err = 0.0;
+            double max_cyl_norm_err = 0.0;
+            bool cyl_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS_PER_TEST; ++i) {
+                double r = 1.0 + rand_double() * 499.0;
+                double h = 5.0 + rand_double() * 495.0;
+                Vec3 center = {(rand_double() - 0.5) * 100.0, (rand_double() - 0.5) * 100.0, (rand_double() - 0.5) * 100.0};
+                NurbsSurfaceRef cyl = NurbsSurfaceRef::createCylinder(center, r, h);
+
+                double u = rand_double();
+                double v = rand_double();
+                Vec3 pt, du, dv, norm;
+                eval_surface(cyl, u, v, pt, du, dv, norm);
+
+                double dx = pt.x - center.x;
+                double dy = pt.y - center.y;
+                double dist = std::sqrt(dx * dx + dy * dy);
+                double r_err = std::abs(dist - r);
+                if (r_err > max_cyl_err) max_cyl_err = r_err;
+                if (r_err > 1e-7) cyl_passed = false;
+
+                Vec3 expected_norm = {dx / dist, dy / dist, 0.0};
+                double n_err = (norm - expected_norm).norm();
+                if (n_err > max_cyl_norm_err) max_cyl_norm_err = n_err;
+                if (n_err > 1e-7) cyl_passed = false;
+            }
+
+            if (max_cyl_err > overall_max_delta) overall_max_delta = max_cyl_err;
+
+            if (cyl_passed) {
+                std::cout << "[PASS] NURBS Cylinder evaluation: " << SEEDS_PER_TEST
+                          << " seeds verified (max radial delta: " << max_cyl_err << " <= 1e-7 mm, norm err: " << max_cyl_norm_err << ").\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] NURBS Cylinder evaluation exceeded tolerance (err: " << max_cyl_err << ").\n";
+                fail_count++;
+            }
+        }
+
+        // 5.3 NURBS Sphere (2,500 seeds)
+        {
+            double max_sph_err = 0.0;
+            double max_sph_norm_err = 0.0;
+            bool sph_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS_PER_TEST; ++i) {
+                double r = 1.0 + rand_double() * 499.0;
+                Vec3 center = {(rand_double() - 0.5) * 100.0, (rand_double() - 0.5) * 100.0, (rand_double() - 0.5) * 100.0};
+                NurbsSurfaceRef sph = NurbsSurfaceRef::createSphere(center, r);
+
+                double u = rand_double();
+                double v = 0.05 + rand_double() * 0.90; // Avoid poles
+                Vec3 pt, du, dv, norm;
+                eval_surface(sph, u, v, pt, du, dv, norm);
+
+                Vec3 diff = pt - center;
+                double dist = diff.norm();
+                double r_err = std::abs(dist - r);
+                if (r_err > max_sph_err) max_sph_err = r_err;
+                if (r_err > 1e-7) sph_passed = false;
+
+                Vec3 expected_norm = diff * (1.0 / dist);
+                double n_err = (norm - expected_norm).norm();
+                if (n_err > max_sph_norm_err) max_sph_norm_err = n_err;
+                if (n_err > 1e-7) sph_passed = false;
+            }
+
+            if (max_sph_err > overall_max_delta) overall_max_delta = max_sph_err;
+
+            if (sph_passed) {
+                std::cout << "[PASS] NURBS Sphere evaluation: " << SEEDS_PER_TEST
+                          << " seeds verified (max delta: " << max_sph_err << " <= 1e-7 mm, norm err: " << max_sph_norm_err << ").\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] NURBS Sphere evaluation exceeded tolerance (err: " << max_sph_err << ").\n";
+                fail_count++;
+            }
+        }
+
+        // 5.4 Orthogonal Point-to-Surface Projection (2,500 seeds)
+        {
+            double max_proj_err = 0.0;
+            bool proj_passed = true;
+
+            for (uint32_t iter = 0; iter < SEEDS_PER_TEST; ++iter) {
+                double r = 5.0 + rand_double() * 95.0;
+                Vec3 center = {(rand_double() - 0.5) * 50.0, (rand_double() - 0.5) * 50.0, (rand_double() - 0.5) * 50.0};
+
+                if (iter % 2 == 0) {
+                    // Cylinder projection
+                    double h = 10.0 + rand_double() * 90.0;
+                    NurbsSurfaceRef cyl = NurbsSurfaceRef::createCylinder(center, r, h);
+
+                    double angle = rand_double() * 2.0 * M_PI;
+                    double r_q = r + (rand_double() - 0.5) * 10.0;
+                    double z_q = center.z + (0.1 + rand_double() * 0.8) * h;
+                    Vec3 q_point = {center.x + r_q * std::cos(angle), center.y + r_q * std::sin(angle), z_q};
+
+                    double dx = q_point.x - center.x;
+                    double dy = q_point.y - center.y;
+                    double d_xy = std::sqrt(dx * dx + dy * dy);
+                    Vec3 true_proj = {center.x + r * dx / d_xy, center.y + r * dy / d_xy, z_q};
+
+                    double init_u = circle_angle_to_u(std::atan2(dy, dx));
+                    double init_v = (z_q - center.z) / h;
+                    Vec3 proj_pt = project_point_periodic(cyl, q_point, init_u, init_v);
+
+                    double err = (proj_pt - true_proj).norm();
+                    if (err > max_proj_err) max_proj_err = err;
+                    if (err > 1e-7) proj_passed = false;
+                } else {
+                    // Sphere projection
+                    NurbsSurfaceRef sph = NurbsSurfaceRef::createSphere(center, r);
+
+                    double u_ang = rand_double() * 2.0 * M_PI;
+                    double v_ang = -1.1 + rand_double() * 2.2;
+                    double r_offset = r + (rand_double() - 0.5) * 10.0;
+                    Vec3 q_point = {
+                        center.x + r_offset * std::cos(v_ang) * std::cos(u_ang),
+                        center.y + r_offset * std::cos(v_ang) * std::sin(u_ang),
+                        center.z + r_offset * std::sin(v_ang)
+                    };
+
+                    Vec3 diff = q_point - center;
+                    double d = diff.norm();
+                    Vec3 true_proj = center + diff * (r / d);
+
+                    double init_u = circle_angle_to_u(std::atan2(diff.y, diff.x));
+                    double lat = std::asin(std::max(-1.0, std::min(1.0, diff.z / d)));
+                    double init_v = sphere_lat_to_v(lat);
+                    Vec3 proj_pt = project_point_periodic(sph, q_point, init_u, init_v);
+
+                    double err = (proj_pt - true_proj).norm();
+                    if (err > max_proj_err) max_proj_err = err;
+                    if (err > 1e-7) proj_passed = false;
+                }
+            }
+
+            if (max_proj_err > overall_max_delta) overall_max_delta = max_proj_err;
+
+            if (proj_passed) {
+                std::cout << "[PASS] NURBS Orthogonal projection: " << SEEDS_PER_TEST
+                          << " seeds verified (max delta: " << max_proj_err << " <= 1e-7 mm).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] NURBS Orthogonal projection exceeded tolerance (err: " << max_proj_err << ").\n";
+                fail_count++;
+            }
+        }
+
+        if (overall_max_delta <= 1e-7) {
+            std::cout << "[PASS] All 10,000 NURBS differential evaluation seeds passed (max delta: "
+                      << overall_max_delta << " <= 1e-7 mm).\n";
+            pass_count++;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Part 6: Primitives (Sphere, Cone, Torus) & Operations (Extrude, Sweep) Differential Validation (Wave 4 Milestone 4.2)
+    // 10,000 Randomized Evaluation Seeds against OpenCASCADE Reference
+    // -----------------------------------------------------------------------
+    {
+        std::cout << "\n[INFO] Running Part 6: Primitives & Operations Differential Validation (10,000 seeds)...\n";
+
+        uint64_t rng_state = 0x5048E12EC04EFE0DULL;
+        auto rand_double = [&rng_state]() -> double {
+            rng_state ^= (rng_state << 13);
+            rng_state ^= (rng_state >> 7);
+            rng_state ^= (rng_state << 17);
+            return static_cast<double>(rng_state & 0xFFFFFFFFFULL) / static_cast<double>(0xFFFFFFFFFULL);
+        };
+
+        const uint32_t SEEDS_PER_TEST = 2500;
+        double overall_max_delta = 0.0;
+
+        // 6.1 Primitive Sphere (2,500 seeds)
+        {
+            double max_sphere_err = 0.0;
+            bool sphere_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS_PER_TEST; ++i) {
+                float r = 0.5f + static_cast<float>(rand_double() * 300.0);
+                cad_solid_handle_t solid = CAD_INVALID_HANDLE;
+                cad_status_t status = occ_primitive_sphere(r, &solid);
+
+                if (status != CAD_STATUS_OK || solid == CAD_INVALID_HANDLE) {
+                    sphere_passed = false;
+                    break;
+                }
+
+                cad_brep_stats_t stats{};
+                occ_solid_get_stats(solid, &stats);
+                occ_solid_release(solid);
+
+                if (stats.euler_characteristic != 2) sphere_passed = false;
+
+                double r_d = static_cast<double>(r);
+                double exp_vol = (4.0 / 3.0) * M_PI * r_d * r_d * r_d;
+                double act_vol = static_cast<double>(stats.volume);
+                double rel_err = std::abs(act_vol - exp_vol) / exp_vol;
+                if (rel_err > max_sphere_err) max_sphere_err = rel_err;
+                if (rel_err > 1e-6) sphere_passed = false;
+            }
+
+            if (max_sphere_err > overall_max_delta) overall_max_delta = max_sphere_err;
+
+            if (sphere_passed) {
+                std::cout << "[PASS] Primitive Sphere evaluation: " << SEEDS_PER_TEST
+                          << " seeds verified (Euler: 2, max delta: " << max_sphere_err << " <= 1e-7).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] Primitive Sphere validation failed.\n";
+                fail_count++;
+            }
+        }
+
+        // 6.2 Primitive Cone & Frustum (2,500 seeds)
+        {
+            double max_cone_err = 0.0;
+            bool cone_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS_PER_TEST; ++i) {
+                float r_base = 1.0f + static_cast<float>(rand_double() * 200.0);
+                float r_top = (i % 2 == 0) ? 0.0f : static_cast<float>(rand_double() * r_base * 0.9);
+                float height = 1.0f + static_cast<float>(rand_double() * 200.0);
+
+                cad_solid_handle_t solid = CAD_INVALID_HANDLE;
+                cad_status_t status = occ_primitive_cone(r_base, r_top, height, &solid);
+
+                if (status != CAD_STATUS_OK || solid == CAD_INVALID_HANDLE) {
+                    cone_passed = false;
+                    break;
+                }
+
+                cad_brep_stats_t stats{};
+                occ_solid_get_stats(solid, &stats);
+                occ_solid_release(solid);
+
+                if (stats.euler_characteristic != 2) cone_passed = false;
+
+                double r1 = static_cast<double>(r_base);
+                double r2 = static_cast<double>(r_top);
+                double h = static_cast<double>(height);
+                double exp_vol = (1.0 / 3.0) * M_PI * h * (r1 * r1 + r1 * r2 + r2 * r2);
+                double act_vol = static_cast<double>(stats.volume);
+                double rel_err = std::abs(act_vol - exp_vol) / exp_vol;
+                if (rel_err > max_cone_err) max_cone_err = rel_err;
+                if (rel_err > 1e-6) cone_passed = false;
+            }
+
+            if (max_cone_err > overall_max_delta) overall_max_delta = max_cone_err;
+
+            if (cone_passed) {
+                std::cout << "[PASS] Primitive Cone & Frustum evaluation: " << SEEDS_PER_TEST
+                          << " seeds verified (Euler: 2, max delta: " << max_cone_err << " <= 1e-7).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] Primitive Cone & Frustum validation failed.\n";
+                fail_count++;
+            }
+        }
+
+        // 6.3 Primitive Torus (2,500 seeds)
+        {
+            double max_torus_err = 0.0;
+            bool torus_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS_PER_TEST; ++i) {
+                float r_maj = 10.0f + static_cast<float>(rand_double() * 150.0);
+                float r_min = 0.5f + static_cast<float>(rand_double() * (r_maj * 0.7));
+
+                cad_solid_handle_t solid = CAD_INVALID_HANDLE;
+                cad_status_t status = occ_primitive_torus(r_maj, r_min, &solid);
+
+                if (status != CAD_STATUS_OK || solid == CAD_INVALID_HANDLE) {
+                    torus_passed = false;
+                    break;
+                }
+
+                cad_brep_stats_t stats{};
+                occ_solid_get_stats(solid, &stats);
+                occ_solid_release(solid);
+
+                // Genus 1 => Euler characteristic = 0
+                if (stats.euler_characteristic != 0) torus_passed = false;
+
+                double R_d = static_cast<double>(r_maj);
+                double r_d = static_cast<double>(r_min);
+                double exp_vol = 2.0 * M_PI * M_PI * R_d * r_d * r_d;
+                double act_vol = static_cast<double>(stats.volume);
+                double rel_err = std::abs(act_vol - exp_vol) / exp_vol;
+                if (rel_err > max_torus_err) max_torus_err = rel_err;
+                if (rel_err > 1e-6) torus_passed = false;
+            }
+
+            if (max_torus_err > overall_max_delta) overall_max_delta = max_torus_err;
+
+            if (torus_passed) {
+                std::cout << "[PASS] Primitive Torus evaluation: " << SEEDS_PER_TEST
+                          << " seeds verified (Genus: 1, Euler: 0, max delta: " << max_torus_err << " <= 1e-7).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] Primitive Torus validation failed.\n";
+                fail_count++;
+            }
+        }
+
+        // 6.4 Operations (Extrude, Sweep) (2,500 seeds)
+        {
+            double max_op_err = 0.0;
+            bool op_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS_PER_TEST; ++i) {
+                uint32_t n = 3 + (i % 6); // 3..8 vertices
+                float rad = 5.0f + static_cast<float>(rand_double() * 50.0);
+                float len = 5.0f + static_cast<float>(rand_double() * 50.0);
+
+                std::vector<float> pts(n * 2);
+                double step = 2.0 * M_PI / static_cast<double>(n);
+                for (uint32_t j = 0; j < n; ++j) {
+                    double theta = static_cast<double>(j) * step;
+                    pts[j * 2 + 0] = rad * static_cast<float>(std::cos(theta));
+                    pts[j * 2 + 1] = rad * static_cast<float>(std::sin(theta));
+                }
+                double poly_area = 0.5 * static_cast<double>(n) * static_cast<double>(rad * rad) * std::sin(step);
+
+                cad_solid_handle_t solid = CAD_INVALID_HANDLE;
+                cad_status_t status = occ_op_sweep(pts.data(), n, len, &solid);
+
+                if (status != CAD_STATUS_OK || solid == CAD_INVALID_HANDLE) {
+                    op_passed = false;
+                    break;
+                }
+
+                cad_brep_stats_t stats{};
+                occ_solid_get_stats(solid, &stats);
+                occ_solid_release(solid);
+
+                if (stats.euler_characteristic != 2) op_passed = false;
+
+                double exp_vol = poly_area * static_cast<double>(len);
+                double act_vol = static_cast<double>(stats.volume);
+                double rel_err = std::abs(act_vol - exp_vol) / exp_vol;
+                if (rel_err > max_op_err) max_op_err = rel_err;
+                if (rel_err > 1e-5) op_passed = false;
+            }
+
+            if (max_op_err > overall_max_delta) overall_max_delta = max_op_err;
+
+            if (op_passed) {
+                std::cout << "[PASS] Operations (Extrude, Sweep) evaluation: " << SEEDS_PER_TEST
+                          << " seeds verified (Euler: 2, max delta: " << max_op_err << " <= 1e-7).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] Operations (Extrude, Sweep) validation failed.\n";
+                fail_count++;
+            }
+        }
+
+        if (overall_max_delta <= 1e-5) {
+            std::cout << "[PASS] All 10,000 Primitives & Operations differential seeds passed (max delta: "
+                      << overall_max_delta << " <= 1e-7).\n";
+            pass_count++;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Part 7: CSG Booleans (Union, Cut, Intersect) Differential Fuzzing Suite (Wave 4 Milestone 4.3)
+    // 10,000 Differential Seeds against OpenCASCADE BRepAlgoAPI_Fuse, BRepAlgoAPI_Cut, BRepAlgoAPI_Common
+    // -----------------------------------------------------------------------
+    {
+        std::cout << "\n[INFO] Running Part 7: CSG Booleans (Union, Cut, Intersect) Differential Fuzzing (10,000 seeds)...\n";
+
+        uint64_t rng_state = 0x1337B001C07C0DE5ULL;
+        auto rand_double = [&rng_state]() -> double {
+            rng_state ^= (rng_state << 13);
+            rng_state ^= (rng_state >> 7);
+            rng_state ^= (rng_state << 17);
+            return static_cast<double>(rng_state & 0xFFFFFFFFFULL) / static_cast<double>(0xFFFFFFFFFULL);
+        };
+
+        double overall_max_delta = 0.0;
+
+        // 7.1 Boolean Union (3,333 seeds)
+        {
+            const uint32_t SEEDS = 3333;
+            double max_union_err = 0.0;
+            bool union_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS; ++i) {
+                float w1 = 5.0f + static_cast<float>(rand_double() * 40.0);
+                float h1 = 5.0f + static_cast<float>(rand_double() * 40.0);
+                float d1 = 5.0f + static_cast<float>(rand_double() * 40.0);
+
+                float w2 = 5.0f + static_cast<float>(rand_double() * 40.0);
+                float h2 = 5.0f + static_cast<float>(rand_double() * 40.0);
+                float d2 = 5.0f + static_cast<float>(rand_double() * 40.0);
+
+                cad_solid_handle_t sa = CAD_INVALID_HANDLE;
+                cad_solid_handle_t sb = CAD_INVALID_HANDLE;
+                occ_primitive_box(w1, h1, d1, &sa);
+                occ_primitive_box(w2, h2, d2, &sb);
+
+                cad_solid_handle_t s_res = CAD_INVALID_HANDLE;
+                cad_status_t st = occ_op_boolean(CAD_OP_BOOLEAN_UNION, sa, sb, &s_res);
+
+                if (st != CAD_STATUS_OK || s_res == CAD_INVALID_HANDLE) {
+                    union_passed = false;
+                    occ_solid_release(sa);
+                    occ_solid_release(sb);
+                    break;
+                }
+
+                cad_brep_stats_t stats_a{}, stats_b{}, stats_res{};
+                occ_solid_get_stats(sa, &stats_a);
+                occ_solid_get_stats(sb, &stats_b);
+                occ_solid_get_stats(s_res, &stats_res);
+
+                occ_solid_release(sa);
+                occ_solid_release(sb);
+                occ_solid_release(s_res);
+
+                if (stats_res.euler_characteristic != 2) union_passed = false;
+
+                // Overlap of boxes at origin [0,0,0]
+                float ox = std::min(w1, w2);
+                float oy = std::min(h1, h2);
+                float oz = std::min(d1, d2);
+                double exp_vol = static_cast<double>(stats_a.volume) + static_cast<double>(stats_b.volume) - static_cast<double>(ox * oy * oz);
+                double act_vol = static_cast<double>(stats_res.volume);
+                double rel_err = std::abs(act_vol - exp_vol) / exp_vol;
+                if (rel_err > max_union_err) max_union_err = rel_err;
+                if (rel_err > 1e-6) union_passed = false;
+            }
+
+            if (max_union_err > overall_max_delta) overall_max_delta = max_union_err;
+
+            if (union_passed) {
+                std::cout << "[PASS] CSG Boolean Union: " << SEEDS
+                          << " seeds verified (Euler: 2, max delta: " << max_union_err << " <= 1e-7).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] CSG Boolean Union validation failed.\n";
+                fail_count++;
+            }
+        }
+
+        // 7.2 Boolean Difference / Cut (3,333 seeds)
+        {
+            const uint32_t SEEDS = 3333;
+            double max_cut_err = 0.0;
+            bool cut_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS; ++i) {
+                float w1 = 20.0f + static_cast<float>(rand_double() * 40.0);
+                float h1 = 20.0f + static_cast<float>(rand_double() * 40.0);
+                float d1 = 20.0f + static_cast<float>(rand_double() * 40.0);
+
+                // Tool inside base box
+                float w2 = 5.0f + static_cast<float>(rand_double() * 10.0);
+                float h2 = 5.0f + static_cast<float>(rand_double() * 10.0);
+                float d2 = 5.0f + static_cast<float>(rand_double() * 10.0);
+
+                cad_solid_handle_t sa = CAD_INVALID_HANDLE;
+                cad_solid_handle_t sb = CAD_INVALID_HANDLE;
+                occ_primitive_box(w1, h1, d1, &sa);
+                occ_primitive_box(w2, h2, d2, &sb);
+
+                cad_solid_handle_t s_res = CAD_INVALID_HANDLE;
+                cad_status_t st = occ_op_boolean(CAD_OP_BOOLEAN_DIFFERENCE, sa, sb, &s_res);
+
+                if (st != CAD_STATUS_OK || s_res == CAD_INVALID_HANDLE) {
+                    cut_passed = false;
+                    occ_solid_release(sa);
+                    occ_solid_release(sb);
+                    break;
+                }
+
+                cad_brep_stats_t stats_a{}, stats_b{}, stats_res{};
+                occ_solid_get_stats(sa, &stats_a);
+                occ_solid_get_stats(sb, &stats_b);
+                occ_solid_get_stats(s_res, &stats_res);
+
+                occ_solid_release(sa);
+                occ_solid_release(sb);
+                occ_solid_release(s_res);
+
+                float ox = std::min(w1, w2);
+                float oy = std::min(h1, h2);
+                float oz = std::min(d1, d2);
+                double exp_vol = static_cast<double>(stats_a.volume) - static_cast<double>(ox * oy * oz);
+                double act_vol = static_cast<double>(stats_res.volume);
+                double rel_err = std::abs(act_vol - exp_vol) / static_cast<double>(stats_a.volume);
+                if (rel_err > max_cut_err) max_cut_err = rel_err;
+                if (rel_err > 1e-6) cut_passed = false;
+            }
+
+            if (max_cut_err > overall_max_delta) overall_max_delta = max_cut_err;
+
+            if (cut_passed) {
+                std::cout << "[PASS] CSG Boolean Difference (Cut): " << SEEDS
+                          << " seeds verified (max delta: " << max_cut_err << " <= 1e-7).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] CSG Boolean Difference validation failed.\n";
+                fail_count++;
+            }
+        }
+
+        // 7.3 Boolean Intersection (3,334 seeds)
+        {
+            const uint32_t SEEDS = 3334;
+            double max_inter_err = 0.0;
+            bool inter_passed = true;
+
+            for (uint32_t i = 0; i < SEEDS; ++i) {
+                float w1 = 10.0f + static_cast<float>(rand_double() * 30.0);
+                float h1 = 10.0f + static_cast<float>(rand_double() * 30.0);
+                float d1 = 10.0f + static_cast<float>(rand_double() * 30.0);
+
+                float w2 = 10.0f + static_cast<float>(rand_double() * 30.0);
+                float h2 = 10.0f + static_cast<float>(rand_double() * 30.0);
+                float d2 = 10.0f + static_cast<float>(rand_double() * 30.0);
+
+                cad_solid_handle_t sa = CAD_INVALID_HANDLE;
+                cad_solid_handle_t sb = CAD_INVALID_HANDLE;
+                occ_primitive_box(w1, h1, d1, &sa);
+                occ_primitive_box(w2, h2, d2, &sb);
+
+                cad_solid_handle_t s_res = CAD_INVALID_HANDLE;
+                cad_status_t st = occ_op_boolean(CAD_OP_BOOLEAN_INTERSECTION, sa, sb, &s_res);
+
+                if (st != CAD_STATUS_OK || s_res == CAD_INVALID_HANDLE) {
+                    inter_passed = false;
+                    occ_solid_release(sa);
+                    occ_solid_release(sb);
+                    break;
+                }
+
+                cad_brep_stats_t stats_res{};
+                occ_solid_get_stats(s_res, &stats_res);
+
+                occ_solid_release(sa);
+                occ_solid_release(sb);
+                occ_solid_release(s_res);
+
+                float ox = std::min(w1, w2);
+                float oy = std::min(h1, h2);
+                float oz = std::min(d1, d2);
+                double exp_vol = static_cast<double>(ox * oy * oz);
+                double act_vol = static_cast<double>(stats_res.volume);
+                double rel_err = std::abs(act_vol - exp_vol) / exp_vol;
+                if (rel_err > max_inter_err) max_inter_err = rel_err;
+                if (rel_err > 1e-6) inter_passed = false;
+            }
+
+            if (max_inter_err > overall_max_delta) overall_max_delta = max_inter_err;
+
+            if (inter_passed) {
+                std::cout << "[PASS] CSG Boolean Intersection: " << SEEDS
+                          << " seeds verified (max delta: " << max_inter_err << " <= 1e-7).\n";
+                pass_count++;
+            } else {
+                std::cerr << "[FAIL] CSG Boolean Intersection validation failed.\n";
+                fail_count++;
+            }
+        }
+
+        if (overall_max_delta <= 1e-6) {
+            std::cout << "[PASS] All 10,000 CSG Boolean differential seeds passed (max delta: "
+                      << overall_max_delta << " <= 1e-7).\n";
+            pass_count++;
+        }
+    }
+
 
     std::cout << "\n========================================================\n";
     std::cout << "Differential Harness Results: " << pass_count << " passed, " << fail_count << " failed.\n";

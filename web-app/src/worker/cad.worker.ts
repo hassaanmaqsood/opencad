@@ -6,19 +6,25 @@ import {
   SolveSketchTransferPayload,
   CadSolverStatus,
   CadFeatureNode,
+  CadTessellatedSolidSlice,
   CadTessellatedSolidSlicePayload,
   EvaluateDagWorkerRequest,
   SetRollbackIndexWorkerRequest,
+  ImportStepWorkerRequest,
+  ExportStepWorkerRequest,
+  ExportStepTransferPayload,
 } from '../types/cad';
 import { generateBoxBuffers, generateCylinderBuffers } from './geometry_generator';
 import { solveSketch } from './sketch_solver';
 import { evaluateFeatureDag, getDefaultDemoFeatureDag } from './dag_evaluator';
+import { parseStep, exportStep } from './step_io';
 
 interface WasmExports {
   memory: WebAssembly.Memory;
   cad_kernel_init?: () => number;
   cad_wasm_alloc?: (size: number) => number;
   cad_wasm_free?: (ptr: number) => void;
+  cad_wasm_step_import?: (strPtr: number, strLen: number, outSolidPtr: number) => number;
   cad_dag_evaluate?: (nodesPtr: number, nodeCount: number, rollbackIndex: number, outSolidPtr: number) => number;
   cad_dag_set_rollback_index?: (rollbackIndex: number) => number;
   cad_solid_tessellate_slice?: (solidHandle: number | bigint, chordalTol: number, angularTol: number, outSlicePtr: number) => number;
@@ -78,6 +84,7 @@ let wasmExports: WasmExports | null = null;
 
 let cachedDagNodes: CadFeatureNode[] = getDefaultDemoFeatureDag();
 let cachedRollbackIndex: number = cachedDagNodes.length - 1;
+let activeSlice: CadTessellatedSolidSlice | null = null;
 
 /**
  * Initializes an optional WebAssembly binary conforming to cad_kernel.h.
@@ -326,6 +333,7 @@ self.onmessage = async (e: MessageEvent) => {
     cachedRollbackIndex = req.rollbackIndex !== undefined ? req.rollbackIndex : cachedDagNodes.length - 1;
 
     const slice = evaluateFeatureDag(cachedDagNodes, cachedRollbackIndex);
+    activeSlice = slice;
 
     const payload: CadTessellatedSolidSlicePayload = {
       type: 'DAG_EVALUATED',
@@ -358,6 +366,7 @@ self.onmessage = async (e: MessageEvent) => {
     cachedRollbackIndex = req.rollbackIndex;
 
     const slice = evaluateFeatureDag(cachedDagNodes, cachedRollbackIndex);
+    activeSlice = slice;
 
     const payload: CadTessellatedSolidSlicePayload = {
       type: 'DAG_EVALUATED',
@@ -381,6 +390,95 @@ self.onmessage = async (e: MessageEvent) => {
       slice.edgePolylines.buffer,
       slice.edgeToTopoId.buffer,
     ]);
+    return;
+  }
+
+  if (data.type === 'IMPORT_STEP') {
+    const req = data as ImportStepWorkerRequest;
+    const requestId = req.requestId ?? 0;
+
+    let slice: CadTessellatedSolidSlice;
+
+    // Check if Wasm STEP import function is exported
+    if (
+      wasmExports?.cad_wasm_step_import &&
+      wasmExports?.cad_wasm_alloc &&
+      wasmExports?.cad_wasm_free &&
+      wasmExports?.memory
+    ) {
+      try {
+        const encoder = new TextEncoder();
+        const encoded = encoder.encode(req.stepText);
+        const strPtr = wasmExports.cad_wasm_alloc(encoded.length + 1);
+        const heap = new Uint8Array(wasmExports.memory.buffer, strPtr, encoded.length + 1);
+        heap.set(encoded);
+        heap[encoded.length] = 0;
+
+        const outSolidPtr = wasmExports.cad_wasm_alloc(8);
+        const status = wasmExports.cad_wasm_step_import(strPtr, encoded.length, outSolidPtr);
+
+        if (status === 0) {
+          // Tessellate via fallback or wasm
+          slice = parseStep(req.stepText);
+        } else {
+          slice = parseStep(req.stepText);
+        }
+
+        wasmExports.cad_wasm_free(strPtr);
+        wasmExports.cad_wasm_free(outSolidPtr);
+      } catch (err) {
+        console.warn('Wasm step import failed, falling back to client AP214 parser:', err);
+        slice = parseStep(req.stepText);
+      }
+    } else {
+      // Pure client-side AP214 B-Rep parser
+      slice = parseStep(req.stepText);
+    }
+
+    activeSlice = slice;
+
+    const payload: CadTessellatedSolidSlicePayload = {
+      type: 'DAG_EVALUATED',
+      requestId,
+      positions: slice.positions.buffer,
+      normals: slice.normals.buffer,
+      indices: slice.indices.buffer,
+      triangleToFaceId: slice.triangleToFaceId.buffer,
+      edgePolylines: slice.edgePolylines.buffer,
+      edgeToTopoId: slice.edgeToTopoId.buffer,
+      bbox: slice.bbox,
+      metadata: slice.metadata,
+    };
+
+    // ZERO-COPY Transferable ArrayBuffer Transfer
+    self.postMessage(payload, [
+      slice.positions.buffer,
+      slice.normals.buffer,
+      slice.indices.buffer,
+      slice.triangleToFaceId.buffer,
+      slice.edgePolylines.buffer,
+      slice.edgeToTopoId.buffer,
+    ]);
+    return;
+  }
+
+  if (data.type === 'EXPORT_STEP') {
+    const req = data as ExportStepWorkerRequest;
+    const requestId = req.requestId ?? 0;
+
+    if (!activeSlice) {
+      activeSlice = evaluateFeatureDag(cachedDagNodes, cachedRollbackIndex);
+    }
+
+    const stepText = exportStep(activeSlice);
+
+    const payload: ExportStepTransferPayload = {
+      type: 'STEP_EXPORTED',
+      requestId,
+      stepText,
+    };
+
+    self.postMessage(payload);
     return;
   }
 };

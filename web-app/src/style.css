@@ -753,3 +753,87 @@ body.dragging-rollback * {
   color: #fff;
 }
 
+/* ------------------------------------------------------------------------- */
+/* STEP AP214 Buttons & Drag-and-Drop Overlay (Wave 4)                       */
+/* ------------------------------------------------------------------------- */
+.step-btn-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.btn-step {
+  flex: 1;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-step:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--text-accent);
+  color: var(--text-accent);
+}
+
+.drop-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 100;
+  background: rgba(18, 19, 22, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.drop-overlay.active {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.drop-overlay-content {
+  border: 2px dashed var(--text-accent);
+  border-radius: var(--radius-lg);
+  padding: 40px 60px;
+  background: rgba(56, 189, 248, 0.05);
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.drop-icon {
+  font-size: 48px;
+}
+
+.drop-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.drop-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+

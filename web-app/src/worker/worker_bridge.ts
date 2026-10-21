@@ -12,6 +12,8 @@ import {
   CadTessellatedSolidSlicePayload,
   EvaluateDagWorkerRequest,
   SetRollbackIndexWorkerRequest,
+  ImportStepWorkerRequest,
+  ExportStepWorkerRequest,
 } from '../types/cad';
 
 export class CadWorkerBridge {
@@ -34,6 +36,13 @@ export class CadWorkerBridge {
     number,
     {
       resolve: (value: CadTessellatedSolidSlice) => void;
+      reject: (reason?: any) => void;
+    }
+  >();
+  private pendingExportStepRequests = new Map<
+    number,
+    {
+      resolve: (value: string) => void;
       reject: (reason?: any) => void;
     }
   >();
@@ -117,6 +126,14 @@ export class CadWorkerBridge {
 
         pending.resolve(status);
       }
+    } else if (data.type === 'STEP_EXPORTED') {
+      const payload = data as { requestId?: number; stepText: string };
+      const requestId = payload.requestId ?? 0;
+      const pending = this.pendingExportStepRequests.get(requestId);
+      if (pending) {
+        this.pendingExportStepRequests.delete(requestId);
+        pending.resolve(payload.stepText);
+      }
     } else if (data.type === 'ERROR') {
       const requestId = data.requestId ?? 0;
       const pending = this.pendingRequests.get(requestId);
@@ -134,6 +151,11 @@ export class CadWorkerBridge {
         this.pendingDagRequests.delete(requestId);
         pendingDag.reject(new Error(data.error || 'Worker DAG error'));
       }
+      const pendingExport = this.pendingExportStepRequests.get(requestId);
+      if (pendingExport) {
+        this.pendingExportStepRequests.delete(requestId);
+        pendingExport.reject(new Error(data.error || 'Worker STEP export error'));
+      }
     }
   }
 
@@ -150,6 +172,10 @@ export class CadWorkerBridge {
     for (const [id, req] of this.pendingDagRequests.entries()) {
       req.reject(new Error(`Worker encountered error: ${e.message}`));
       this.pendingDagRequests.delete(id);
+    }
+    for (const [id, req] of this.pendingExportStepRequests.entries()) {
+      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      this.pendingExportStepRequests.delete(id);
     }
   }
 
@@ -180,6 +206,33 @@ export class CadWorkerBridge {
         type: 'SET_ROLLBACK_INDEX',
         requestId,
         rollbackIndex,
+      };
+      this.worker.postMessage(req);
+    });
+  }
+
+  public async importStep(stepText: string): Promise<CadTessellatedSolidSlice> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise<CadTessellatedSolidSlice>((resolve, reject) => {
+      this.pendingDagRequests.set(requestId, { resolve, reject });
+      const req: ImportStepWorkerRequest = {
+        type: 'IMPORT_STEP',
+        requestId,
+        stepText,
+      };
+      this.worker.postMessage(req);
+    });
+  }
+
+  public async exportStep(): Promise<string> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise<string>((resolve, reject) => {
+      this.pendingExportStepRequests.set(requestId, { resolve, reject });
+      const req: ExportStepWorkerRequest = {
+        type: 'EXPORT_STEP',
+        requestId,
       };
       this.worker.postMessage(req);
     });

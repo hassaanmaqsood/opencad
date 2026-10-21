@@ -430,4 +430,26 @@ export interface SetRollbackIndexWorkerRequest {
   rollbackIndex: number;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Wave 4: STEP AP214 (.step / .stp) Import & Export Types                   */
+/* ------------------------------------------------------------------------- */
+
+export interface ImportStepWorkerRequest {
+  type: 'IMPORT_STEP';
+  requestId?: number;
+  stepText: string;
+}
+
+export interface ExportStepWorkerRequest {
+  type: 'EXPORT_STEP';
+  requestId?: number;
+}
+
+export interface ExportStepTransferPayload {
+  type: 'STEP_EXPORTED';
+  requestId?: number;
+  stepText: string;
+}
+
+
 

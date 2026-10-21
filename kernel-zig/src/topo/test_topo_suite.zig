@@ -267,3 +267,139 @@ test "SoASolid toLegacySolid conversion" {
     try testing.expectEqual(@as(i32, 2), stats.euler_characteristic);
     try testing.expectApproxEqAbs(@as(f32, 60.0), stats.volume, 1e-2);
 }
+
+test "Milestone 4.2: Analytical Primitives Integration & Invariants" {
+    const allocator = testing.allocator;
+    const prim = @import("../primitives/mod.zig");
+
+    // 1. Sphere
+    const r_sphere: f32 = 4.0;
+    var sphere = try prim.sphere.createSphere(allocator, 10, r_sphere, 8, 16);
+    defer sphere.deinit(allocator);
+
+    try testing.expectEqual(@as(i32, 0), sphere.calcEulerPoincare(0));
+    try sphere.validateManifold();
+    const exp_sph_vol = (4.0 / 3.0) * std.math.pi * r_sphere * r_sphere * r_sphere;
+    const exp_sph_area = 4.0 * std.math.pi * r_sphere * r_sphere;
+    try testing.expectApproxEqAbs(exp_sph_vol, sphere.volume, 1e-2);
+    try testing.expectApproxEqAbs(exp_sph_area, sphere.surface_area, 1e-2);
+
+    // 2. Cone (sharp apex)
+    var cone = try prim.cone.createCone(allocator, 20, 5.0, 0.0, 12.0, 16);
+    defer cone.deinit(allocator);
+
+    try testing.expectEqual(@as(i32, 0), cone.calcEulerPoincare(0));
+    try cone.validateManifold();
+    const exp_cone_vol = (1.0 / 3.0) * std.math.pi * 12.0 * 25.0;
+    try testing.expectApproxEqAbs(exp_cone_vol, cone.volume, 1e-2);
+
+    // 3. Torus (genus 1)
+    const R: f32 = 12.0;
+    const r: f32 = 4.0;
+    var torus = try prim.torus.createTorus(allocator, 30, R, r, 16, 16);
+    defer torus.deinit(allocator);
+
+    // V - E + F = 0 for torus
+    try testing.expectEqual(@as(i32, 0), torus.calcEulerPoincare(1));
+    try torus.validateManifoldGenus(1);
+    const exp_torus_vol = 2.0 * std.math.pi * std.math.pi * R * r * r;
+    const exp_torus_area = 4.0 * std.math.pi * std.math.pi * R * r;
+    try testing.expectApproxEqAbs(exp_torus_vol, torus.volume, 1e-2);
+    try testing.expectApproxEqAbs(exp_torus_area, torus.surface_area, 1e-2);
+}
+
+test "Milestone 4.2: Exact B-Rep Sweep and Loft Operations" {
+    const allocator = testing.allocator;
+
+    // Sweep: equilateral triangle profile along S-curved 3D polyline
+    const tri = [_][2]f32{
+        .{ 0.0, 1.0 },
+        .{ 0.866, -0.5 },
+        .{ -0.866, -0.5 },
+    };
+    const s_curve = [_]Vec3{
+        Vec3.init(0, 0, 0),
+        Vec3.init(2, 5, 2),
+        Vec3.init(6, 10, 4),
+        Vec3.init(12, 12, 8),
+    };
+
+    var swept = try ops.sweep.sweepProfile(allocator, 40, &tri, &s_curve);
+    defer swept.deinit(allocator);
+
+    try testing.expectEqual(@as(i32, 0), swept.calcEulerPoincare(0));
+    try swept.validateManifold();
+    try testing.expect(swept.volume > 10.0);
+
+    // Loft: 3 circular profiles approximating a vase / nozzle
+    var p0: [8]Vec3 = undefined;
+    var p1: [8]Vec3 = undefined;
+    var p2: [8]Vec3 = undefined;
+    for (0..8) |i| {
+        const theta = @as(f32, @floatFromInt(i)) * (std.math.pi / 4.0);
+        p0[i] = Vec3.init(6.0 * @cos(theta), 6.0 * @sin(theta), 0.0);
+        p1[i] = Vec3.init(3.0 * @cos(theta), 3.0 * @sin(theta), 10.0);
+        p2[i] = Vec3.init(5.0 * @cos(theta), 5.0 * @sin(theta), 20.0);
+    }
+
+    const profiles = [_][]const Vec3{ &p0, &p1, &p2 };
+    var lofted = try ops.loft.loftProfiles(allocator, 50, &profiles);
+    defer lofted.deinit(allocator);
+
+    try testing.expectEqual(@as(i32, 0), lofted.calcEulerPoincare(0));
+    try lofted.validateManifold();
+    try testing.expect(lofted.volume > 100.0);
+}
+
+test "Milestone 4.3: Full B-Rep CSG Booleans (Union, Cut, Intersect) & Manifold Closure" {
+    const allocator = testing.allocator;
+
+    // Box A: [0, 10] x [0, 10] x [0, 10], Vol = 1000
+    const sq_a = [_][2]f32{ .{ 0, 0 }, .{ 10, 0 }, .{ 10, 10 }, .{ 0, 10 } };
+    var box_a = try extrude.extrudePolygon(allocator, 101, &sq_a, 10.0, Vec3.init(0, 0, 1), false);
+    defer box_a.deinit(allocator);
+
+    // Box B: [5, 15] x [5, 15] x [5, 15], Vol = 1000
+    const sq_b = [_][2]f32{ .{ 5, 5 }, .{ 15, 5 }, .{ 15, 15 }, .{ 5, 15 } };
+    var box_b = try extrude.extrudePolygon(allocator, 102, &sq_b, 10.0, Vec3.init(0, 0, 1), false);
+    for (box_b.vertices.slice().items(.point)) |*pt| {
+        pt.z += 5.0;
+    }
+    defer box_b.deinit(allocator);
+
+    // 1. CSG Union: Vol = 1875.0, watertight 2-manifold
+    var u_solid = try boolean.booleanOp(allocator, 103, .Union, &box_a, &box_b);
+    defer u_solid.deinit(allocator);
+    try u_solid.validateManifold();
+    try testing.expectEqual(@as(i32, 0), u_solid.calcEulerPoincare(0));
+    try testing.expectApproxEqAbs(@as(f32, 1875.0), u_solid.volume, 1e-1);
+
+    // 2. CSG Difference (Cut): Vol = 875.0, watertight 2-manifold
+    var cut_solid = try boolean.booleanOp(allocator, 104, .Difference, &box_a, &box_b);
+    defer cut_solid.deinit(allocator);
+    try cut_solid.validateManifold();
+    try testing.expectEqual(@as(i32, 0), cut_solid.calcEulerPoincare(0));
+    try testing.expectApproxEqAbs(@as(f32, 875.0), cut_solid.volume, 1e-1);
+
+    // 3. CSG Intersection: Vol = 125.0, watertight 2-manifold
+    var inter_solid = try boolean.booleanOp(allocator, 105, .Intersection, &box_a, &box_b);
+    defer inter_solid.deinit(allocator);
+    try inter_solid.validateManifold();
+    try testing.expectEqual(@as(i32, 0), inter_solid.calcEulerPoincare(0));
+    try testing.expectApproxEqAbs(@as(f32, 125.0), inter_solid.volume, 1e-1);
+
+    // 4. Disjoint Difference: A \ Disjoint_B = A
+    const sq_disjoint = [_][2]f32{ .{ 50, 0 }, .{ 60, 0 }, .{ 60, 10 }, .{ 50, 10 } };
+    var box_disjoint = try extrude.extrudePolygon(allocator, 106, &sq_disjoint, 10.0, Vec3.init(0, 0, 1), false);
+    defer box_disjoint.deinit(allocator);
+
+    var diff_disjoint = try boolean.booleanOp(allocator, 107, .Difference, &box_a, &box_disjoint);
+    defer diff_disjoint.deinit(allocator);
+    try diff_disjoint.validateManifold();
+    try testing.expectApproxEqAbs(box_a.volume, diff_disjoint.volume, 1e-3);
+
+    // 5. Disjoint Intersection: returns error.DisjointIntersection
+    const err_inter = boolean.booleanOp(allocator, 108, .Intersection, &box_a, &box_disjoint);
+    try testing.expectError(error.DisjointIntersection, err_inter);
+}
+
