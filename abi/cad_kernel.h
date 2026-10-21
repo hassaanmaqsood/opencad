@@ -422,6 +422,199 @@ cad_status_t cad_sketch_get_dof(
     uint32_t* out_dof
 );
 
+/* ------------------------------------------------------------------------- */
+/* Wave 3: Parametric Feature DAG, Persistent Naming & Sub-Shape Slices       */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * @brief Sub-shape classification for persistent topological naming.
+ */
+typedef enum cad_subshape_type_e {
+    CAD_SUBSHAPE_VERTEX = 0,
+    CAD_SUBSHAPE_EDGE = 1,
+    CAD_SUBSHAPE_FACE = 2,
+    CAD_SUBSHAPE_SHELL = 3
+} cad_subshape_type_t;
+typedef cad_subshape_type_t CadSubshapeType;
+
+/**
+ * @brief 64-bit Persistent Topological Identifier (CadTopoId).
+ *
+ * Encodes the originating modeling feature ID, generating 2D sketch element ID,
+ * CAD operation type, sub-shape type (vertex/edge/face), and a topological/spatial invariant hash.
+ * Enables deterministic tracking across upstream parametric changes without broken downstream references.
+ */
+typedef union cad_topo_id_u {
+    uint64_t raw;
+    struct {
+        uint32_t origin_feature_id : 16;        /**< Originating feature node ID (16 bits) */
+        uint32_t source_sketch_entity_id : 16; /**< Source 2D sketch entity ID (16 bits) */
+        uint16_t op_type : 8;                  /**< CAD operation type (cad_op_type_t) (8 bits) */
+        uint16_t subshape_type : 4;            /**< cad_subshape_type_t (4 bits) */
+        uint16_t flags : 4;                    /**< Disambiguation flags (start/end cap, lateral) (4 bits) */
+        uint16_t subshape_hash : 16;           /**< Geometric / topological invariant hash (16 bits) */
+    } fields;
+} cad_topo_id_t;
+typedef cad_topo_id_t CadTopoId;
+
+#define CAD_INVALID_TOPO_ID ((cad_topo_id_t){ .raw = 0ULL })
+
+/**
+ * @brief Types of parametric modeling features in the DAG.
+ */
+typedef enum cad_feature_type_e {
+    CAD_FEATURE_SKETCH = 0,
+    CAD_FEATURE_EXTRUDE = 1,
+    CAD_FEATURE_REVOLVE = 2,
+    CAD_FEATURE_BOOLEAN_UNION = 3,
+    CAD_FEATURE_BOOLEAN_CUT = 4,
+    CAD_FEATURE_BOOLEAN_INTERSECT = 5,
+    CAD_FEATURE_FILLET = 6,
+    CAD_FEATURE_CHAMFER = 7
+} cad_feature_type_t;
+typedef cad_feature_type_t CadFeatureType;
+
+#define CAD_MAX_FEATURE_PARENTS 8
+#define CAD_MAX_FEATURE_TARGETS 16
+
+/**
+ * @brief Parametric feature node within the directed acyclic graph (DAG).
+ */
+typedef struct cad_feature_node_s {
+    uint32_t feature_id;                 /**< Unique feature ID in DAG */
+    cad_feature_type_t type;             /**< Feature operation type */
+    uint8_t is_suppressed;               /**< 1 if feature is suppressed/disabled, 0 if active */
+
+    /* Parent dependency tracking */
+    uint32_t parent_count;               /**< Number of direct parent dependencies */
+    uint32_t parent_ids[CAD_MAX_FEATURE_PARENTS]; /**< Feature IDs of prerequisite nodes */
+
+    /* Target persistent topological references (for fillets, chamfers, sketches on faces) */
+    uint32_t target_topo_count;          /**< Number of target topological sub-shapes */
+    cad_topo_id_t target_topo_ids[CAD_MAX_FEATURE_TARGETS]; /**< CadTopoId targets */
+
+    /* Parametric operation payload */
+    union {
+        struct {
+            double distance;             /**< Extrusion depth */
+            cad_vec3_t direction;        /**< Extrusion vector */
+            uint8_t symmetric;           /**< 1 for two-sided symmetric extrusion */
+        } extrude;
+        struct {
+            double angle_rad;            /**< Revolution angle (radians) */
+            cad_vec3_t axis_origin;      /**< Revolution axis point */
+            cad_vec3_t axis_direction;   /**< Revolution axis unit vector */
+        } revolve;
+        struct {
+            double radius;               /**< Fillet radius */
+        } fillet;
+        struct {
+            double distance;             /**< Chamfer setback */
+            double angle_rad;            /**< Chamfer angle (radians) */
+        } chamfer;
+        struct {
+            uint32_t tool_feature_id;    /**< Feature ID providing tool solid */
+        } boolean_op;
+    } params;
+} cad_feature_node_t;
+typedef cad_feature_node_t CadFeatureNode;
+
+/**
+ * @brief Zero-copy tessellated solid slice for WebAssembly memory mapping.
+ * Contains flat contiguous arrays of positions, normals, indices, and 64-bit CadTopoId
+ * mappings for O(1) sub-shape face and edge selection in Three.js without JSON serialization.
+ */
+typedef struct cad_tessellated_solid_slice_s {
+    /* Vertex coordinate buffer: [x0, y0, z0, x1, y1, z1, ...] */
+    const float* positions;
+    uint32_t vertex_count;               /**< Number of vertices (positions length = vertex_count * 3) */
+
+    /* Vertex normal buffer: [nx0, ny0, nz0, ...] */
+    const float* normals;                /**< Normals length = vertex_count * 3 */
+
+    /* Triangle index buffer: [i0, i1, i2, ...] */
+    const uint32_t* indices;
+    uint32_t triangle_count;             /**< Number of triangles (indices length = triangle_count * 3) */
+
+    /**
+     * Map from triangle index to 64-bit persistent topological Face ID (CadTopoId).
+     * Array length = triangle_count.
+     * When Three.js raycasts a mesh, raycast.faceIndex yields the triangle index,
+     * immediately resolving the exact persistent B-Rep Face ID in O(1) time.
+     */
+    const uint64_t* triangle_to_face_id;
+
+    /**
+     * 3D Polyline segments representing sharp feature edges for boundary rendering.
+     * Interleaved [x0, y0, z0, x1, y1, z1, ...] (each segment = 2 vertices = 6 floats).
+     */
+    const float* edge_polylines;
+    uint32_t edge_segment_count;         /**< Number of line segments (len = edge_segment_count * 6) */
+
+    /**
+     * Map from edge segment index to 64-bit persistent topological Edge ID (CadTopoId).
+     * Array length = edge_segment_count.
+     */
+    const uint64_t* edge_to_topo_id;
+
+    /* Axis-aligned bounding box */
+    cad_vec3_t bbox_min;
+    cad_vec3_t bbox_max;
+} cad_tessellated_solid_slice_t;
+typedef cad_tessellated_solid_slice_t CadTessellatedSolidSlice;
+
+/**
+ * @brief Evaluate the parametric feature DAG up to the active rollback index.
+ * Reconstructs all modeling features, resolves persistent topological naming references,
+ * and builds the resulting B-Rep solid.
+ *
+ * @param nodes Array of feature DAG nodes
+ * @param node_count Number of nodes in the DAG
+ * @param rollback_index Index up to which features should be evaluated (0 to node_count - 1)
+ * @param out_solid Output handle to the evaluated B-Rep solid
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_dag_evaluate(
+    const cad_feature_node_t* nodes,
+    uint32_t node_count,
+    uint32_t rollback_index,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Set the active rollback index for the feature tree DAG.
+ * Freezes evaluation past the rollback marker.
+ *
+ * @param rollback_index New rollback marker index
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_dag_set_rollback_index(
+    uint32_t rollback_index
+);
+
+/**
+ * @brief Tessellate a B-Rep solid into zero-copy persistent CadTopoId slice buffers.
+ *
+ * @param solid Handle to the evaluated B-Rep solid
+ * @param chordal_deflection Linear chordal deflection tolerance
+ * @param angular_deflection Angular tolerance in radians
+ * @param out_slice Populated CadTessellatedSolidSlice with flat kernel pointers
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_solid_tessellate_slice(
+    cad_solid_handle_t solid,
+    float chordal_deflection,
+    float angular_deflection,
+    cad_tessellated_solid_slice_t* out_slice
+);
+
+/**
+ * @brief Free resources associated with a CadTessellatedSolidSlice.
+ */
+cad_status_t cad_slice_free(
+    cad_tessellated_solid_slice_t* slice
+);
+
 #ifdef __cplusplus
 }
 #endif

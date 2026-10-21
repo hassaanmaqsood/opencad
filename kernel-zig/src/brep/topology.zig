@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Vec3 = @import("../math/vec3.zig").Vec3;
+pub const Vec3 = @import("../math/vec3.zig").Vec3;
 const c_abi = @import("../c_abi.zig");
 
 pub const Vertex = struct {
@@ -100,3 +100,14 @@ pub const Solid = struct {
         };
     }
 };
+
+pub const topo = @import("../topo/mod.zig");
+pub const ops = @import("../ops/mod.zig");
+
+test {
+    _ = topo;
+    _ = ops;
+}
+
+
+

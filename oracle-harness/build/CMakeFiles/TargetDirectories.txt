@@ -1,4 +1,0 @@
-/media/hassaan/x/coding/open-cad/oracle-harness/build/CMakeFiles/cad_differential_runner.dir
-/media/hassaan/x/coding/open-cad/oracle-harness/build/CMakeFiles/test.dir
-/media/hassaan/x/coding/open-cad/oracle-harness/build/CMakeFiles/edit_cache.dir
-/media/hassaan/x/coding/open-cad/oracle-harness/build/CMakeFiles/rebuild_cache.dir

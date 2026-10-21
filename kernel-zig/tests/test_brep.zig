@@ -31,3 +31,4 @@ test "B-Rep Cylinder: Topology and leak check" {
     const stats = cyl.getStats();
     try testing.expectEqual(@as(i32, 2), stats.euler_characteristic);
 }
+

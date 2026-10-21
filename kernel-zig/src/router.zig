@@ -42,6 +42,16 @@ pub const Router = struct {
         const idx: usize = @intCast(raw);
         return self.backends[idx];
     }
+
+    pub fn shouldRouteToOracle(self: *const Router, op: CadOpType) bool {
+        return self.getBackend(op) == .COracle;
+    }
+
+    pub fn shouldRouteToNative(self: *const Router, op: CadOpType) bool {
+        const b = self.getBackend(op);
+        return b == .NativeZig or b == .Auto;
+    }
 };
 
 pub var global_router: Router = Router.init();
+

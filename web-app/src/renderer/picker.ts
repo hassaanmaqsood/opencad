@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SubShapeSelection } from '../types/cad';
+import { SubShapeSelection, decodeCadTopoId } from '../types/cad';
 import { MeshManager } from './mesh_manager';
 
 export class CadPicker {
@@ -26,21 +26,8 @@ export class CadPicker {
 
     // 1. If edge picking is preferred or when testing edge lines
     if (preferEdge) {
-      const edgeIntersects = this.raycaster.intersectObject(this.meshManager.edgeLines);
-      if (edgeIntersects.length > 0) {
-        const hit = edgeIntersects[0];
-        // In LineSegments, segment index is index / 2
-        const segmentIndex = hit.index !== undefined ? Math.floor(hit.index / 2) : 0;
-        const edgeId = this.meshManager.getEdgeIdFromSegmentIndex(segmentIndex);
-        if (edgeId !== null) {
-          return {
-            type: 'edge',
-            edgeId,
-            point: [hit.point.x, hit.point.y, hit.point.z],
-            label: this.meshManager.getEdgeLabel(edgeId),
-          };
-        }
-      }
+      const edgeHit = this.pickEdge();
+      if (edgeHit.type === 'edge') return edgeHit;
     }
 
     // 2. Pick Solid Mesh Faces
@@ -49,16 +36,21 @@ export class CadPicker {
       const hit = solidIntersects[0];
       const faceIndex = hit.faceIndex;
       if (faceIndex !== undefined && faceIndex !== null) {
+        const topoId = this.meshManager.getFaceTopoIdFromTriangleIndex(faceIndex);
         const faceId = this.meshManager.getFaceIdFromTriangleIndex(faceIndex);
-        if (faceId !== null) {
+        if (topoId !== null || faceId !== null) {
+          const finalTopoId = topoId !== null ? topoId : BigInt(faceId!);
+          const decoded = decodeCadTopoId(finalTopoId);
           return {
             type: 'face',
-            faceId,
+            faceId: faceId ?? Number(finalTopoId & 0xffffn),
+            topoId: finalTopoId,
+            decodedTopo: decoded,
             point: [hit.point.x, hit.point.y, hit.point.z],
             normal: hit.face
               ? [hit.face.normal.x, hit.face.normal.y, hit.face.normal.z]
               : undefined,
-            label: this.meshManager.getFaceLabel(faceId),
+            label: this.meshManager.getFaceTopoLabel(finalTopoId),
           };
         }
       }
@@ -66,22 +58,33 @@ export class CadPicker {
 
     // 3. Fallback to check edge if not checked previously
     if (!preferEdge) {
-      const edgeIntersects = this.raycaster.intersectObject(this.meshManager.edgeLines);
-      if (edgeIntersects.length > 0) {
-        const hit = edgeIntersects[0];
-        const segmentIndex = hit.index !== undefined ? Math.floor(hit.index / 2) : 0;
-        const edgeId = this.meshManager.getEdgeIdFromSegmentIndex(segmentIndex);
-        if (edgeId !== null) {
-          return {
-            type: 'edge',
-            edgeId,
-            point: [hit.point.x, hit.point.y, hit.point.z],
-            label: this.meshManager.getEdgeLabel(edgeId),
-          };
-        }
-      }
+      const edgeHit = this.pickEdge();
+      if (edgeHit.type === 'edge') return edgeHit;
     }
 
+    return { type: 'none' };
+  }
+
+  private pickEdge(): SubShapeSelection {
+    const edgeIntersects = this.raycaster.intersectObject(this.meshManager.edgeLines);
+    if (edgeIntersects.length > 0) {
+      const hit = edgeIntersects[0];
+      const segmentIndex = hit.index !== undefined ? Math.floor(hit.index / 2) : 0;
+      const topoId = this.meshManager.getEdgeTopoIdFromSegmentIndex(segmentIndex);
+      const edgeId = this.meshManager.getEdgeIdFromSegmentIndex(segmentIndex);
+      if (topoId !== null || edgeId !== null) {
+        const finalTopoId = topoId !== null ? topoId : BigInt(edgeId!);
+        const decoded = decodeCadTopoId(finalTopoId);
+        return {
+          type: 'edge',
+          edgeId: edgeId ?? Number(finalTopoId & 0xffffn),
+          topoId: finalTopoId,
+          decodedTopo: decoded,
+          point: [hit.point.x, hit.point.y, hit.point.z],
+          label: this.meshManager.getEdgeTopoLabel(finalTopoId),
+        };
+      }
+    }
     return { type: 'none' };
   }
 

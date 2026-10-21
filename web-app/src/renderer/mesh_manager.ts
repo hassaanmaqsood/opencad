@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { CadMeshRawBuffers } from '../types/cad';
+import {
+  CadMeshRawBuffers,
+  CadTessellatedSolidSlice,
+  formatCadTopoId,
+} from '../types/cad';
 
 export class MeshManager {
   public group: THREE.Group;
@@ -10,8 +14,11 @@ export class MeshManager {
   public highlightEdgeLines: THREE.LineSegments;
 
   private currentBuffers: CadMeshRawBuffers | null = null;
+  private currentSlice: CadTessellatedSolidSlice | null = null;
   private triangleToFaceId: Uint32Array | null = null;
   private edgeIds: Uint32Array | null = null;
+  private triangleToTopoId: BigUint64Array | null = null;
+  private edgeToTopoId: BigUint64Array | null = null;
   private solidType: string = 'box';
 
   constructor() {
@@ -86,8 +93,11 @@ export class MeshManager {
    */
   public updateGeometry(buffers: CadMeshRawBuffers): void {
     this.currentBuffers = buffers;
+    this.currentSlice = null;
     this.triangleToFaceId = buffers.triangleToFaceId;
     this.edgeIds = buffers.edgeIds;
+    this.triangleToTopoId = null;
+    this.edgeToTopoId = null;
     this.solidType = buffers.metadata.solidType;
 
     // Reset highlights
@@ -139,40 +149,157 @@ export class MeshManager {
   }
 
   /**
+   * Updates Three.js geometries from a CadTessellatedSolidSlice (Wave 3 persistent CadTopoId).
+   */
+  public updateFromSlice(slice: CadTessellatedSolidSlice): void {
+    this.currentSlice = slice;
+    this.currentBuffers = null;
+    this.triangleToTopoId = slice.triangleToFaceId;
+    this.edgeToTopoId = slice.edgeToTopoId;
+    this.solidType = slice.metadata.solidType || 'parametric-dag';
+
+    // Populate backward-compatible Uint32 arrays
+    const triCount = slice.triangleToFaceId.length;
+    this.triangleToFaceId = new Uint32Array(triCount);
+    for (let i = 0; i < triCount; i++) {
+      this.triangleToFaceId[i] = Number(slice.triangleToFaceId[i] & 0xffffn);
+    }
+
+    const edgeCount = slice.edgeToTopoId.length;
+    this.edgeIds = new Uint32Array(edgeCount);
+    for (let i = 0; i < edgeCount; i++) {
+      this.edgeIds[i] = Number(slice.edgeToTopoId[i] & 0xffffn);
+    }
+
+    // Reset highlights
+    this.setHighlightedFace(null);
+    this.setHighlightedEdge(null);
+
+    // Construct Solid BufferGeometry
+    const solidGeometry = new THREE.BufferGeometry();
+    solidGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(slice.positions, 3)
+    );
+    solidGeometry.setAttribute(
+      'normal',
+      new THREE.BufferAttribute(slice.normals, 3)
+    );
+    solidGeometry.setIndex(new THREE.BufferAttribute(slice.indices, 1));
+
+    solidGeometry.computeBoundingBox();
+    solidGeometry.computeBoundingSphere();
+
+    this.solidMesh.geometry.dispose();
+    this.solidMesh.geometry = solidGeometry;
+
+    // Construct Edge Lines BufferGeometry
+    const edgeGeometry = new THREE.BufferGeometry();
+    edgeGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(slice.edgePolylines, 3)
+    );
+    this.edgeLines.geometry.dispose();
+    this.edgeLines.geometry = edgeGeometry;
+  }
+
+  /**
    * Look up face ID in O(1) from raycaster triangle index.
    */
   public getFaceIdFromTriangleIndex(triangleIndex: number): number | null {
-    if (!this.triangleToFaceId || triangleIndex < 0 || triangleIndex >= this.triangleToFaceId.length) {
-      return null;
+    if (this.triangleToFaceId && triangleIndex >= 0 && triangleIndex < this.triangleToFaceId.length) {
+      return this.triangleToFaceId[triangleIndex];
     }
-    return this.triangleToFaceId[triangleIndex];
+    return null;
+  }
+
+  /**
+   * Look up persistent 64-bit CadTopoId from raycaster triangle index.
+   */
+  public getFaceTopoIdFromTriangleIndex(triangleIndex: number): bigint | null {
+    if (this.triangleToTopoId && triangleIndex >= 0 && triangleIndex < this.triangleToTopoId.length) {
+      return this.triangleToTopoId[triangleIndex];
+    }
+    if (this.triangleToFaceId && triangleIndex >= 0 && triangleIndex < this.triangleToFaceId.length) {
+      return BigInt(this.triangleToFaceId[triangleIndex]);
+    }
+    return null;
   }
 
   /**
    * Look up edge ID from edge line segment index.
    */
   public getEdgeIdFromSegmentIndex(segmentIndex: number): number | null {
-    if (!this.edgeIds || segmentIndex < 0 || segmentIndex >= this.edgeIds.length) {
-      return null;
+    if (this.edgeIds && segmentIndex >= 0 && segmentIndex < this.edgeIds.length) {
+      return this.edgeIds[segmentIndex];
     }
-    return this.edgeIds[segmentIndex];
+    return null;
+  }
+
+  /**
+   * Look up persistent 64-bit CadTopoId from edge line segment index.
+   */
+  public getEdgeTopoIdFromSegmentIndex(segmentIndex: number): bigint | null {
+    if (this.edgeToTopoId && segmentIndex >= 0 && segmentIndex < this.edgeToTopoId.length) {
+      return this.edgeToTopoId[segmentIndex];
+    }
+    if (this.edgeIds && segmentIndex >= 0 && segmentIndex < this.edgeIds.length) {
+      return BigInt(this.edgeIds[segmentIndex]);
+    }
+    return null;
   }
 
   /**
    * Highlights a discrete topological face by extracting its triangles.
+   * Supports both legacy faceId (number) and 64-bit persistent CadTopoId (bigint).
    */
-  public setHighlightedFace(faceId: number | null): void {
-    if (faceId === null || !this.currentBuffers || !this.triangleToFaceId) {
+  public setHighlightedFace(faceId: bigint | number | null): void {
+    if (faceId === null) {
       this.highlightFaceMesh.visible = false;
       return;
     }
 
+    if (this.currentSlice && this.triangleToTopoId) {
+      const { positions, normals, indices } = this.currentSlice;
+      const triCount = indices.length / 3;
+      const matchedIndices: number[] = [];
+      const targetBig = typeof faceId === 'bigint' ? faceId : BigInt(faceId);
+
+      for (let t = 0; t < triCount; t++) {
+        const tid = this.triangleToTopoId[t];
+        if (tid === targetBig || (typeof faceId === 'number' && Number(tid & 0xffffn) === faceId)) {
+          matchedIndices.push(indices[t * 3], indices[t * 3 + 1], indices[t * 3 + 2]);
+        }
+      }
+
+      if (matchedIndices.length === 0) {
+        this.highlightFaceMesh.visible = false;
+        return;
+      }
+
+      const highlightGeometry = new THREE.BufferGeometry();
+      highlightGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      highlightGeometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+      highlightGeometry.setIndex(new THREE.BufferAttribute(new Uint32Array(matchedIndices), 1));
+
+      this.highlightFaceMesh.geometry.dispose();
+      this.highlightFaceMesh.geometry = highlightGeometry;
+      this.highlightFaceMesh.visible = true;
+      return;
+    }
+
+    if (!this.currentBuffers || !this.triangleToFaceId) {
+      this.highlightFaceMesh.visible = false;
+      return;
+    }
+
+    const targetNum = typeof faceId === 'bigint' ? Number(faceId & 0xffffn) : faceId;
     const { positions, normals, indices } = this.currentBuffers;
     const triCount = indices.length / 3;
     const matchedIndices: number[] = [];
 
     for (let t = 0; t < triCount; t++) {
-      if (this.triangleToFaceId[t] === faceId) {
+      if (this.triangleToFaceId[t] === targetNum) {
         matchedIndices.push(indices[t * 3], indices[t * 3 + 1], indices[t * 3 + 2]);
       }
     }
@@ -194,19 +321,59 @@ export class MeshManager {
 
   /**
    * Highlights a sharp feature edge by extracting its line vertices.
+   * Supports both legacy edgeId (number) and 64-bit persistent CadTopoId (bigint).
    */
-  public setHighlightedEdge(edgeId: number | null): void {
-    if (edgeId === null || !this.currentBuffers || !this.edgeIds) {
+  public setHighlightedEdge(edgeId: bigint | number | null): void {
+    if (edgeId === null) {
       this.highlightEdgeLines.visible = false;
       return;
     }
 
+    if (this.currentSlice && this.edgeToTopoId) {
+      const { edgePolylines } = this.currentSlice;
+      const totalSegments = this.edgeToTopoId.length;
+      const matchedVertices: number[] = [];
+      const targetBig = typeof edgeId === 'bigint' ? edgeId : BigInt(edgeId);
+
+      for (let s = 0; s < totalSegments; s++) {
+        const eid = this.edgeToTopoId[s];
+        if (eid === targetBig || (typeof edgeId === 'number' && Number(eid & 0xffffn) === edgeId)) {
+          const offset = s * 6;
+          for (let i = 0; i < 6; i++) {
+            matchedVertices.push(edgePolylines[offset + i]);
+          }
+        }
+      }
+
+      if (matchedVertices.length === 0) {
+        this.highlightEdgeLines.visible = false;
+        return;
+      }
+
+      const highlightGeometry = new THREE.BufferGeometry();
+      highlightGeometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(new Float32Array(matchedVertices), 3)
+      );
+
+      this.highlightEdgeLines.geometry.dispose();
+      this.highlightEdgeLines.geometry = highlightGeometry;
+      this.highlightEdgeLines.visible = true;
+      return;
+    }
+
+    if (!this.currentBuffers || !this.edgeIds) {
+      this.highlightEdgeLines.visible = false;
+      return;
+    }
+
+    const targetNum = typeof edgeId === 'bigint' ? Number(edgeId & 0xffffn) : edgeId;
     const { edgeVertices } = this.currentBuffers;
     const totalSegments = this.edgeIds.length;
     const matchedVertices: number[] = [];
 
     for (let s = 0; s < totalSegments; s++) {
-      if (this.edgeIds[s] === edgeId) {
+      if (this.edgeIds[s] === targetNum) {
         const offset = s * 6;
         for (let i = 0; i < 6; i++) {
           matchedVertices.push(edgeVertices[offset + i]);
@@ -255,6 +422,13 @@ export class MeshManager {
     return `Face #${faceId}`;
   }
 
+  public getFaceTopoLabel(topoId: bigint | number): string {
+    if (this.currentSlice) {
+      return formatCadTopoId(topoId);
+    }
+    return this.getFaceLabel(typeof topoId === 'bigint' ? Number(topoId & 0xffffn) : topoId);
+  }
+
   public getEdgeLabel(edgeId: number): string {
     if (this.solidType === 'cylinder') {
       const labels: Record<number, string> = {
@@ -265,4 +439,12 @@ export class MeshManager {
     }
     return `Edge #${edgeId}`;
   }
+
+  public getEdgeTopoLabel(topoId: bigint | number): string {
+    if (this.currentSlice) {
+      return formatCadTopoId(topoId);
+    }
+    return this.getEdgeLabel(typeof topoId === 'bigint' ? Number(topoId & 0xffffn) : topoId);
+  }
 }
+

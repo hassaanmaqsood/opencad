@@ -152,3 +152,111 @@ pub const CadSolverStatus = extern struct {
     conflicting_constraint_ids: ?[*]const u32,
     conflicting_count: u32,
 };
+
+// ---------------------------------------------------------------------------
+// Wave 3: Feature DAG, Topological Naming & Sub-Shape Tessellation Types
+// ---------------------------------------------------------------------------
+
+pub const CadSubshapeType = enum(u4) {
+    Vertex = 0,
+    Edge = 1,
+    Face = 2,
+    Shell = 3,
+};
+
+pub const CadTopoId = extern union {
+    raw: u64,
+    fields: packed struct(u64) {
+        origin_feature_id: u16,
+        source_sketch_entity_id: u16,
+        op_type: u8,
+        subshape_type: u4,
+        flags: u4,
+        subshape_hash: u16,
+    },
+
+    pub const INVALID: CadTopoId = .{ .raw = 0 };
+
+    pub fn init(
+        origin_feature: u16,
+        source_sketch_entity: u16,
+        op_type: u8,
+        subshape_type: CadSubshapeType,
+        flags: u4,
+        subshape_hash: u16,
+    ) CadTopoId {
+        return .{
+            .fields = .{
+                .origin_feature_id = origin_feature,
+                .source_sketch_entity_id = source_sketch_entity,
+                .op_type = op_type,
+                .subshape_type = @intFromEnum(subshape_type),
+                .flags = flags,
+                .subshape_hash = subshape_hash,
+            },
+        };
+    }
+};
+
+pub const CadFeatureType = enum(c_int) {
+    Sketch = 0,
+    Extrude = 1,
+    Revolve = 2,
+    BooleanUnion = 3,
+    BooleanCut = 4,
+    BooleanIntersect = 5,
+    Fillet = 6,
+    Chamfer = 7,
+};
+
+pub const CAD_MAX_FEATURE_PARENTS: usize = 8;
+pub const CAD_MAX_FEATURE_TARGETS: usize = 16;
+
+pub const CadFeatureParams = extern union {
+    extrude: extern struct {
+        distance: f64,
+        direction: CadVec3,
+        symmetric: u8,
+    },
+    revolve: extern struct {
+        angle_rad: f64,
+        axis_origin: CadVec3,
+        axis_direction: CadVec3,
+    },
+    fillet: extern struct {
+        radius: f64,
+    },
+    chamfer: extern struct {
+        distance: f64,
+        angle_rad: f64,
+    },
+    boolean_op: extern struct {
+        tool_feature_id: u32,
+    },
+};
+
+pub const CadFeatureNode = extern struct {
+    feature_id: u32,
+    type: CadFeatureType,
+    is_suppressed: u8,
+    parent_count: u32,
+    parent_ids: [CAD_MAX_FEATURE_PARENTS]u32,
+    target_topo_count: u32,
+    target_topo_ids: [CAD_MAX_FEATURE_TARGETS]CadTopoId,
+    params: CadFeatureParams,
+};
+
+pub const CadTessellatedSolidSlice = extern struct {
+    positions: ?[*]const f32,
+    vertex_count: u32,
+    normals: ?[*]const f32,
+    indices: ?[*]const u32,
+    triangle_count: u32,
+    triangle_to_face_id: ?[*]const u64,
+    edge_polylines: ?[*]const f32,
+    edge_segment_count: u32,
+    edge_to_topo_id: ?[*]const u64,
+    bbox_min: CadVec3,
+    bbox_max: CadVec3,
+};
+

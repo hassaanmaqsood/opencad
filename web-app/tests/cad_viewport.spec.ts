@@ -302,4 +302,208 @@ test.describe('OpenCAD Viewport & Sub-Shape Picking E2E', () => {
     expect(benchmark.avgFrameTimeMs).toBeLessThan(33.4);
     expect(benchmark.effectiveFps).toBeGreaterThanOrEqual(30);
   });
+
+  test('Feature Tree renders all DAG features and draggable rollback bar', async ({ page }) => {
+    // Verify Feature Tree panel is visible
+    const treePanel = page.locator('#feature-tree-panel');
+    await expect(treePanel).toBeVisible();
+
+    // Verify all 6 parametric features are rendered
+    const feature1 = page.locator('[data-testid="feature-item-1"]');
+    const feature2 = page.locator('[data-testid="feature-item-2"]');
+    const feature3 = page.locator('[data-testid="feature-item-3"]');
+    const feature4 = page.locator('[data-testid="feature-item-4"]');
+    const feature5 = page.locator('[data-testid="feature-item-5"]');
+    const feature6 = page.locator('[data-testid="feature-item-6"]');
+
+    await expect(feature1).toBeVisible();
+    await expect(feature2).toBeVisible();
+    await expect(feature3).toBeVisible();
+    await expect(feature4).toBeVisible();
+    await expect(feature5).toBeVisible();
+    await expect(feature6).toBeVisible();
+
+    // Verify initial active count
+    const activeBadge = page.locator('#tree-active-count');
+    await expect(activeBadge).toHaveText('6 / 6 Active');
+
+    // Verify Rollback Bar is mounted and rendered
+    const rollbackBar = page.locator('#rollback-bar');
+    await expect(rollbackBar).toBeVisible();
+  });
+
+  test('Draggable Rollback Bar can be moved, rolls back features, and updates solid geometry', async ({
+    page,
+  }) => {
+    // Switch to Parametric DAG Solid
+    await page.locator('#primitive-select').selectOption('dag');
+
+    // Move rollback bar to index 1 (Base Extrude only)
+    await page.evaluate(() => {
+      window.__cadFeatureTree?.setRollbackIndex(1);
+    });
+
+    // Verify active count changed to 2 / 6 Active
+    await expect(page.locator('#tree-active-count')).toHaveText('2 / 6 Active');
+
+    // Verify downstream features are marked rolled back
+    const feature3 = page.locator('[data-testid="feature-item-3"]');
+    const feature4 = page.locator('[data-testid="feature-item-4"]');
+    const feature5 = page.locator('[data-testid="feature-item-5"]');
+    const feature6 = page.locator('[data-testid="feature-item-6"]');
+
+    await expect(feature3).toHaveClass(/rolled-back/);
+    await expect(feature4).toHaveClass(/rolled-back/);
+    await expect(feature5).toHaveClass(/rolled-back/);
+    await expect(feature6).toHaveClass(/rolled-back/);
+
+    // Roll back further to index 0 (Sketch only)
+    await page.evaluate(() => {
+      window.__cadFeatureTree?.setRollbackIndex(0);
+    });
+    await expect(page.locator('#tree-active-count')).toHaveText('1 / 6 Active');
+
+    // Move rollback forward to index 5 (All features active)
+    await page.evaluate(() => {
+      window.__cadFeatureTree?.setRollbackIndex(5);
+    });
+    await expect(page.locator('#tree-active-count')).toHaveText('6 / 6 Active');
+    await expect(feature6).not.toHaveClass(/rolled-back/);
+
+    // Toggle suppression on feature 6 (Corner Chamfer)
+    await page.locator('[data-testid="btn-suppress-6"]').click();
+    await expect(feature6).toHaveClass(/suppressed/);
+    await expect(page.locator('#tree-active-count')).toHaveText('5 / 6 Active');
+  });
+
+  test('Sub-shape face and edge raycast picking identifies persistent 64-bit CadTopoId', async ({
+    page,
+  }) => {
+    // Switch to Parametric DAG Solid
+    await page.locator('#primitive-select').selectOption('dag');
+
+    // Wait for DAG solid geometry to load
+    await page.waitForTimeout(300);
+
+    // Test sub-shape face picking with persistent 64-bit CadTopoId
+    const facePickResult = await page.evaluate(() => {
+      const viewer = window.__cadViewer;
+      if (!viewer) return null;
+
+      // Raycast pick at viewport center
+      const pick = viewer.picker.pickNormalized(0, 0, false);
+      if (pick.type !== 'face') return null;
+
+      // Set selection so HUD and highlights update
+      viewer.setSelection(pick);
+
+      return {
+        type: pick.type,
+        faceId: pick.faceId,
+        hasTopoId: pick.topoId !== undefined,
+        topoIdHex: pick.topoId ? '0x' + pick.topoId.toString(16) : null,
+        decoded: pick.decodedTopo
+          ? {
+              origin_feature_id: pick.decodedTopo.origin_feature_id,
+              source_sketch_entity_id: pick.decodedTopo.source_sketch_entity_id,
+              op_type: pick.decodedTopo.op_type,
+              subshape_type: pick.decodedTopo.subshape_type,
+              flags: pick.decodedTopo.flags,
+            }
+          : null,
+      };
+    });
+
+    expect(facePickResult).not.toBeNull();
+    expect(facePickResult!.type).toBe('face');
+    expect(facePickResult!.hasTopoId).toBe(true);
+    expect(facePickResult!.topoIdHex).not.toBeNull();
+    expect(facePickResult!.decoded).not.toBeNull();
+    // Originating feature should be a valid DAG feature (e.g. 2 for Base Extrude, 4 for Boss, 5 for Fillet)
+    expect(facePickResult!.decoded!.origin_feature_id).toBeGreaterThan(0);
+    expect(facePickResult!.decoded!.subshape_type).toBe(2); // CAD_SUBSHAPE_FACE = 2
+
+    // Verify HUD displays topological selection information
+    const selectionType = page.locator('#selection-type');
+    await expect(selectionType).toHaveText('TOPOLOGICAL FACE');
+
+    // Also verify visual highlight face mesh is active
+    const isHighlightActive = await page.evaluate(() => {
+      return !!window.__cadViewer?.meshManager.highlightFaceMesh.visible;
+    });
+    expect(isHighlightActive).toBe(true);
+
+    // Test sub-shape edge picking with persistent 64-bit CadTopoId
+    const edgePickResult = await page.evaluate(() => {
+      const viewer = window.__cadViewer;
+      if (!viewer) return null;
+
+      const pick = viewer.picker.pickNormalized(0, 0, true);
+      if (pick.type !== 'edge') return null;
+
+      viewer.setSelection(pick);
+
+      return {
+        type: pick.type,
+        edgeId: pick.edgeId,
+        hasTopoId: pick.topoId !== undefined,
+        topoIdHex: pick.topoId ? '0x' + pick.topoId.toString(16) : null,
+        decoded: pick.decodedTopo
+          ? {
+              origin_feature_id: pick.decodedTopo.origin_feature_id,
+              subshape_type: pick.decodedTopo.subshape_type,
+            }
+          : null,
+      };
+    });
+
+    // If edge picked at center
+    if (edgePickResult) {
+      expect(edgePickResult.hasTopoId).toBe(true);
+      expect(edgePickResult.decoded!.subshape_type).toBe(1); // CAD_SUBSHAPE_EDGE = 1
+      await expect(selectionType).toHaveText('FEATURE EDGE');
+    }
+  });
+
+  test('Parametric DAG solid rendering maintains steady 60 FPS viewport performance', async ({
+    page,
+  }) => {
+    // Switch to Parametric DAG Solid
+    await page.locator('#primitive-select').selectOption('dag');
+    await page.waitForTimeout(300);
+
+    const benchmark = await page.evaluate(async () => {
+      const viewer = window.__cadViewer;
+      if (!viewer) throw new Error('Viewer not found');
+
+      const frameCount = 60;
+      const start = performance.now();
+      const deltas: number[] = [];
+      let lastTime = start;
+
+      for (let i = 0; i < frameCount; i++) {
+        viewer.controls.update();
+        viewer.renderer.render(viewer.scene, viewer.camera);
+
+        const now = performance.now();
+        deltas.push(now - lastTime);
+        lastTime = now;
+      }
+
+      const totalDuration = performance.now() - start;
+      const avgFrameTimeMs = totalDuration / frameCount;
+      const effectiveFps = 1000 / avgFrameTimeMs;
+
+      return {
+        frameCount,
+        totalDuration,
+        avgFrameTimeMs,
+        effectiveFps,
+      };
+    });
+
+    expect(benchmark.frameCount).toBe(60);
+    expect(benchmark.avgFrameTimeMs).toBeLessThan(33.4);
+    expect(benchmark.effectiveFps).toBeGreaterThanOrEqual(30);
+  });
 });

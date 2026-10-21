@@ -44,11 +44,17 @@ struct InternalSolid {
 
 static uint64_t g_next_handle = 1000;
 static std::unordered_map<uint64_t, InternalSolid> g_solids;
+static std::unordered_map<uint32_t, cad_solid_handle_t> g_feature_solids;
+static std::unordered_map<uint32_t, std::vector<float>> g_feature_sketches;
+static uint32_t g_current_rollback_index = 0xFFFFFFFFU;
 
 } // anonymous namespace
 
 cad_status_t occ_kernel_init(void) {
     g_solids.clear();
+    g_feature_solids.clear();
+    g_feature_sketches.clear();
+    g_current_rollback_index = 0xFFFFFFFFU;
     g_next_handle = 1000;
     return CAD_STATUS_OK;
 }
@@ -446,3 +452,124 @@ cad_status_t occ_solid_release(cad_solid_handle_t solid) {
     }
     return CAD_STATUS_ERROR_INVALID_ARGUMENT;
 }
+
+cad_status_t occ_dag_register_feature_solid(uint32_t feature_id, cad_solid_handle_t solid) {
+    g_feature_solids[feature_id] = solid;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t occ_dag_register_sketch(uint32_t feature_id, const float* points, uint32_t num_points) {
+    if (!points || num_points < 3) return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    g_feature_sketches[feature_id].assign(points, points + num_points * 2);
+    return CAD_STATUS_OK;
+}
+
+cad_status_t occ_dag_set_rollback_index(uint32_t rollback_index) {
+    g_current_rollback_index = rollback_index;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t occ_dag_evaluate(
+    const cad_feature_node_t* nodes,
+    uint32_t node_count,
+    uint32_t rollback_index,
+    cad_solid_handle_t* out_solid
+) {
+    if (!nodes || node_count == 0 || !out_solid) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    uint32_t effective_limit = (rollback_index < node_count) ? rollback_index : (node_count - 1);
+    cad_solid_handle_t active_solid = CAD_INVALID_HANDLE;
+
+    // Use evaluation-local feature map seeded with currently valid registered solids
+    std::unordered_map<uint32_t, cad_solid_handle_t> eval_features;
+    for (const auto& kv : g_feature_solids) {
+        if (g_solids.find(kv.second) != g_solids.end()) {
+            eval_features[kv.first] = kv.second;
+        }
+    }
+
+    for (uint32_t i = 0; i <= effective_limit; ++i) {
+        const auto& node = nodes[i];
+        if (node.is_suppressed) {
+            continue;
+        }
+
+        if (node.type == CAD_FEATURE_EXTRUDE) {
+            float depth = static_cast<float>(node.params.extrude.distance);
+            if (depth <= 0.0f) depth = 10.0f;
+            cad_vec3_t dir = node.params.extrude.direction;
+            if (dir.x == 0.0f && dir.y == 0.0f && dir.z == 0.0f) {
+                dir.z = depth;
+            } else {
+                dir.x *= depth;
+                dir.y *= depth;
+                dir.z *= depth;
+            }
+
+            auto it_sol = eval_features.find(node.feature_id);
+            if (it_sol != eval_features.end() && g_solids.find(it_sol->second) != g_solids.end()) {
+                active_solid = it_sol->second;
+            } else {
+                auto it_sk = g_feature_sketches.find(node.feature_id);
+                if (it_sk == g_feature_sketches.end() && node.parent_count > 0) {
+                    it_sk = g_feature_sketches.find(node.parent_ids[0]);
+                }
+
+                cad_solid_handle_t new_solid = CAD_INVALID_HANDLE;
+                if (it_sk != g_feature_sketches.end() && it_sk->second.size() >= 6) {
+                    uint32_t n_pts = static_cast<uint32_t>(it_sk->second.size() / 2);
+                    occ_op_extrude(it_sk->second.data(), n_pts, dir, &new_solid);
+                } else {
+                    // Default base plate extrusion: 50.0 x 40.0 x depth
+                    occ_primitive_box(50.0f, 40.0f, depth, &new_solid);
+                }
+
+                active_solid = new_solid;
+                eval_features[node.feature_id] = new_solid;
+            }
+        } else if (node.type == CAD_FEATURE_BOOLEAN_UNION) {
+            uint32_t tool_id = node.params.boolean_op.tool_feature_id;
+            auto it_tool = eval_features.find(tool_id);
+            if (it_tool != eval_features.end() && active_solid != CAD_INVALID_HANDLE) {
+                cad_solid_handle_t union_solid = CAD_INVALID_HANDLE;
+                cad_status_t status = occ_op_boolean(CAD_OP_BOOLEAN_UNION, active_solid, it_tool->second, &union_solid);
+                if (status == CAD_STATUS_OK) {
+                    active_solid = union_solid;
+                    eval_features[node.feature_id] = union_solid;
+                }
+            }
+        } else if (node.type == CAD_FEATURE_BOOLEAN_CUT) {
+            uint32_t tool_id = node.params.boolean_op.tool_feature_id;
+            auto it_tool = eval_features.find(tool_id);
+            if (it_tool != eval_features.end() && active_solid != CAD_INVALID_HANDLE) {
+                cad_solid_handle_t cut_solid = CAD_INVALID_HANDLE;
+                cad_status_t status = occ_op_boolean(CAD_OP_BOOLEAN_DIFFERENCE, active_solid, it_tool->second, &cut_solid);
+                if (status == CAD_STATUS_OK) {
+                    active_solid = cut_solid;
+                    eval_features[node.feature_id] = cut_solid;
+                }
+            }
+        } else if (node.type == CAD_FEATURE_BOOLEAN_INTERSECT) {
+            uint32_t tool_id = node.params.boolean_op.tool_feature_id;
+            auto it_tool = eval_features.find(tool_id);
+            if (it_tool != eval_features.end() && active_solid != CAD_INVALID_HANDLE) {
+                cad_solid_handle_t int_solid = CAD_INVALID_HANDLE;
+                cad_status_t status = occ_op_boolean(CAD_OP_BOOLEAN_INTERSECTION, active_solid, it_tool->second, &int_solid);
+                if (status == CAD_STATUS_OK) {
+                    active_solid = int_solid;
+                    eval_features[node.feature_id] = int_solid;
+                }
+            }
+        }
+    }
+
+    if (active_solid == CAD_INVALID_HANDLE) {
+        return CAD_STATUS_ERROR_OP_FAILED;
+    }
+
+    *out_solid = active_solid;
+    return CAD_STATUS_OK;
+}
+

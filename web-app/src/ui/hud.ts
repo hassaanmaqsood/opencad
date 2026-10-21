@@ -1,7 +1,13 @@
-import { CadMeshMetadata, SolidGenerationRequest, SubShapeSelection } from '../types/cad';
+import {
+  CadMeshMetadata,
+  CadTessellatedSliceMetadata,
+  SolidGenerationRequest,
+  SubShapeSelection,
+} from '../types/cad';
 
 export interface HudCallbacks {
   onGenerate: (request: SolidGenerationRequest) => void;
+  onSelectDag?: () => void;
 }
 
 export class CadHud {
@@ -65,11 +71,18 @@ export class CadHud {
       if (type === 'box') {
         this.boxControls.style.display = 'block';
         this.cylinderControls.style.display = 'none';
-      } else {
+        this.triggerGenerate();
+      } else if (type === 'cylinder') {
         this.boxControls.style.display = 'none';
         this.cylinderControls.style.display = 'block';
+        this.triggerGenerate();
+      } else if (type === 'dag') {
+        this.boxControls.style.display = 'none';
+        this.cylinderControls.style.display = 'none';
+        if (this.callbacks.onSelectDag) {
+          this.callbacks.onSelectDag();
+        }
       }
-      this.triggerGenerate();
     });
 
     this.btnGenerate.addEventListener('click', () => {
@@ -102,7 +115,7 @@ export class CadHud {
         solidType: 'box',
         params: { width, height, depth },
       });
-    } else {
+    } else if (type === 'cylinder') {
       const radius = parseFloat(this.cylRadiusInput.value) || 1.2;
       const height = parseFloat(this.cylHeightInput.value) || 2.5;
 
@@ -110,6 +123,10 @@ export class CadHud {
         solidType: 'cylinder',
         params: { radius, height, radialSegments: 32 },
       });
+    } else if (type === 'dag') {
+      if (this.callbacks.onSelectDag) {
+        this.callbacks.onSelectDag();
+      }
     }
   }
 
@@ -118,10 +135,11 @@ export class CadHud {
     this.frameTimeEl.textContent = `${frameTimeMs.toFixed(1)} ms`;
   }
 
-  public updateMetadata(metadata: CadMeshMetadata): void {
+  public updateMetadata(metadata: CadMeshMetadata | CadTessellatedSliceMetadata): void {
     this.statVerticesEl.textContent = metadata.vertexCount.toString();
     this.statTrianglesEl.textContent = metadata.triangleCount.toString();
-    this.statEdgesEl.textContent = metadata.edgeCount.toString();
+    const edgeCount = 'edgeSegmentCount' in metadata ? metadata.edgeSegmentCount : metadata.edgeCount;
+    this.statEdgesEl.textContent = edgeCount.toString();
     this.statFacesEl.textContent = metadata.faceCount.toString();
   }
 

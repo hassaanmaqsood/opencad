@@ -1,0 +1,8 @@
+.zig-cache/
+zig-out/
+kernel-zig/.zig-cache/
+kernel-zig/zig-out/
+oracle-harness/build/
+web-app/node_modules/
+web-app/dist/
+web-app/test-results/
