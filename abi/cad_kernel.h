@@ -253,6 +253,175 @@ cad_status_t cad_mesh_free(cad_mesh_t* mesh);
  */
 cad_status_t cad_solid_release(cad_solid_handle_t solid);
 
+/* ------------------------------------------------------------------------- */
+/* Wave 2: 2D Parametric Sketch Constraint Solver Interface                   */
+/* ------------------------------------------------------------------------- */
+
+#define CAD_SKETCH_INVALID_ID 0xFFFFFFFFU
+
+/**
+ * @brief 2D Point Primitive in sketch coordinate space.
+ */
+typedef struct cad_sketch_point2d_s {
+    uint32_t id;         /**< Unique point ID within sketch */
+    double x;            /**< X coordinate (f64 precision) */
+    double y;            /**< Y coordinate (f64 precision) */
+    uint8_t is_fixed;    /**< 1 if point is grounded/fixed, 0 otherwise */
+} cad_sketch_point2d_t;
+typedef cad_sketch_point2d_t CadSketchPoint2D;
+
+/**
+ * @brief 2D Line Segment defined by endpoints.
+ */
+typedef struct cad_sketch_line2d_s {
+    uint32_t id;             /**< Unique line ID within sketch */
+    uint32_t start_point_id; /**< ID of start CadSketchPoint2D */
+    uint32_t end_point_id;   /**< ID of end CadSketchPoint2D */
+} cad_sketch_line2d_t;
+typedef cad_sketch_line2d_t CadSketchLine2D;
+
+/**
+ * @brief 2D Circular Arc defined by center, start, end points and radius.
+ */
+typedef struct cad_sketch_arc2d_s {
+    uint32_t id;              /**< Unique arc ID within sketch */
+    uint32_t center_point_id; /**< ID of center CadSketchPoint2D */
+    uint32_t start_point_id;  /**< ID of start CadSketchPoint2D */
+    uint32_t end_point_id;    /**< ID of end CadSketchPoint2D */
+    double radius;            /**< Arc radius */
+} cad_sketch_arc2d_t;
+typedef cad_sketch_arc2d_t CadSketchArc2D;
+
+/**
+ * @brief 2D Circle defined by center point and radius.
+ */
+typedef struct cad_sketch_circle2d_s {
+    uint32_t id;              /**< Unique circle ID within sketch */
+    uint32_t center_point_id; /**< ID of center CadSketchPoint2D */
+    double radius;            /**< Circle radius */
+} cad_sketch_circle2d_t;
+typedef cad_sketch_circle2d_t CadSketchCircle2D;
+
+/**
+ * @brief Geometric constraint types supported by the 2D solver.
+ */
+typedef enum cad_sketch_constraint_type_e {
+    CAD_CONSTRAINT_COINCIDENT = 0,    /**< Two points coincident or point on curve */
+    CAD_CONSTRAINT_PARALLEL = 1,      /**< Two lines parallel */
+    CAD_CONSTRAINT_PERPENDICULAR = 2, /**< Two lines perpendicular */
+    CAD_CONSTRAINT_TANGENT = 3,       /**< Line-arc or arc-arc tangency */
+    CAD_CONSTRAINT_HORIZONTAL = 4,    /**< Line or two points horizontal */
+    CAD_CONSTRAINT_VERTICAL = 5,      /**< Line or two points vertical */
+    CAD_CONSTRAINT_EQUAL = 6,         /**< Equal line length or equal circle/arc radius */
+    CAD_CONSTRAINT_SYMMETRIC = 7,     /**< Two entities symmetric across a line */
+    CAD_CONSTRAINT_DISTANCE = 8,      /**< Dimensional distance constraint */
+    CAD_CONSTRAINT_ANGLE = 9,         /**< Angular constraint (in radians) */
+    CAD_CONSTRAINT_RADIUS = 10        /**< Dimensional radius constraint */
+} cad_sketch_constraint_type_t;
+typedef cad_sketch_constraint_type_t CadSketchConstraintType;
+
+/**
+ * @brief Geometric constraint definition relating sketch entities.
+ */
+typedef struct cad_sketch_constraint_s {
+    uint32_t id;                       /**< Unique constraint ID */
+    cad_sketch_constraint_type_t type; /**< Constraint type */
+    uint32_t entity1_id;               /**< First target entity ID */
+    uint32_t entity2_id;               /**< Second target entity ID (CAD_SKETCH_INVALID_ID if unused) */
+    uint32_t entity3_id;               /**< Third entity ID (e.g. symmetry axis or vertex, CAD_SKETCH_INVALID_ID if unused) */
+    uint32_t entity4_id;               /**< Fourth entity ID (e.g. angle ray endpoint, CAD_SKETCH_INVALID_ID if unused) */
+    double parameter_value;            /**< Target f64 parameter value (distance, angle in radians, or radius) */
+    uint8_t is_driving;                /**< 1 if driving constraint, 0 if reference / driven */
+} cad_sketch_constraint_t;
+typedef cad_sketch_constraint_t CadSketchConstraint;
+
+/**
+ * @brief Convergence and diagnostic state returned by the 2D solver.
+ */
+typedef enum cad_solve_state_e {
+    CAD_SOLVE_STATE_SOLVED = 0,           /**< System converged, residual < tolerance, 0 DOF */
+    CAD_SOLVE_STATE_UNDER_CONSTRAINED = 1,/**< System converged, remaining degrees of freedom > 0 */
+    CAD_SOLVE_STATE_OVER_CONSTRAINED = 2, /**< Redundant consistent constraints detected */
+    CAD_SOLVE_STATE_CONFLICTING = 3       /**< Inconsistent/contradictory constraints prevent solution */
+} cad_solve_state_t;
+typedef cad_solve_state_t CadSolveState;
+
+/**
+ * @brief Diagnostic and convergence results from 2D constraint solving.
+ */
+typedef struct cad_solver_status_s {
+    cad_solve_state_t solve_state;        /**< Convergence outcome */
+    uint32_t degrees_of_freedom;          /**< Remaining degrees of freedom (DOF) */
+    uint32_t iterations;                  /**< Iterations executed */
+    double max_residual;                  /**< Maximum equation residual at termination */
+
+    /* Zero-copy flat memory slices */
+    const double* updated_coords;         /**< Interleaved solved coordinates [x0, y0, x1, y1, ...] */
+    uint32_t coord_count;                 /**< Number of coordinate pairs (points) */
+
+    const uint32_t* conflicting_constraint_ids; /**< IDs of conflicting or over-constraining equations */
+    uint32_t conflicting_count;           /**< Number of conflicting constraint IDs */
+} cad_solver_status_t;
+typedef cad_solver_status_t CadSolverStatus;
+
+/**
+ * @brief Solve a 2D parametric geometric constraint sketch.
+ *
+ * Evaluates non-linear residual equations, computes the sparse Jacobian matrix,
+ * and converges using iterative numerical optimization (Newton-Raphson / Levenberg-Marquardt).
+ *
+ * @param points Array of sketch point entities (updated with solved positions)
+ * @param point_count Number of points in points array
+ * @param lines Array of sketch line entities
+ * @param line_count Number of lines
+ * @param arcs Array of sketch arc entities
+ * @param arc_count Number of arcs
+ * @param circles Array of sketch circle entities
+ * @param circle_count Number of circles
+ * @param constraints Array of geometric constraints
+ * @param constraint_count Number of constraints
+ * @param max_iterations Maximum solver iterations allowed (e.g. 50-100)
+ * @param convergence_tol Residual convergence threshold (e.g. 1e-7)
+ * @param out_status Output status struct containing solve state, DOF, iterations, residual, and diagnostics
+ * @return CAD_STATUS_OK if execution completed (inspect out_status->solve_state for convergence)
+ */
+cad_status_t cad_sketch_solve(
+    cad_sketch_point2d_t* points, uint32_t point_count,
+    const cad_sketch_line2d_t* lines, uint32_t line_count,
+    const cad_sketch_arc2d_t* arcs, uint32_t arc_count,
+    const cad_sketch_circle2d_t* circles, uint32_t circle_count,
+    const cad_sketch_constraint_t* constraints, uint32_t constraint_count,
+    uint32_t max_iterations, double convergence_tol,
+    cad_solver_status_t* out_status
+);
+
+/**
+ * @brief Compute remaining degrees of freedom (DOF) for a 2D sketch without full numerical convergence.
+ *
+ * Performs Rank-Revealing QR (RRQR) decomposition on the system Jacobian to determine
+ * rank deficiency and identify under-constrained variables.
+ *
+ * @param point_count Number of sketch points
+ * @param lines Array of sketch line entities
+ * @param line_count Number of lines
+ * @param arcs Array of sketch arc entities
+ * @param arc_count Number of arcs
+ * @param circles Array of sketch circle entities
+ * @param circle_count Number of circles
+ * @param constraints Array of geometric constraints
+ * @param constraint_count Number of constraints
+ * @param out_dof Output remaining degrees of freedom
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_sketch_get_dof(
+    uint32_t point_count,
+    const cad_sketch_line2d_t* lines, uint32_t line_count,
+    const cad_sketch_arc2d_t* arcs, uint32_t arc_count,
+    const cad_sketch_circle2d_t* circles, uint32_t circle_count,
+    const cad_sketch_constraint_t* constraints, uint32_t constraint_count,
+    uint32_t* out_dof
+);
+
 #ifdef __cplusplus
 }
 #endif

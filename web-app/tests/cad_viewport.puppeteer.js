@@ -450,6 +450,159 @@ async function runCadViewportTestSuite() {
     );
     console.log('[PASS] Dynamic geometry regeneration back to Box verified');
 
+    // =========================================================================
+    // STEP 5: Interactive 2D Sketch Mode & PlaneGCS Constraint Solving
+    // =========================================================================
+    console.log('\n--- Step 5: Interactive 2D Sketch Mode & Constraint Solving ---');
+
+    // 5a. Enter 2D Sketch Mode on XY Plane
+    console.log('[SUBTEST 5a] Entering 2D sketch mode on XY plane...');
+    await page.click('#btn-enter-sketch');
+    await page.waitForSelector('#sketch-toolbar', { visible: true, timeout: 3000 });
+    await page.waitForSelector('#sketch-coord-readout', { visible: true, timeout: 3000 });
+
+    const sketchInitState = await page.evaluate(() => {
+      const viewer = window.__cadViewer;
+      return {
+        inSketchMode: viewer?.sketchManager.inSketchMode,
+        activePlane: viewer?.sketchManager.activePlane,
+        enableRotate: viewer?.controls.enableRotate,
+        camZ: viewer?.camera.position.z,
+      };
+    });
+
+    assert.strictEqual(sketchInitState.inSketchMode, true, 'SketchManager must be in sketch mode');
+    assert.strictEqual(sketchInitState.activePlane, 'XY', 'Active sketch plane must be XY');
+    assert.strictEqual(sketchInitState.enableRotate, false, 'Orbit rotation must be disabled in sketch mode');
+    assert(sketchInitState.camZ > 5, 'Camera must be aligned along Z axis facing XY plane');
+    console.log('[PASS] 2D sketch mode initialized and camera squarely aligned to XY plane');
+
+    // 5b. Constrained Geometry Creation, Solver Convergence & DOF Reduction
+    console.log('[SUBTEST 5b] Creating 4-point rectangle wire and solving constraints...');
+    const solveValidation = await page.evaluate(async () => {
+      const mgr = window.__cadSketchManager;
+      if (!mgr) throw new Error('SketchManager not found');
+
+      // Add 4 points (P1 at origin fixed)
+      const p1 = mgr.addPoint(0, 0, true);
+      const p2 = mgr.addPoint(4, 0.4, false);
+      const p3 = mgr.addPoint(4.1, 3, false);
+      const p4 = mgr.addPoint(0, 2.9, false);
+
+      // Add 4 lines
+      const l1 = mgr.addLine(p1.id, p2.id);
+      const l2 = mgr.addLine(p2.id, p3.id);
+      const l3 = mgr.addLine(p3.id, p4.id);
+      const l4 = mgr.addLine(p4.id, p1.id);
+
+      // Trigger initial under-constrained solve
+      await mgr.triggerSolve();
+      const underConstrainedDof = mgr.dof;
+      const underConstrainedColor = mgr.getColorForEntity(l1.id, 'line');
+
+      // Add Horizontal & Vertical constraints
+      mgr.addConstraint(4, l1.id); // Horizontal
+      mgr.addConstraint(5, l2.id); // Vertical
+      mgr.addConstraint(4, l3.id); // Horizontal
+      mgr.addConstraint(5, l4.id); // Vertical
+
+      // Add Distance constraints: width = 4.0, height = 3.0
+      mgr.addConstraint(8, l1.id, undefined, undefined, undefined, 4.0);
+      mgr.addConstraint(8, l2.id, undefined, undefined, undefined, 3.0);
+
+      // Solve system
+      await mgr.triggerSolve();
+
+      return {
+        underConstrainedDof,
+        underConstrainedColor,
+        finalDof: mgr.dof,
+        finalColor: mgr.getColorForEntity(l1.id, 'line'),
+        solveState: mgr.solveState,
+        p2: { x: mgr.points[1].x, y: mgr.points[1].y },
+        p3: { x: mgr.points[2].x, y: mgr.points[2].y },
+      };
+    });
+
+    console.log(`[SOLVER] Under-constrained DOF: ${solveValidation.underConstrainedDof}, Initial color: 0x${solveValidation.underConstrainedColor.toString(16)}`);
+    console.log(`[SOLVER] Final DOF: ${solveValidation.finalDof}, Final color: 0x${solveValidation.finalColor.toString(16)} (Green=0x10b981)`);
+    console.log(`[SOLVER] Solved P2=[${solveValidation.p2.x.toFixed(3)}, ${solveValidation.p2.y.toFixed(3)}], P3=[${solveValidation.p3.x.toFixed(3)}, ${solveValidation.p3.y.toFixed(3)}]`);
+
+    assert(solveValidation.underConstrainedDof > 0, 'Initial state must be under-constrained');
+    assert.strictEqual(solveValidation.underConstrainedColor, 0x3b82f6, 'Under-constrained entities must render Blue (0x3b82f6)');
+    assert.strictEqual(solveValidation.finalDof, 0, 'Fully constrained system must have 0 DOF');
+    assert.strictEqual(solveValidation.finalColor, 0x10b981, 'Fully constrained entities must render Green (0x10b981)');
+    assert.strictEqual(solveValidation.solveState, 0, 'Solve state must be SOLVED (0)');
+    assert(Math.abs(solveValidation.p2.x - 4.0) < 0.05, 'P2.x must converge to 4.0');
+    assert(Math.abs(solveValidation.p2.y - 0.0) < 0.05, 'P2.y must converge to 0.0');
+    assert(Math.abs(solveValidation.p3.x - 4.0) < 0.05, 'P3.x must converge to 4.0');
+    assert(Math.abs(solveValidation.p3.y - 3.0) < 0.05, 'P3.y must converge to 3.0');
+
+    const dofText = await page.$eval('#sketch-dof-val', (el) => el.textContent.trim());
+    const statusText = await page.$eval('#sketch-status-val', (el) => el.textContent.trim());
+    assert.strictEqual(dofText, '0 DOF');
+    assert(statusText.includes('Fully Constrained'), `Status text must indicate Fully Constrained, got "${statusText}"`);
+    console.log('[PASS] Constraint solver convergence, 0-DOF reduction, and green color transition verified');
+
+    // 5c. Live Dragging at Steady 60 FPS Throughput
+    console.log('[SUBTEST 5c] Benchmarking 60-iteration live constraint point dragging...');
+    const dragBenchmark = await page.evaluate(async () => {
+      const viewer = window.__cadViewer;
+      const mgr = window.__cadSketchManager;
+      if (!viewer || !mgr) throw new Error('Viewer/Manager not found');
+
+      // Remove distance constraints so rectangle can be interactively deformed with 2 remaining DOF
+      const distConstraints = mgr.constraints.filter((c) => c.type === 8);
+      for (const dc of distConstraints) {
+        mgr.removeConstraint(dc.id);
+      }
+      await mgr.triggerSolve();
+
+      const frameCount = 60;
+      const deltas = [];
+      let lastTime = performance.now();
+
+      for (let i = 0; i < frameCount; i++) {
+        const tx = 4.0 + Math.sin((i / frameCount) * Math.PI * 2) * 0.8;
+        const ty = Math.cos((i / frameCount) * Math.PI * 2) * 0.8;
+
+        mgr.triggerSolve(mgr.points[1].id, { x: tx, y: ty });
+        viewer.controls.update();
+        viewer.renderer.render(viewer.scene, viewer.camera);
+
+        const now = performance.now();
+        deltas.push(now - lastTime);
+        lastTime = now;
+      }
+
+      const renderDuration = deltas.reduce((a, b) => a + b, 0);
+      const avgFrameTimeMs = renderDuration / frameCount;
+      const effectiveFps = 1000 / avgFrameTimeMs;
+
+      await mgr.triggerSolve();
+
+      return { frameCount, renderDuration, avgFrameTimeMs, effectiveFps };
+    });
+
+    console.log(`[PERF] 60-tick Drag Solve: Render Total=${dragBenchmark.renderDuration.toFixed(1)}ms, Avg=${dragBenchmark.avgFrameTimeMs.toFixed(2)}ms/frame, Effective FPS=${dragBenchmark.effectiveFps.toFixed(1)}`);
+    assert(dragBenchmark.avgFrameTimeMs < 33.4, `Frame time must be under 33.4ms, got ${dragBenchmark.avgFrameTimeMs}ms`);
+    assert(dragBenchmark.effectiveFps >= 30, `Effective FPS must be >= 30, got ${dragBenchmark.effectiveFps}`);
+    console.log('[PASS] Live dragging throughput benchmark verified');
+
+    // 5d. Exit Sketch Mode & Orbit Restoration
+    console.log('[SUBTEST 5d] Exiting sketch mode and restoring 3D viewport controls...');
+    await page.click('#btn-exit-sketch');
+    const exitState = await page.evaluate(() => {
+      const viewer = window.__cadViewer;
+      return {
+        inSketchMode: viewer?.sketchManager.inSketchMode,
+        enableRotate: viewer?.controls.enableRotate,
+      };
+    });
+    assert.strictEqual(exitState.inSketchMode, false);
+    assert.strictEqual(exitState.enableRotate, true, 'Orbit rotation must be restored upon exit');
+    console.log('[PASS] Sketch exit and 3D orbit controls restoration verified');
+
     console.log('\n===============================================================');
     console.log('   All OpenCAD Viewport Puppeteer Automated Tests PASSED!     ');
     console.log('===============================================================');

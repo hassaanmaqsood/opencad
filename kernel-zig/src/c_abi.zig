@@ -76,3 +76,79 @@ pub const CadBrepStats = extern struct {
     surface_area: f32,
     euler_characteristic: i32,
 };
+
+// ---------------------------------------------------------------------------
+// Wave 2: 2D Parametric Sketch Constraint Solver Types
+// ---------------------------------------------------------------------------
+
+pub const CAD_SKETCH_INVALID_ID: u32 = 0xFFFFFFFF;
+
+pub const CadSketchPoint2D = extern struct {
+    id: u32,
+    x: f64,
+    y: f64,
+    is_fixed: u8,
+};
+
+pub const CadSketchLine2D = extern struct {
+    id: u32,
+    start_point_id: u32,
+    end_point_id: u32,
+};
+
+pub const CadSketchArc2D = extern struct {
+    id: u32,
+    center_point_id: u32,
+    start_point_id: u32,
+    end_point_id: u32,
+    radius: f64,
+};
+
+pub const CadSketchCircle2D = extern struct {
+    id: u32,
+    center_point_id: u32,
+    radius: f64,
+};
+
+pub const CadSketchConstraintType = enum(c_int) {
+    Coincident = 0,
+    Parallel = 1,
+    Perpendicular = 2,
+    Tangent = 3,
+    Horizontal = 4,
+    Vertical = 5,
+    Equal = 6,
+    Symmetric = 7,
+    Distance = 8,
+    Angle = 9,
+    Radius = 10,
+};
+
+pub const CadSketchConstraint = extern struct {
+    id: u32,
+    type: CadSketchConstraintType,
+    entity1_id: u32,
+    entity2_id: u32,
+    entity3_id: u32,
+    entity4_id: u32,
+    parameter_value: f64,
+    is_driving: u8,
+};
+
+pub const CadSolveState = enum(c_int) {
+    Solved = 0,
+    UnderConstrained = 1,
+    OverConstrained = 2,
+    Conflicting = 3,
+};
+
+pub const CadSolverStatus = extern struct {
+    solve_state: CadSolveState,
+    degrees_of_freedom: u32,
+    iterations: u32,
+    max_residual: f64,
+    updated_coords: ?[*]const f64,
+    coord_count: u32,
+    conflicting_constraint_ids: ?[*]const u32,
+    conflicting_count: u32,
+};

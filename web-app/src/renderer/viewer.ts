@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CadMeshRawBuffers, SubShapeSelection } from '../types/cad';
+import { CadWorkerBridge } from '../worker/worker_bridge';
 import { FpsCounter } from './fps_counter';
 import { MeshManager } from './mesh_manager';
 import { CadPicker } from './picker';
+import { DatumPlane, SketchManager } from './sketch_manager';
 
 export interface ViewerOptions {
   canvas: HTMLCanvasElement;
+  bridge: CadWorkerBridge;
   onSelectionChange?: (selection: SubShapeSelection) => void;
   onFpsUpdate?: (fps: number, frameTimeMs: number) => void;
 }
@@ -17,10 +20,12 @@ export class CadViewer {
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
   public controls: OrbitControls;
+  public bridge: CadWorkerBridge;
 
   public meshManager: MeshManager;
   public picker: CadPicker;
   public fpsCounter: FpsCounter;
+  public sketchManager: SketchManager;
 
   private isRunning: boolean = false;
   private animFrameId: number | null = null;
@@ -38,6 +43,7 @@ export class CadViewer {
 
   constructor(options: ViewerOptions) {
     this.canvas = options.canvas;
+    this.bridge = options.bridge;
     this.onSelectionChange = options.onSelectionChange;
     this.onFpsUpdate = options.onFpsUpdate;
 
@@ -106,10 +112,19 @@ export class CadViewer {
     this.picker = new CadPicker(this.camera, this.canvas, this.meshManager);
     this.fpsCounter = new FpsCounter(60);
 
-    // 8. Event Listeners
+    // 8. Initialize 2D Sketch Manager
+    this.sketchManager = new SketchManager(
+      this.scene,
+      this.camera,
+      this.canvas,
+      this.controls,
+      this.bridge
+    );
+
+    // 9. Event Listeners
     this.setupEventListeners();
 
-    // 9. Start Rendering Loop
+    // 10. Start Rendering Loop
     this.start();
   }
 
@@ -117,11 +132,13 @@ export class CadViewer {
     window.addEventListener('resize', this.handleResize.bind(this));
 
     this.canvas.addEventListener('pointerdown', (e) => {
+      if (this.sketchManager.inSketchMode) return;
       this.isPointerDown = true;
       this.pointerDownPos = { x: e.clientX, y: e.clientY };
     });
 
     this.canvas.addEventListener('pointermove', (e) => {
+      if (this.sketchManager.inSketchMode) return;
       // If user is dragging orbit controls, do not pick
       if (this.isPointerDown) {
         const dx = Math.abs(e.clientX - this.pointerDownPos.x);
@@ -149,6 +166,7 @@ export class CadViewer {
     });
 
     this.canvas.addEventListener('pointerup', (e) => {
+      if (this.sketchManager.inSketchMode) return;
       if (this.isPointerDown) {
         const dx = Math.abs(e.clientX - this.pointerDownPos.x);
         const dy = Math.abs(e.clientY - this.pointerDownPos.y);
@@ -185,6 +203,15 @@ export class CadViewer {
   public setGeometry(buffers: CadMeshRawBuffers): void {
     this.meshManager.updateGeometry(buffers);
     this.setSelection({ type: 'none' });
+  }
+
+  public enterSketchMode(plane: DatumPlane = 'XY'): void {
+    this.setSelection({ type: 'none' });
+    this.sketchManager.enterSketchMode(plane);
+  }
+
+  public exitSketchMode(): void {
+    this.sketchManager.exitSketchMode();
   }
 
   public handleResize(): void {

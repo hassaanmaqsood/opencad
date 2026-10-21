@@ -2,8 +2,11 @@ import {
   BoxParams,
   CadMeshRawBuffers,
   CadMeshTransferPayload,
+  CadSolverStatus,
   CylinderParams,
   SolidGenerationRequest,
+  SolveSketchTransferPayload,
+  SolveSketchWorkerRequest,
 } from '../types/cad';
 
 export class CadWorkerBridge {
@@ -12,6 +15,13 @@ export class CadWorkerBridge {
     number,
     {
       resolve: (value: CadMeshRawBuffers) => void;
+      reject: (reason?: any) => void;
+    }
+  >();
+  private pendingSketchRequests = new Map<
+    number,
+    {
+      resolve: (value: CadSolverStatus) => void;
       reject: (reason?: any) => void;
     }
   >();
@@ -51,12 +61,39 @@ export class CadWorkerBridge {
 
         pending.resolve(rawBuffers);
       }
+    } else if (data.type === 'SKETCH_SOLVED') {
+      const payload = data as SolveSketchTransferPayload;
+      const requestId = payload.requestId ?? 0;
+      const pending = this.pendingSketchRequests.get(requestId);
+
+      if (pending) {
+        this.pendingSketchRequests.delete(requestId);
+
+        // Convert transferred ArrayBuffers directly to TypedArrays with zero copying
+        const status: CadSolverStatus = {
+          solve_state: payload.solve_state,
+          degrees_of_freedom: payload.degrees_of_freedom,
+          iterations: payload.iterations,
+          max_residual: payload.max_residual,
+          updated_coords: new Float64Array(payload.coordsBuffer),
+          coord_count: payload.coord_count,
+          conflicting_constraint_ids: new Uint32Array(payload.conflictingIdsBuffer),
+          conflicting_count: payload.conflicting_count,
+        };
+
+        pending.resolve(status);
+      }
     } else if (data.type === 'ERROR') {
       const requestId = data.requestId ?? 0;
       const pending = this.pendingRequests.get(requestId);
       if (pending) {
         this.pendingRequests.delete(requestId);
         pending.reject(new Error(data.error || 'Worker generation error'));
+      }
+      const pendingSketch = this.pendingSketchRequests.get(requestId);
+      if (pendingSketch) {
+        this.pendingSketchRequests.delete(requestId);
+        pendingSketch.reject(new Error(data.error || 'Worker sketch error'));
       }
     }
   }
@@ -66,6 +103,10 @@ export class CadWorkerBridge {
     for (const [id, req] of this.pendingRequests.entries()) {
       req.reject(new Error(`Worker encountered error: ${e.message}`));
       this.pendingRequests.delete(id);
+    }
+    for (const [id, req] of this.pendingSketchRequests.entries()) {
+      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      this.pendingSketchRequests.delete(id);
     }
   }
 
@@ -88,6 +129,21 @@ export class CadWorkerBridge {
 
   public async generateCylinder(params: CylinderParams): Promise<CadMeshRawBuffers> {
     return this.generateSolid({ solidType: 'cylinder', params });
+  }
+
+  public async solveSketch(
+    request: Omit<SolveSketchWorkerRequest, 'type' | 'requestId'>
+  ): Promise<CadSolverStatus> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise<CadSolverStatus>((resolve, reject) => {
+      this.pendingSketchRequests.set(requestId, { resolve, reject });
+      this.worker.postMessage({
+        ...request,
+        requestId,
+        type: 'SOLVE_SKETCH',
+      });
+    });
   }
 
   public async loadWasmBinary(wasmBinary: ArrayBuffer): Promise<boolean> {
