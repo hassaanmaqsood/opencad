@@ -1,0 +1,28 @@
+{
+  "name": "open-parametric-cad",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-based parametric B-Rep CAD application using a Zig WebAssembly kernel, C++ Differential Oracle Harness, and Three.js Web Worker frontend",
+  "workspaces": [
+    "web-app"
+  ],
+  "scripts": {
+    "dev": "npm --prefix web-app run dev",
+    "build": "npm run build:kernel && npm --prefix web-app run build",
+    "build:kernel": "cd kernel-zig && zig build",
+    "test": "npm run test:kernel && npm run test:oracle && npm run test:web",
+    "test:kernel": "cd kernel-zig && zig build test --summary all",
+    "test:oracle": "cd oracle-harness/build && make -j$(nproc) && ./cad_differential_runner",
+    "test:web": "npm --prefix web-app run test"
+  },
+  "keywords": [
+    "cad",
+    "b-rep",
+    "parametric",
+    "webassembly",
+    "zig",
+    "threejs",
+    "opencascade"
+  ],
+  "license": "Apache-2.0"
+}
