@@ -14,6 +14,12 @@ import {
   SetRollbackIndexWorkerRequest,
   ImportStepWorkerRequest,
   ExportStepWorkerRequest,
+  SolveAssemblyWorkerRequest,
+  AssemblySolvedTransferPayload,
+  CadAssemblySolveStatus,
+  CadLodLevel,
+  TessellateLodWorkerRequest,
+  ApplyDressUpWorkerRequest,
 } from '../types/cad';
 
 export class CadWorkerBridge {
@@ -43,6 +49,17 @@ export class CadWorkerBridge {
     number,
     {
       resolve: (value: string) => void;
+      reject: (reason?: any) => void;
+    }
+  >();
+  private pendingAssemblyRequests = new Map<
+    number,
+    {
+      resolve: (value: {
+        transforms: Float32Array;
+        instanceCount: number;
+        status: CadAssemblySolveStatus;
+      }) => void;
       reject: (reason?: any) => void;
     }
   >();
@@ -134,6 +151,18 @@ export class CadWorkerBridge {
         this.pendingExportStepRequests.delete(requestId);
         pending.resolve(payload.stepText);
       }
+    } else if (data.type === 'ASSEMBLY_SOLVED') {
+      const payload = data as AssemblySolvedTransferPayload;
+      const requestId = payload.requestId ?? 0;
+      const pending = this.pendingAssemblyRequests.get(requestId);
+      if (pending) {
+        this.pendingAssemblyRequests.delete(requestId);
+        pending.resolve({
+          transforms: new Float32Array(payload.transforms),
+          instanceCount: payload.instanceCount,
+          status: payload.status,
+        });
+      }
     } else if (data.type === 'ERROR') {
       const requestId = data.requestId ?? 0;
       const pending = this.pendingRequests.get(requestId);
@@ -156,6 +185,11 @@ export class CadWorkerBridge {
         this.pendingExportStepRequests.delete(requestId);
         pendingExport.reject(new Error(data.error || 'Worker STEP export error'));
       }
+      const pendingAssembly = this.pendingAssemblyRequests.get(requestId);
+      if (pendingAssembly) {
+        this.pendingAssemblyRequests.delete(requestId);
+        pendingAssembly.reject(new Error(data.error || 'Worker assembly error'));
+      }
     }
   }
 
@@ -176,6 +210,10 @@ export class CadWorkerBridge {
     for (const [id, req] of this.pendingExportStepRequests.entries()) {
       req.reject(new Error(`Worker encountered error: ${e.message}`));
       this.pendingExportStepRequests.delete(id);
+    }
+    for (const [id, req] of this.pendingAssemblyRequests.entries()) {
+      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      this.pendingAssemblyRequests.delete(id);
     }
   }
 
@@ -287,8 +325,66 @@ export class CadWorkerBridge {
     });
   }
 
+  public async solveAssembly(
+    request: Omit<SolveAssemblyWorkerRequest, 'type' | 'requestId'>
+  ): Promise<{
+    transforms: Float32Array;
+    instanceCount: number;
+    status: CadAssemblySolveStatus;
+  }> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise((resolve, reject) => {
+      this.pendingAssemblyRequests.set(requestId, { resolve, reject });
+      const req: SolveAssemblyWorkerRequest = {
+        type: 'SOLVE_ASSEMBLY',
+        requestId,
+        ...request,
+      };
+      this.worker.postMessage(req);
+    });
+  }
+
+  public async tessellateLod(
+    lodLevel: CadLodLevel,
+    solidHandle?: number
+  ): Promise<CadTessellatedSolidSlice> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise<CadTessellatedSolidSlice>((resolve, reject) => {
+      this.pendingDagRequests.set(requestId, { resolve, reject });
+      const req: TessellateLodWorkerRequest = {
+        type: 'TESSELLATE_LOD',
+        requestId,
+        lodLevel,
+        solidHandle,
+      };
+      this.worker.postMessage(req);
+    });
+  }
+
+  public async applyDressUp(
+    request: Omit<ApplyDressUpWorkerRequest, 'type' | 'requestId'>
+  ): Promise<CadTessellatedSolidSlice> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise<CadTessellatedSolidSlice>((resolve, reject) => {
+      this.pendingDagRequests.set(requestId, { resolve, reject });
+      const req: ApplyDressUpWorkerRequest = {
+        type: 'APPLY_DRESSUP',
+        requestId,
+        ...request,
+      };
+      this.worker.postMessage(req);
+    });
+  }
+
   public terminate(): void {
     this.worker.terminate();
     this.pendingRequests.clear();
+    this.pendingSketchRequests.clear();
+    this.pendingDagRequests.clear();
+    this.pendingExportStepRequests.clear();
+    this.pendingAssemblyRequests.clear();
   }
 }

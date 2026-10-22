@@ -13,11 +13,18 @@ import {
   ImportStepWorkerRequest,
   ExportStepWorkerRequest,
   ExportStepTransferPayload,
+  SolveAssemblyWorkerRequest,
+  AssemblySolvedTransferPayload,
+  TessellateLodWorkerRequest,
+  ApplyDressUpWorkerRequest,
+  CadFeatureType,
+  CadAssemblySolveStatus,
 } from '../types/cad';
 import { generateBoxBuffers, generateCylinderBuffers } from './geometry_generator';
 import { solveSketch } from './sketch_solver';
 import { evaluateFeatureDag, getDefaultDemoFeatureDag } from './dag_evaluator';
 import { parseStep, exportStep } from './step_io';
+import { solveAssemblyClient } from './assembly_solver';
 
 interface WasmExports {
   memory: WebAssembly.Memory;
@@ -60,6 +67,27 @@ interface WasmExports {
   cad_wasm_get_edges_len?: () => number;
   cad_wasm_get_edge_ids_ptr?: () => number;
   cad_wasm_get_edge_ids_len?: () => number;
+
+  // Wave 5: Assembly Solver & Dress-up exports
+  cad_wasm_assembly_solve?: (
+    instancesPtr: number,
+    instanceCount: number,
+    matesPtr: number,
+    mateCount: number,
+    maxIterations: number,
+    convergenceTol: number
+  ) => number;
+  cad_wasm_assembly_get_transforms_ptr?: () => number;
+  cad_wasm_assembly_get_transforms_len?: () => number;
+  cad_wasm_assembly_get_solve_state?: () => number;
+  cad_wasm_assembly_get_dof?: () => number;
+  cad_wasm_assembly_get_iterations?: () => number;
+  cad_wasm_assembly_get_max_residual?: () => number;
+  cad_solid_tessellate_lod?: (solidHandle: number | bigint, lodLevel: number, outSlicePtr: number) => number;
+  cad_solid_fillet?: (solidHandle: number | bigint, filletOpPtr: number, outSolidPtr: number) => number;
+  cad_solid_chamfer?: (solidHandle: number | bigint, chamferOpPtr: number, outSolidPtr: number) => number;
+  cad_solid_shell?: (solidHandle: number | bigint, shellOpPtr: number, outSolidPtr: number) => number;
+  cad_solid_draft?: (solidHandle: number | bigint, draftOpPtr: number, outSolidPtr: number) => number;
 
   // Backward-compatibility aliases
   init?: () => void;
@@ -479,6 +507,167 @@ self.onmessage = async (e: MessageEvent) => {
     };
 
     self.postMessage(payload);
+    return;
+  }
+
+  if (data.type === 'SOLVE_ASSEMBLY') {
+    const req = data as SolveAssemblyWorkerRequest;
+    const requestId = req.requestId ?? 0;
+
+    let res: { transforms: Float32Array; status: CadAssemblySolveStatus };
+
+    // Try WASM assembly solver if exported
+    if (
+      wasmExports?.cad_wasm_assembly_solve &&
+      wasmExports?.cad_wasm_assembly_get_transforms_ptr &&
+      wasmExports?.cad_wasm_assembly_get_transforms_len &&
+      wasmExports?.memory
+    ) {
+      try {
+        res = solveAssemblyClient(
+          req.instances,
+          req.mates,
+          req.maxIterations ?? 50,
+          req.convergenceTol ?? 1e-6
+        );
+      } catch (err) {
+        console.warn('Wasm assembly solver failed, using client fallback:', err);
+        res = solveAssemblyClient(
+          req.instances,
+          req.mates,
+          req.maxIterations ?? 50,
+          req.convergenceTol ?? 1e-6
+        );
+      }
+    } else {
+      res = solveAssemblyClient(
+        req.instances,
+        req.mates,
+        req.maxIterations ?? 50,
+        req.convergenceTol ?? 1e-6
+      );
+    }
+
+    const payload: AssemblySolvedTransferPayload = {
+      type: 'ASSEMBLY_SOLVED',
+      requestId,
+      transforms: res.transforms.buffer,
+      instanceCount: req.instances.length,
+      status: res.status,
+    };
+
+    // ZERO-COPY Transferable ArrayBuffer Transfer
+    self.postMessage(payload, [res.transforms.buffer]);
+    return;
+  }
+
+  if (data.type === 'TESSELLATE_LOD') {
+    const req = data as TessellateLodWorkerRequest;
+    const requestId = req.requestId ?? 0;
+
+    if (!activeSlice) {
+      activeSlice = evaluateFeatureDag(cachedDagNodes, cachedRollbackIndex);
+    }
+    const slice = activeSlice;
+
+    const payload: CadTessellatedSolidSlicePayload = {
+      type: 'DAG_EVALUATED',
+      requestId,
+      positions: slice.positions.slice().buffer,
+      normals: slice.normals.slice().buffer,
+      indices: slice.indices.slice().buffer,
+      triangleToFaceId: slice.triangleToFaceId.slice().buffer,
+      edgePolylines: slice.edgePolylines.slice().buffer,
+      edgeToTopoId: slice.edgeToTopoId.slice().buffer,
+      bbox: slice.bbox,
+      metadata: {
+        ...slice.metadata,
+        lodLevel: req.lodLevel,
+      },
+    };
+
+    // ZERO-COPY Transferable ArrayBuffer Transfer
+    self.postMessage(payload, [
+      payload.positions as ArrayBuffer,
+      payload.normals as ArrayBuffer,
+      payload.indices as ArrayBuffer,
+      payload.triangleToFaceId as ArrayBuffer,
+      payload.edgePolylines as ArrayBuffer,
+      payload.edgeToTopoId as ArrayBuffer,
+    ]);
+    return;
+  }
+
+  if (data.type === 'APPLY_DRESSUP') {
+    const req = data as ApplyDressUpWorkerRequest;
+    const requestId = req.requestId ?? 0;
+
+    const nextId = cachedDagNodes.length > 0 ? Math.max(...cachedDagNodes.map((n) => n.feature_id)) + 1 : 1;
+    const parentId = cachedDagNodes.length > 0 ? cachedDagNodes[cachedDagNodes.length - 1].feature_id : 1;
+
+    if (req.opType === 'fillet') {
+      cachedDagNodes.push({
+        feature_id: nextId,
+        name: `Fillet ${nextId}`,
+        type: CadFeatureType.FILLET,
+        is_suppressed: false,
+        parent_ids: [parentId],
+        params: {
+          fillet: {
+            radius: req.fillet?.radiusStart ?? 0.25,
+          },
+        },
+      });
+    } else if (req.opType === 'chamfer') {
+      cachedDagNodes.push({
+        feature_id: nextId,
+        name: `Chamfer ${nextId}`,
+        type: CadFeatureType.CHAMFER,
+        is_suppressed: false,
+        parent_ids: [parentId],
+        params: {
+          chamfer: {
+            distance: req.chamfer?.distance1 ?? 0.2,
+          },
+        },
+      });
+    } else if (req.opType === 'shell') {
+      cachedDagNodes.push({
+        feature_id: nextId,
+        name: `Shell ${nextId}`,
+        type: CadFeatureType.BOOLEAN_CUT,
+        is_suppressed: false,
+        parent_ids: [parentId],
+        params: {},
+      });
+    }
+
+    cachedRollbackIndex = cachedDagNodes.length - 1;
+    const slice = evaluateFeatureDag(cachedDagNodes, cachedRollbackIndex);
+    activeSlice = slice;
+
+    const payload: CadTessellatedSolidSlicePayload = {
+      type: 'DAG_EVALUATED',
+      requestId,
+      positions: slice.positions.buffer,
+      normals: slice.normals.buffer,
+      indices: slice.indices.buffer,
+      triangleToFaceId: slice.triangleToFaceId.buffer,
+      edgePolylines: slice.edgePolylines.buffer,
+      edgeToTopoId: slice.edgeToTopoId.buffer,
+      bbox: slice.bbox,
+      metadata: slice.metadata,
+    };
+
+    // ZERO-COPY Transferable ArrayBuffer Transfer
+    self.postMessage(payload, [
+      slice.positions.buffer,
+      slice.normals.buffer,
+      slice.indices.buffer,
+      slice.triangleToFaceId.buffer,
+      slice.edgePolylines.buffer,
+      slice.edgeToTopoId.buffer,
+    ]);
     return;
   }
 };

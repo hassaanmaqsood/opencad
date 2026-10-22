@@ -373,6 +373,7 @@ export interface CadTessellatedSliceMetadata {
   lastEvaluatedFeatureName: string;
   solidType?: string;
   generatedAt: number;
+  lodLevel?: number;
 }
 
 /**
@@ -450,6 +451,131 @@ export interface ExportStepTransferPayload {
   requestId?: number;
   stepText: string;
 }
+
+/* ------------------------------------------------------------------------- */
+/* Wave 5: Dress-Up Ops, 3D Assembly Kinematics & Multi-LOD Types            */
+/* ------------------------------------------------------------------------- */
+
+export enum CadFilletMode {
+  CONSTANT_RADIUS = 0,
+  VARIABLE_RADIUS = 1,
+  CHORDAL = 2,
+}
+
+export interface CadFilletOp {
+  mode: CadFilletMode;
+  radiusStart: number;
+  radiusEnd: number;
+  targetEdgeTopoIds: bigint[];
+}
+
+export enum CadChamferMode {
+  EQUAL_DISTANCE = 0,
+  TWO_DISTANCES = 1,
+  DISTANCE_ANGLE = 2,
+}
+
+export interface CadChamferOp {
+  mode: CadChamferMode;
+  distance1: number;
+  distance2: number;
+  angleRad: number;
+  targetEdgeTopoIds: bigint[];
+}
+
+export interface CadShellOp {
+  thickness: number;
+  isInward: boolean;
+  openFaceTopoIds: bigint[];
+}
+
+export interface CadDraftOp {
+  draftAngleRad: number;
+  pullDirection: [number, number, number];
+  neutralPlanePoint: [number, number, number];
+  neutralPlaneNormal: [number, number, number];
+  draftFaceTopoIds: bigint[];
+}
+
+export enum CadAssemblyMateType {
+  COINCIDENT = 0,
+  CONCENTRIC = 1,
+  PARALLEL = 2,
+  DISTANCE = 3,
+  ANGLE = 4,
+  GEAR = 5,
+}
+
+export interface CadAssemblyInstance {
+  instanceId: number;
+  solidHandle: number;
+  isGrounded: boolean;
+  initialTransform: number[]; // 16 floats column-major
+  name: string;
+}
+
+export interface CadAssemblyMate {
+  mateId: number;
+  type: CadAssemblyMateType;
+  instance1Id: number;
+  entity1TopoId: bigint;
+  instance2Id: number;
+  entity2TopoId: bigint;
+  isAntiAligned: boolean;
+  parameterValue: number;
+  limitsMin?: number;
+  limitsMax?: number;
+}
+
+export interface CadAssemblySolveStatus {
+  solveState: CadSolveState;
+  totalDof: number;
+  iterations: number;
+  maxResidual: number;
+  conflictingCount: number;
+}
+
+export enum CadLodLevel {
+  COARSE = 0,
+  MEDIUM = 1,
+  FINE = 2,
+}
+
+export interface SolveAssemblyWorkerRequest {
+  type: 'SOLVE_ASSEMBLY';
+  requestId?: number;
+  instances: CadAssemblyInstance[];
+  mates: CadAssemblyMate[];
+  maxIterations?: number;
+  convergenceTol?: number;
+}
+
+export interface AssemblySolvedTransferPayload {
+  type: 'ASSEMBLY_SOLVED';
+  requestId?: number;
+  transforms: ArrayBufferLike; // Float32Array buffer (instanceCount * 16 floats)
+  instanceCount: number;
+  status: CadAssemblySolveStatus;
+}
+
+export interface TessellateLodWorkerRequest {
+  type: 'TESSELLATE_LOD';
+  requestId?: number;
+  solidHandle?: number;
+  lodLevel: CadLodLevel;
+}
+
+export interface ApplyDressUpWorkerRequest {
+  type: 'APPLY_DRESSUP';
+  requestId?: number;
+  opType: 'fillet' | 'chamfer' | 'shell' | 'draft';
+  solidHandle?: number;
+  fillet?: CadFilletOp;
+  chamfer?: CadChamferOp;
+  shell?: CadShellOp;
+  draft?: CadDraftOp;
+}
+
 
 
 

@@ -21,6 +21,10 @@ pub const Vec3 = struct {
         return .{ .x = self.x * s, .y = self.y * s, .z = self.z * s };
     }
 
+    pub fn negate(self: Vec3) Vec3 {
+        return .{ .x = -self.x, .y = -self.y, .z = -self.z };
+    }
+
     pub fn dot(self: Vec3, other: Vec3) f32 {
         return self.x * other.x + self.y * other.y + self.z * other.z;
     }

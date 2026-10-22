@@ -836,4 +836,75 @@ body.dragging-rollback * {
   color: var(--text-muted);
 }
 
+/* ------------------------------------------------------------------------- */
+/* Wave 5: Dress-Up & Assembly Toolbar Styling                               */
+/* ------------------------------------------------------------------------- */
+.dressup-btn-group {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.btn-dressup {
+  flex: 1;
+  padding: 7px 6px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-sm);
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.btn-dressup:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: var(--accent-green);
+  color: #fff;
+}
+
+.assembly-btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.btn-assembly {
+  width: 100%;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-sm);
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-assembly:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--text-accent);
+  color: var(--text-accent);
+}
+
+.btn-assembly.btn-bench {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(234, 88, 12, 0.25));
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.btn-assembly.btn-bench:hover {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.35), rgba(234, 88, 12, 0.45));
+  border-color: #f59e0b;
+  color: #fff;
+}
+
 

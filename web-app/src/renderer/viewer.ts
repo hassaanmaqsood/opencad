@@ -210,6 +210,24 @@ export class CadViewer {
     this.setSelection({ type: 'none' });
   }
 
+  public updateAssembly(
+    transforms: Float32Array,
+    instanceCount: number,
+    baseGeometry?: THREE.BufferGeometry
+  ): void {
+    this.meshManager.updateAssemblyInstances(transforms, instanceCount, baseGeometry);
+    this.setSelection({ type: 'none' });
+  }
+
+  public updateLodGeometries(
+    coarseGeom: THREE.BufferGeometry,
+    mediumGeom: THREE.BufferGeometry,
+    fineGeom: THREE.BufferGeometry
+  ): void {
+    this.meshManager.updateLOD(coarseGeom, mediumGeom, fineGeom);
+    this.setSelection({ type: 'none' });
+  }
+
   public enterSketchMode(plane: DatumPlane = 'XY'): void {
     this.setSelection({ type: 'none' });
     this.sketchManager.enterSketchMode(plane);

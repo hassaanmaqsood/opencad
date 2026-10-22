@@ -6,7 +6,17 @@ import { SketchHud } from './ui/sketch_hud';
 import { SketchManager } from './renderer/sketch_manager';
 import { FeatureTree } from './ui/feature_tree';
 import { getDefaultDemoFeatureDag } from './worker/dag_evaluator';
-import { SolidGenerationRequest, SubShapeSelection } from './types/cad';
+import {
+  SolidGenerationRequest,
+  SubShapeSelection,
+  CadAssemblyInstance,
+  CadAssemblyMate,
+  CadAssemblyMateType,
+  CadLodLevel,
+  CadFilletMode,
+  CadChamferMode,
+  CadFeatureType,
+} from './types/cad';
 
 declare global {
   interface Window {
@@ -20,6 +30,10 @@ declare global {
     __importStep?: (stepText: string) => Promise<void>;
     __exportStep?: () => Promise<string>;
     __lastExportedStep?: string;
+    __solveAssembly?: (instances: CadAssemblyInstance[], mates: CadAssemblyMate[]) => Promise<any>;
+    __applyDressUp?: (opType: 'fillet' | 'chamfer' | 'shell', params?: any) => Promise<any>;
+    __tessellateLod?: (lodLevel: CadLodLevel) => Promise<any>;
+    __benchmarkAssembly500?: () => Promise<{ instanceCount: number; avgFrameTimeMs: number; fps: number }>;
   }
 }
 
@@ -199,6 +213,212 @@ async function initApp() {
     }
   });
 
+  // 7. Wave 5: Dress-Up Operations & LOD Handlers
+  const handleApplyDressUp = async (opType: 'fillet' | 'chamfer' | 'shell', params?: any) => {
+    try {
+      const slice = await bridge.applyDressUp({
+        opType,
+        fillet:
+          opType === 'fillet'
+            ? {
+                mode: CadFilletMode.CONSTANT_RADIUS,
+                radiusStart: params?.radius ?? 0.25,
+                radiusEnd: params?.radius ?? 0.25,
+                targetEdgeTopoIds: [0x4100n],
+              }
+            : undefined,
+        chamfer:
+          opType === 'chamfer'
+            ? {
+                mode: CadChamferMode.EQUAL_DISTANCE,
+                distance1: params?.distance ?? 0.2,
+                distance2: params?.distance ?? 0.2,
+                angleRad: Math.PI / 4,
+                targetEdgeTopoIds: [0x4200n],
+              }
+            : undefined,
+      });
+      viewer.setGeometryFromSlice(slice);
+      hud.updateMetadata(slice.metadata);
+
+      const currentNodes = featureTree.getNodes();
+      featureTree.setNodes([
+        ...currentNodes,
+        {
+          feature_id: currentNodes.length + 1,
+          name: opType === 'fillet' ? 'Fillet' : opType === 'chamfer' ? 'Chamfer' : 'Shell',
+          type:
+            opType === 'fillet'
+              ? CadFeatureType.FILLET
+              : opType === 'chamfer'
+              ? CadFeatureType.CHAMFER
+              : CadFeatureType.BOOLEAN_CUT,
+          is_suppressed: false,
+          parent_ids: [currentNodes.length],
+          params: {},
+        },
+      ]);
+      featureTree.setRollbackIndex(featureTree.getNodes().length - 1);
+      return slice;
+    } catch (err) {
+      console.error(`Failed to apply ${opType}:`, err);
+    }
+  };
+
+  const handleTessellateLod = async (lodLevel: CadLodLevel) => {
+    try {
+      const slice = await bridge.tessellateLod(lodLevel);
+      viewer.setGeometryFromSlice(slice);
+      hud.updateMetadata(slice.metadata);
+      return slice;
+    } catch (err) {
+      console.error('Failed to tessellate LOD:', err);
+    }
+  };
+
+  // Dress-Up Toolbar Buttons
+  document.getElementById('btn-fillet')?.addEventListener('click', () => {
+    handleApplyDressUp('fillet', { radius: 0.25 });
+  });
+
+  document.getElementById('btn-chamfer')?.addEventListener('click', () => {
+    handleApplyDressUp('chamfer', { distance: 0.2 });
+  });
+
+  document.getElementById('btn-shell')?.addEventListener('click', () => {
+    handleApplyDressUp('shell', { thickness: 0.15 });
+  });
+
+  const lodSelect = document.getElementById('lod-select') as HTMLSelectElement | null;
+  lodSelect?.addEventListener('change', () => {
+    const val = lodSelect.value;
+    const level = val === 'coarse' ? CadLodLevel.COARSE : val === 'medium' ? CadLodLevel.MEDIUM : CadLodLevel.FINE;
+    handleTessellateLod(level);
+  });
+
+  // 8. Wave 5: 3D Assembly Kinematics & 500-Instance 60 FPS Benchmark
+  const activeAssemblyInstances: CadAssemblyInstance[] = [];
+  const activeAssemblyMates: CadAssemblyMate[] = [];
+
+  const handleSolveAssembly = async (instances?: CadAssemblyInstance[], mates?: CadAssemblyMate[]) => {
+    const insts = instances || activeAssemblyInstances;
+    const mts = mates || activeAssemblyMates;
+    const result = await bridge.solveAssembly({ instances: insts, mates: mts });
+    viewer.updateAssembly(result.transforms, insts.length);
+    return result;
+  };
+
+  const handleBenchmarkAssembly500 = async (): Promise<{
+    instanceCount: number;
+    avgFrameTimeMs: number;
+    fps: number;
+  }> => {
+    const count = 500;
+    const spacing = 1.8;
+    const instances: CadAssemblyInstance[] = [];
+    const mates: CadAssemblyMate[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const gx = i % 10;
+      const gy = Math.floor((i % 100) / 10);
+      const gz = Math.floor(i / 100);
+
+      const x = (gx - 5) * spacing;
+      const y = (gy - 5) * spacing;
+      const z = (gz - 2.5) * spacing;
+
+      const t = [
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        x, y, z, 1,
+      ];
+
+      instances.push({
+        instanceId: i + 1,
+        solidHandle: 1,
+        isGrounded: i === 0,
+        initialTransform: t,
+        name: `Instance_${i + 1}`,
+      });
+
+      if (i > 0) {
+        mates.push({
+          mateId: i,
+          type: CadAssemblyMateType.DISTANCE,
+          instance1Id: i,
+          entity1TopoId: 0x1000n,
+          instance2Id: i + 1,
+          entity2TopoId: 0x1000n,
+          isAntiAligned: false,
+          parameterValue: spacing,
+        });
+      }
+    }
+
+    const solved = await bridge.solveAssembly({ instances, mates });
+    viewer.updateAssembly(solved.transforms, count);
+
+    // Warm up and benchmark 60 frames
+    const frameCount = 60;
+    const start = performance.now();
+    for (let f = 0; f < frameCount; f++) {
+      viewer.controls.update();
+      viewer.renderer.render(viewer.scene, viewer.camera);
+    }
+    const duration = performance.now() - start;
+    const avgFrameTimeMs = duration / frameCount;
+    const fps = 1000 / avgFrameTimeMs;
+
+    return {
+      instanceCount: count,
+      avgFrameTimeMs,
+      fps,
+    };
+  };
+
+  document.getElementById('btn-benchmark-assembly')?.addEventListener('click', () => {
+    handleBenchmarkAssembly500();
+  });
+
+  document.getElementById('btn-insert-part')?.addEventListener('click', () => {
+    const id = activeAssemblyInstances.length + 1;
+    const offset = id * 2.0;
+    activeAssemblyInstances.push({
+      instanceId: id,
+      solidHandle: 1,
+      isGrounded: id === 1,
+      initialTransform: [
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        offset, 0, 0, 1,
+      ],
+      name: `Part_${id}`,
+    });
+    handleSolveAssembly();
+  });
+
+  document.getElementById('btn-add-mate')?.addEventListener('click', () => {
+    if (activeAssemblyInstances.length >= 2) {
+      activeAssemblyMates.push({
+        mateId: activeAssemblyMates.length + 1,
+        type: CadAssemblyMateType.COINCIDENT,
+        instance1Id: 1,
+        entity1TopoId: 0x1000n,
+        instance2Id: 2,
+        entity2TopoId: 0x1000n,
+        isAntiAligned: false,
+        parameterValue: 0,
+      });
+      handleSolveAssembly();
+    }
+  });
+
+  document.getElementById('btn-solve-assembly')?.addEventListener('click', () => {
+    handleSolveAssembly();
+  });
+
   // Expose global references for Playwright test automation
   window.__cadViewer = viewer;
   window.__cadBridge = bridge;
@@ -209,8 +429,12 @@ async function initApp() {
   window.__evaluateDag = handleEvaluateDag;
   window.__importStep = handleImportStep;
   window.__exportStep = handleExportStep;
+  window.__solveAssembly = handleSolveAssembly;
+  window.__applyDressUp = handleApplyDressUp;
+  window.__tessellateLod = handleTessellateLod;
+  window.__benchmarkAssembly500 = handleBenchmarkAssembly500;
 
-  // 7. Initial Geometry Generation (Default parametric Box)
+  // 9. Initial Geometry Generation (Default parametric Box)
   await handleGenerate({
     solidType: 'box',
     params: { width: 2.0, height: 2.0, depth: 2.0 },

@@ -7,6 +7,7 @@ const topo_naming = @import("topo_naming.zig");
 const extrude = @import("../ops/extrude.zig");
 const revolve = @import("../ops/revolve.zig");
 const boolean = @import("../ops/boolean.zig");
+const shell = @import("../ops/shell.zig");
 
 pub const SoASolid = half_edge.SoASolid;
 pub const CadTopoId = half_edge.CadTopoId;
@@ -224,6 +225,33 @@ pub const FeatureDag = struct {
                 }
 
                 return result;
+            },
+            .Shell => {
+                if (node.parent_count == 0) return error.InvalidParentReference;
+                const parent_id = node.parent_ids[0];
+                const parent_solid = self.cache.getPtr(parent_id) orelse return error.FeatureNotFound;
+
+                var op = shell.ShellOp{
+                    .thickness = node.params.shell.thickness,
+                    .is_inward = node.params.shell.is_inward != 0,
+                    .open_face_count = node.params.shell.open_face_count,
+                };
+                for (0..@min(node.params.shell.open_face_count, 16)) |k| {
+                    op.open_face_ids[k] = node.params.shell.open_face_ids[k];
+                }
+                const result = shell.applyShell(
+                    self.allocator,
+                    parent_solid,
+                    @intCast(node.feature_id),
+                    op,
+                ) catch return error.EvaluationFailed;
+                return result;
+            },
+            .Draft => {
+                if (node.parent_count == 0) return error.InvalidParentReference;
+                const parent_id = node.parent_ids[0];
+                const parent_solid = self.cache.getPtr(parent_id) orelse return error.FeatureNotFound;
+                return parent_solid.clone(self.allocator) catch return error.OutOfMemory;
             },
             .Sketch => {
                 // Creates base planar solid wire

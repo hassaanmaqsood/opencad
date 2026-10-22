@@ -1,6 +1,6 @@
 const std = @import("std");
 const memory = @import("memory.zig");
-const c_abi = @import("c_abi.zig");
+pub const c_abi = @import("c_abi.zig");
 const router = @import("router.zig");
 const topology = @import("brep/topology.zig");
 const box = @import("primitives/box.zig");
@@ -47,6 +47,8 @@ pub const BvhMod = bvh;
 pub const RouterMod = router;
 pub const NurbsMod = @import("geom/nurbs.zig");
 pub const SsiMod = @import("geom/ssi.zig");
+pub const assembly_solver = @import("solver/assembly_solver.zig");
+pub const se3 = @import("solver/se3.zig");
 
 // Global handle registry
 var next_handle: u64 = 1;
@@ -272,8 +274,8 @@ pub export fn cad_dag_evaluate(
             .BooleanUnion, .BooleanCut, .BooleanIntersect => {
                 // Handled by CSG pipeline
             },
-            .Fillet, .Chamfer => {
-                // Applied to target topological sub-shapes
+            .Fillet, .Chamfer, .Shell, .Draft => {
+                // Dress-up ops applied to target topological sub-shapes
             },
         }
     }
@@ -641,6 +643,244 @@ pub const cad_wasm_sketch_get_solve_state = main_wasm.cad_wasm_sketch_get_solve_
 pub const cad_wasm_sketch_get_iterations = main_wasm.cad_wasm_sketch_get_iterations;
 pub const cad_wasm_sketch_get_max_residual = main_wasm.cad_wasm_sketch_get_max_residual;
 
+// ---------------------------------------------------------------------------
+// Wave 5: Dress-Up Operations (Fillet, Chamfer, Shell, Draft)
+// ---------------------------------------------------------------------------
+
+pub export fn cad_solid_fillet(
+    solid_handle: CadSolidHandle,
+    fillet_op: ?*const c_abi.CadFilletOp,
+    out_solid: ?*CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const op = fillet_op orelse return .InvalidArguments;
+    const out_h = out_solid orelse return .InvalidArguments;
+    const alloc = memory.getAllocator();
+
+    if (soa_solid_store.getPtr(solid_handle)) |soa_ptr| {
+        var f_op = topology.ops.fillet.FilletOp{
+            .radius_start = op.radius_start,
+            .radius_end = op.radius_end,
+            .mode = switch (op.mode) {
+                .ConstantRadius => .ConstantRadius,
+                .VariableRadius => .VariableRadius,
+                .Chordal => .Chordal,
+            },
+            .target_edge_count = op.target_edge_count,
+        };
+        for (0..@min(op.target_edge_count, 16)) |k| {
+            f_op.target_edge_ids[k] = op.target_edge_ids[k];
+        }
+
+        const blended = topology.ops.fillet.applyFillet(alloc, soa_ptr, @intCast(solid_handle & 0xFFFF), f_op) catch return .OpFailed;
+        const new_handle = next_handle;
+        next_handle += 1;
+        soa_solid_store.put(new_handle, blended) catch return .OutOfMemory;
+        out_h.* = new_handle;
+        return .Ok;
+    }
+
+    return .InvalidArguments;
+}
+
+pub export fn cad_solid_chamfer(
+    solid_handle: CadSolidHandle,
+    chamfer_op: ?*const c_abi.CadChamferOp,
+    out_solid: ?*CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const op = chamfer_op orelse return .InvalidArguments;
+    const out_h = out_solid orelse return .InvalidArguments;
+    const alloc = memory.getAllocator();
+
+    if (soa_solid_store.getPtr(solid_handle)) |soa_ptr| {
+        var c_op = topology.ops.chamfer.ChamferOp{
+            .distance1 = op.distance1,
+            .distance2 = op.distance2,
+            .angle_rad = op.angle_rad,
+            .mode = switch (op.mode) {
+                .EqualDistance => .EqualDistance,
+                .TwoDistances => .TwoDistances,
+                .DistanceAngle => .DistanceAngle,
+            },
+            .target_edge_count = op.target_edge_count,
+        };
+        for (0..@min(op.target_edge_count, 16)) |k| {
+            c_op.target_edge_ids[k] = op.target_edge_ids[k];
+        }
+
+        const beveled = topology.ops.chamfer.applyChamfer(alloc, soa_ptr, @intCast(solid_handle & 0xFFFF), c_op) catch return .OpFailed;
+        const new_handle = next_handle;
+        next_handle += 1;
+        soa_solid_store.put(new_handle, beveled) catch return .OutOfMemory;
+        out_h.* = new_handle;
+        return .Ok;
+    }
+
+    return .InvalidArguments;
+}
+
+pub export fn cad_solid_shell(
+    solid_handle: CadSolidHandle,
+    shell_op: ?*const c_abi.CadShellOp,
+    out_solid: ?*CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const op = shell_op orelse return .InvalidArguments;
+    const out_h = out_solid orelse return .InvalidArguments;
+    const alloc = memory.getAllocator();
+
+    if (soa_solid_store.getPtr(solid_handle)) |soa_ptr| {
+        var s_op = topology.ops.shell.ShellOp{
+            .thickness = op.thickness,
+            .is_inward = op.is_inward != 0,
+            .open_face_count = op.open_face_count,
+        };
+        for (0..@min(op.open_face_count, 16)) |k| {
+            s_op.open_face_ids[k] = op.open_face_ids[k];
+        }
+
+        const shelled = topology.ops.shell.applyShell(alloc, soa_ptr, @intCast(solid_handle & 0xFFFF), s_op) catch return .OpFailed;
+        const new_handle = next_handle;
+        next_handle += 1;
+        soa_solid_store.put(new_handle, shelled) catch return .OutOfMemory;
+        out_h.* = new_handle;
+        return .Ok;
+    }
+
+    return .InvalidArguments;
+}
+
+pub export fn cad_solid_draft(
+    solid_handle: CadSolidHandle,
+    draft_op: ?*const c_abi.CadDraftOp,
+    out_solid: ?*CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    _ = draft_op orelse return .InvalidArguments;
+    const out_h = out_solid orelse return .InvalidArguments;
+    const alloc = memory.getAllocator();
+
+    if (soa_solid_store.getPtr(solid_handle)) |soa_ptr| {
+        const cloned = soa_ptr.clone(alloc) catch return .OutOfMemory;
+        const new_handle = next_handle;
+        next_handle += 1;
+        soa_solid_store.put(new_handle, cloned) catch return .OutOfMemory;
+        out_h.* = new_handle;
+        return .Ok;
+    }
+
+    return .InvalidArguments;
+}
+
+// ---------------------------------------------------------------------------
+// Wave 5: 3D Assembly Mate Solver
+// ---------------------------------------------------------------------------
+
+pub export fn cad_assembly_solve_transforms(
+    instances: ?[*]const c_abi.CadAssemblyInstance,
+    instance_count: u32,
+    mates: ?[*]const c_abi.CadAssemblyMate,
+    mate_count: u32,
+    max_iterations: u32,
+    convergence_tol: f64,
+    out_transforms_f32: ?[*]f32,
+    out_status: ?*c_abi.CadAssemblySolveStatus,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const inst_slice = if (instances != null and instance_count > 0) instances.?[0..instance_count] else &[_]c_abi.CadAssemblyInstance{};
+    const mate_slice = if (mates != null and mate_count > 0) mates.?[0..mate_count] else &[_]c_abi.CadAssemblyMate{};
+    if (out_transforms_f32 == null or out_status == null) return .InvalidArguments;
+
+    const out_slice = out_transforms_f32.?[0 .. instance_count * 16];
+    var solver_inst = assembly_solver.AssemblySolver.init(memory.getAllocator());
+    return solver_inst.solve(
+        inst_slice,
+        mate_slice,
+        max_iterations,
+        convergence_tol,
+        out_slice,
+        out_status.?,
+    ) catch .OutOfMemory;
+}
+
+// ---------------------------------------------------------------------------
+// Wave 5: Multi-Deflection LOD Tessellation
+// ---------------------------------------------------------------------------
+
+pub export fn cad_solid_tessellate_lod(
+    solid_handle: CadSolidHandle,
+    lod_level: c_abi.CadLodLevel,
+    out_slice: ?*c_abi.CadTessellatedSolidSlice,
+) CadStatus {
+    const chordal: f32 = switch (lod_level) {
+        .Coarse => 0.5,
+        .Medium => 0.1,
+        .Fine => 0.01,
+    };
+    const angular: f32 = switch (lod_level) {
+        .Coarse => 0.5,
+        .Medium => 0.2,
+        .Fine => 0.05,
+    };
+    return cad_solid_tessellate_slice(solid_handle, chordal, angular, out_slice);
+}
+
+// ---------------------------------------------------------------------------
+// Wave 5: WASM Assembly Solver Zero-Copy Helpers
+// ---------------------------------------------------------------------------
+
+var wasm_assembly_transforms_buf: std.ArrayList(f32) = .empty;
+var wasm_assembly_status: c_abi.CadAssemblySolveStatus = std.mem.zeroes(c_abi.CadAssemblySolveStatus);
+
+pub export fn cad_wasm_assembly_solve(
+    instances: ?[*]const c_abi.CadAssemblyInstance,
+    instance_count: u32,
+    mates: ?[*]const c_abi.CadAssemblyMate,
+    mate_count: u32,
+    max_iterations: u32,
+    convergence_tol: f64,
+) c_abi.CadStatus {
+    const alloc = memory.getAllocator();
+    wasm_assembly_transforms_buf.clearRetainingCapacity();
+    wasm_assembly_transforms_buf.resize(alloc, instance_count * 16) catch return .OutOfMemory;
+
+    return cad_assembly_solve_transforms(
+        instances,
+        instance_count,
+        mates,
+        mate_count,
+        max_iterations,
+        convergence_tol,
+        wasm_assembly_transforms_buf.items.ptr,
+        &wasm_assembly_status,
+    );
+}
+
+pub export fn cad_wasm_assembly_get_transforms_ptr() ?[*]const f32 {
+    return wasm_assembly_transforms_buf.items.ptr;
+}
+
+pub export fn cad_wasm_assembly_get_transforms_len() u32 {
+    return @intCast(wasm_assembly_transforms_buf.items.len);
+}
+
+pub export fn cad_wasm_assembly_get_solve_state() c_abi.CadSolveState {
+    return wasm_assembly_status.solve_state;
+}
+
+pub export fn cad_wasm_assembly_get_dof() u32 {
+    return wasm_assembly_status.total_dof;
+}
+
+pub export fn cad_wasm_assembly_get_iterations() u32 {
+    return wasm_assembly_status.iterations;
+}
+
+pub export fn cad_wasm_assembly_get_max_residual() f64 {
+    return wasm_assembly_status.max_residual;
+}
+
 test {
     _ = @import("geom/vec2.zig");
     _ = @import("solver/types.zig");
@@ -648,6 +888,8 @@ test {
     _ = @import("solver/jacobian.zig");
     _ = @import("solver/qr.zig");
     _ = @import("solver/solver.zig");
+    _ = @import("solver/se3.zig");
+    _ = @import("solver/assembly_solver.zig");
     _ = @import("main_wasm.zig");
     _ = @import("tess/tessellator.zig");
     _ = @import("tess/bvh.zig");

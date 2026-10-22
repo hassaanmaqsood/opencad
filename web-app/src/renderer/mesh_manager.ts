@@ -12,6 +12,8 @@ export class MeshManager {
 
   public highlightFaceMesh: THREE.Mesh;
   public highlightEdgeLines: THREE.LineSegments;
+  public instancedMesh: THREE.InstancedMesh | null = null;
+  public lodGroup: THREE.LOD | null = null;
 
   private currentBuffers: CadMeshRawBuffers | null = null;
   private currentSlice: CadTessellatedSolidSlice | null = null;
@@ -92,6 +94,18 @@ export class MeshManager {
    * Updates Three.js geometries from flat buffers transferred from the Web Worker.
    */
   public updateGeometry(buffers: CadMeshRawBuffers): void {
+    if (this.instancedMesh) {
+      this.group.remove(this.instancedMesh);
+      this.instancedMesh.dispose();
+      this.instancedMesh = null;
+    }
+    if (this.lodGroup) {
+      this.group.remove(this.lodGroup);
+      this.lodGroup = null;
+    }
+    this.solidMesh.visible = true;
+    this.edgeLines.visible = true;
+
     this.currentBuffers = buffers;
     this.currentSlice = null;
     this.triangleToFaceId = buffers.triangleToFaceId;
@@ -152,6 +166,18 @@ export class MeshManager {
    * Updates Three.js geometries from a CadTessellatedSolidSlice (Wave 3 persistent CadTopoId).
    */
   public updateFromSlice(slice: CadTessellatedSolidSlice): void {
+    if (this.instancedMesh) {
+      this.group.remove(this.instancedMesh);
+      this.instancedMesh.dispose();
+      this.instancedMesh = null;
+    }
+    if (this.lodGroup) {
+      this.group.remove(this.lodGroup);
+      this.lodGroup = null;
+    }
+    this.solidMesh.visible = true;
+    this.edgeLines.visible = true;
+
     this.currentSlice = slice;
     this.currentBuffers = null;
     this.triangleToTopoId = slice.triangleToFaceId;
@@ -445,6 +471,88 @@ export class MeshManager {
       return formatCadTopoId(topoId);
     }
     return this.getEdgeLabel(typeof topoId === 'bigint' ? Number(topoId & 0xffffn) : topoId);
+  }
+
+  /**
+   * Wave 5: Updates instanced assembly meshes using Three.js InstancedMesh for high-performance rendering.
+   */
+  public updateAssemblyInstances(
+    transforms: Float32Array,
+    instanceCount: number,
+    baseGeometry?: THREE.BufferGeometry
+  ): void {
+    if (this.instancedMesh) {
+      this.group.remove(this.instancedMesh);
+      this.instancedMesh.dispose();
+      this.instancedMesh = null;
+    }
+    if (this.lodGroup) {
+      this.group.remove(this.lodGroup);
+      this.lodGroup = null;
+    }
+
+    if (instanceCount <= 0) return;
+
+    let geom = baseGeometry || this.solidMesh.geometry;
+    if (!geom.getAttribute('position') || geom.getAttribute('position').count === 0) {
+      geom = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    }
+
+    const material = (this.solidMesh.material as THREE.Material).clone();
+    this.instancedMesh = new THREE.InstancedMesh(geom, material, instanceCount);
+    this.instancedMesh.name = 'cad-assembly-instanced-mesh';
+    this.instancedMesh.castShadow = true;
+    this.instancedMesh.receiveShadow = true;
+
+    const mat = new THREE.Matrix4();
+    for (let i = 0; i < instanceCount; i++) {
+      mat.fromArray(transforms, i * 16);
+      this.instancedMesh.setMatrixAt(i, mat);
+    }
+    this.instancedMesh.instanceMatrix.needsUpdate = true;
+    this.group.add(this.instancedMesh);
+
+    // Hide single solid mesh during instanced assembly display
+    this.solidMesh.visible = false;
+    this.edgeLines.visible = false;
+  }
+
+  /**
+   * Wave 5: Updates multi-deflection LOD using THREE.LOD.
+   */
+  public updateLOD(
+    coarseGeom: THREE.BufferGeometry,
+    mediumGeom: THREE.BufferGeometry,
+    fineGeom: THREE.BufferGeometry
+  ): void {
+    if (this.lodGroup) {
+      this.group.remove(this.lodGroup);
+      this.lodGroup = null;
+    }
+    if (this.instancedMesh) {
+      this.group.remove(this.instancedMesh);
+      this.instancedMesh.dispose();
+      this.instancedMesh = null;
+    }
+
+    const material = this.solidMesh.material;
+    const lod = new THREE.LOD();
+    lod.name = 'cad-lod-group';
+
+    const fineMesh = new THREE.Mesh(fineGeom, material);
+    fineMesh.name = 'cad-lod-fine';
+    const mediumMesh = new THREE.Mesh(mediumGeom, material);
+    mediumMesh.name = 'cad-lod-medium';
+    const coarseMesh = new THREE.Mesh(coarseGeom, material);
+    coarseMesh.name = 'cad-lod-coarse';
+
+    lod.addLevel(fineMesh, 0);
+    lod.addLevel(mediumMesh, 12);
+    lod.addLevel(coarseMesh, 30);
+
+    this.lodGroup = lod;
+    this.group.add(lod);
+    this.solidMesh.visible = false;
   }
 }
 
