@@ -37,6 +37,7 @@
   ],
   "scripts": {
     "build": "../../web-app/node_modules/.bin/tsc || tsc",
+    "test": "node --test test/**/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
