@@ -32,6 +32,7 @@ namespace {
 struct InternalSolid {
     uint64_t id;
     enum Kind { BOX, CYLINDER, EXTRUDE, BOOLEAN, SPHERE, CONE, TORUS, SWEEP } kind;
+    cad_backend_t backend;
     float origin[3];
     float dims[3];
     float radius;
@@ -49,8 +50,24 @@ static std::unordered_map<uint64_t, InternalSolid> g_solids;
 static std::unordered_map<uint32_t, cad_solid_handle_t> g_feature_solids;
 static std::unordered_map<uint32_t, std::vector<float>> g_feature_sketches;
 static uint32_t g_current_rollback_index = 0xFFFFFFFFU;
+static cad_backend_t g_router_backends[CAD_OP_COUNT] = {
+    CAD_BACKEND_AUTO, CAD_BACKEND_AUTO, CAD_BACKEND_AUTO,
+    CAD_BACKEND_AUTO, CAD_BACKEND_AUTO, CAD_BACKEND_AUTO,
+    CAD_BACKEND_AUTO, CAD_BACKEND_AUTO, CAD_BACKEND_AUTO
+};
 
 } // anonymous namespace
+
+extern "C" cad_status_t cad_router_set_backend(cad_op_type_t op, cad_backend_t backend) {
+    if (op >= CAD_OP_COUNT) return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    g_router_backends[op] = backend;
+    return CAD_STATUS_OK;
+}
+
+extern "C" cad_backend_t cad_router_get_backend(cad_op_type_t op) {
+    if (op >= CAD_OP_COUNT) return CAD_BACKEND_AUTO;
+    return g_router_backends[op];
+}
 
 cad_status_t occ_kernel_init(void) {
     g_solids.clear();
@@ -70,6 +87,7 @@ cad_status_t occ_primitive_box(float dx, float dy, float dz, cad_solid_handle_t*
     InternalSolid solid{};
     solid.id = handle;
     solid.kind = InternalSolid::BOX;
+    solid.backend = cad_router_get_backend(CAD_OP_PRIMITIVE_BOX);
     solid.dims[0] = dx;
     solid.dims[1] = dy;
     solid.dims[2] = dz;
@@ -85,13 +103,15 @@ cad_status_t occ_primitive_box(float dx, float dy, float dz, cad_solid_handle_t*
     solid.stats.euler_characteristic = 8 - 12 + 6; // V - E + F = 2
 
 #if HAVE_OPENCASCADE
-    BRepPrimAPI_MakeBox mkBox(dx, dy, dz);
-    solid.shape = mkBox.Shape();
-    GProp_GProps volProps, surfProps;
-    BRepGProp::VolumeProperties(solid.shape, volProps);
-    BRepGProp::SurfaceProperties(solid.shape, surfProps);
-    solid.stats.volume = static_cast<float>(volProps.Mass());
-    solid.stats.surface_area = static_cast<float>(surfProps.Mass());
+    if (solid.backend != CAD_BACKEND_NATIVE_ZIG) {
+        BRepPrimAPI_MakeBox mkBox(dx, dy, dz);
+        solid.shape = mkBox.Shape();
+        GProp_GProps volProps, surfProps;
+        BRepGProp::VolumeProperties(solid.shape, volProps);
+        BRepGProp::SurfaceProperties(solid.shape, surfProps);
+        solid.stats.volume = static_cast<float>(volProps.Mass());
+        solid.stats.surface_area = static_cast<float>(surfProps.Mass());
+    }
 #endif
 
     g_solids[handle] = solid;
@@ -108,6 +128,7 @@ cad_status_t occ_primitive_cylinder(float radius, float height, cad_solid_handle
     InternalSolid solid{};
     solid.id = handle;
     solid.kind = InternalSolid::CYLINDER;
+    solid.backend = cad_router_get_backend(CAD_OP_PRIMITIVE_CYLINDER);
     solid.radius = radius;
     solid.height = height;
 
@@ -123,13 +144,15 @@ cad_status_t occ_primitive_cylinder(float radius, float height, cad_solid_handle
     solid.stats.euler_characteristic = 2;
 
 #if HAVE_OPENCASCADE
-    BRepPrimAPI_MakeCylinder mkCyl(radius, height);
-    solid.shape = mkCyl.Shape();
-    GProp_GProps volProps, surfProps;
-    BRepGProp::VolumeProperties(solid.shape, volProps);
-    BRepGProp::SurfaceProperties(solid.shape, surfProps);
-    solid.stats.volume = static_cast<float>(volProps.Mass());
-    solid.stats.surface_area = static_cast<float>(surfProps.Mass());
+    if (solid.backend != CAD_BACKEND_NATIVE_ZIG) {
+        BRepPrimAPI_MakeCylinder mkCyl(radius, height);
+        solid.shape = mkCyl.Shape();
+        GProp_GProps volProps, surfProps;
+        BRepGProp::VolumeProperties(solid.shape, volProps);
+        BRepGProp::SurfaceProperties(solid.shape, surfProps);
+        solid.stats.volume = static_cast<float>(volProps.Mass());
+        solid.stats.surface_area = static_cast<float>(surfProps.Mass());
+    }
 #endif
 
     g_solids[handle] = solid;

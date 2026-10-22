@@ -6,7 +6,7 @@ HARNESS_DIR="${REPO_ROOT}/oracle-harness"
 BUILD_DIR="${HARNESS_DIR}/build"
 RUNNER_BIN="${BUILD_DIR}/cad_differential_runner"
 
-ITERATIONS="${1:-25}"
+ITERATIONS="${1:-2500}"
 
 mkdir -p "${BUILD_DIR}"
 (
@@ -40,13 +40,25 @@ if (passMatch) {
   failed = 1;
 }
 
+// Extract real L2 / Hausdorff max geometric delta from runner output
+let maxDelta = 0.0;
+const deltaMatch = raw.match(/\[METRIC\]\s*max_geometric_delta\s*=\s*([0-9.eE+-]+)/i) ||
+                   raw.match(/Max Geometric Delta:\s*([0-9.eE+-]+)/i) ||
+                   raw.match(/max\s*delta:\s*([0-9.eE+-]+)/i) ||
+                   raw.match(/max\s*residual:\s*([0-9.eE+-]+)/i);
+
+if (deltaMatch) {
+  maxDelta = parseFloat(deltaMatch[1]);
+}
+
 const summary = {
   status: (failed === 0 && exitCode === 0) ? "PASS" : "FAIL",
   exit_code: exitCode,
   iterations_requested: iterations,
   passed_checks: passed,
   failed_checks: failed,
-  max_geometric_delta: 0.0,
+  max_geometric_delta: maxDelta,
+  max_geometric_delta_scientific: maxDelta.toExponential(4),
   tolerance_threshold: 1e-7,
   manifold_invariant_verified: (failed === 0),
   euler_poincare_satisfied: (failed === 0)

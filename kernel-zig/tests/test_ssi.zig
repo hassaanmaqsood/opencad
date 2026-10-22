@@ -69,7 +69,6 @@ test "SSI Fuzzer: 2,500 seeds on Plane-Plane Intersection (residual <= 1e-9 mm)"
             }
         }
     }
-    std.debug.print("\n[SSI Plane-Plane 2500 seeds] max_plane1_err = {e} mm, max_plane2_err = {e} mm\n", .{ max_plane1_err, max_plane2_err });
 }
 
 test "SSI Fuzzer: 2,500 seeds on Plane-Cylinder Intersection (residual <= 1e-9 mm)" {
@@ -152,7 +151,6 @@ test "SSI Fuzzer: 2,500 seeds on Plane-Cylinder Intersection (residual <= 1e-9 m
             .none => {},
         }
     }
-    std.debug.print("\n[SSI Plane-Cylinder 2500 seeds] max_cyl_err = {e} mm, max_plane_err = {e} mm\n", .{ max_cyl_err, max_plane_err });
 }
 
 test "SSI Fuzzer: 2,500 seeds on Cylinder-Cylinder Intersection (residual <= 1e-9 mm)" {
@@ -219,7 +217,6 @@ test "SSI Fuzzer: 2,500 seeds on Cylinder-Cylinder Intersection (residual <= 1e-
             .none => {},
         }
     }
-    std.debug.print("\n[SSI Cylinder-Cylinder 2500 seeds] max_c1_err = {e} mm, max_c2_err = {e} mm\n", .{ max_c1_err, max_c2_err });
 }
 
 test "SSI Fuzzer: 2,500 seeds on Marching NURBS-NURBS SSI (residual <= 1e-7 mm)" {
@@ -280,5 +277,4 @@ test "SSI Fuzzer: 2,500 seeds on Marching NURBS-NURBS SSI (residual <= 1e-7 mm)"
             try testing.expect(corr.pt.dist(true_pt) <= 1e-6);
         }
     }
-    std.debug.print("\n[SSI Marching NURBS-NURBS 2500 seeds] max_nurbs_err = {e} mm\n", .{max_nurbs_err});
 }

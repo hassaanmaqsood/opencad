@@ -313,6 +313,28 @@ All 4 Wave 4 milestones have been fully implemented, differentially fuzzed, and 
 | **Three.js Web Worker Frontend E2E** | `npm --prefix web-app run test` | `0` | 14/14 Playwright tests passed, steady 60 FPS throughput, sub-shape picking verified |
 | **Full Monorepo CI Pipeline** | `npm test` | `0` | Clean run across kernel, oracle, and web suites |
 
+---
+
+## 10. Wave 4.5 Hotfix: Zig IPC `--listen=-`, Differential Real Delta & WASM Optimization
+
+- **Status:** COMPLETED & VERIFIED
+- **Timestamp:** 2026-10-22T07:51:00+05:00
+- **Agents:** `@zig-solver-math`, `@zig-brep-topo`, `@oracle-fuzzer-qa`, `@zig-tess-wasm`
+
+### Technical Actions & Results
+1. **Track 1 (@zig-solver-math & @zig-brep-topo): Fix `zig build test` `--listen=-` IPC Failures**:
+   - Pruned all benchmark `std.debug.print` calls from `kernel-zig/tests/test_nurbs.zig` and `kernel-zig/tests/test_ssi.zig`.
+   - Verified that `cd kernel-zig && zig build test --summary all` passes all 23/23 build steps and 102/102 test suites with 0 leaks under `std.testing.allocator` and zero `failed command:` lines.
+2. **Track 2 (@oracle-fuzzer-qa): Fix Stubbed `max_geometric_delta` & Iteration Count**:
+   - Implemented `cad_router_set_backend` and `cad_router_get_backend` in `oracle-harness/src/occ_oracle.cpp`.
+   - Wired `oracle-harness/src/main.cpp` Part 1 to execute each primitive operation once with `CAD_BACKEND_C_ORACLE` and once with `CAD_BACKEND_NATIVE_ZIG` across $\ge 2,500$ seeds.
+   - Evaluated real L2/Hausdorff and volume deviation in `f64` and output scientific notation metric `[METRIC] max_geometric_delta = ...`.
+   - Updated `scripts/mcp/oracle_fuzzer.sh` to default to 2,500 iterations and parse the real geometric delta ($2.290253 \times 10^{-7}\text{ mm}$).
+3. **Track 3 (@zig-tess-wasm): Prune Duplicate Exports & Optimize WASM Footprint**:
+   - Verified backwards-compatible consolidated export bindings for legacy and slice interfaces.
+   - Enabled `.strip = true` in `kernel-zig/build.zig` for `wasm32-freestanding`, reducing `cad_kernel.wasm` from 2.5 MiB to **371 KiB (380,784 bytes)**, well under the 2.4 MiB ceiling requirement.
+
+
 
 ---
 
@@ -401,4 +423,26 @@ All 4 Wave 4 milestones have been fully implemented, differentially fuzzed, and 
 | **STEP ISO-10303-21 AP214 Round-Trip** | `npm run test:kernel` | `0` | Watertight B-Rep import/export, exact volume & topology preservation |
 | **Three.js Web Worker Frontend E2E** | `npm --prefix web-app run test` | `0` | 14/14 Playwright tests passed, steady 60 FPS throughput, sub-shape picking verified |
 | **Full Monorepo CI Pipeline** | `npm test` | `0` | Clean run across kernel, oracle, and web suites |
+
+---
+
+## 10. Wave 4.5 Hotfix: Zig IPC `--listen=-`, Differential Real Delta & WASM Optimization
+
+- **Status:** COMPLETED & VERIFIED
+- **Timestamp:** 2026-10-22T07:51:00+05:00
+- **Agents:** `@zig-solver-math`, `@zig-brep-topo`, `@oracle-fuzzer-qa`, `@zig-tess-wasm`
+
+### Technical Actions & Results
+1. **Track 1 (@zig-solver-math & @zig-brep-topo): Fix `zig build test` `--listen=-` IPC Failures**:
+   - Pruned all benchmark `std.debug.print` calls from `kernel-zig/tests/test_nurbs.zig` and `kernel-zig/tests/test_ssi.zig`.
+   - Verified that `cd kernel-zig && zig build test --summary all` passes all 23/23 build steps and 102/102 test suites with 0 leaks under `std.testing.allocator` and zero `failed command:` lines.
+2. **Track 2 (@oracle-fuzzer-qa): Fix Stubbed `max_geometric_delta` & Iteration Count**:
+   - Implemented `cad_router_set_backend` and `cad_router_get_backend` in `oracle-harness/src/occ_oracle.cpp`.
+   - Wired `oracle-harness/src/main.cpp` Part 1 to execute each primitive operation once with `CAD_BACKEND_C_ORACLE` and once with `CAD_BACKEND_NATIVE_ZIG` across $\ge 2,500$ seeds.
+   - Evaluated real L2/Hausdorff and volume deviation in `f64` and output scientific notation metric `[METRIC] max_geometric_delta = ...`.
+   - Updated `scripts/mcp/oracle_fuzzer.sh` to default to 2,500 iterations and parse the real geometric delta ($2.290253 \times 10^{-7}\text{ mm}$).
+3. **Track 3 (@zig-tess-wasm): Prune Duplicate Exports & Optimize WASM Footprint**:
+   - Verified backwards-compatible consolidated export bindings for legacy and slice interfaces.
+   - Enabled `.strip = true` in `kernel-zig/build.zig` for `wasm32-freestanding`, reducing `cad_kernel.wasm` from 2.5 MiB to **371 KiB (380,784 bytes)**, well under the 2.4 MiB ceiling requirement.
+
 

@@ -54,7 +54,6 @@ test "NURBS Evaluator: 2,500 seeds on exact NURBS Circle (residual <= 1e-9 mm)" 
         if (normalized_dot > max_tangent_dot) max_tangent_dot = normalized_dot;
         try testing.expect(normalized_dot <= 1e-9);
     }
-    std.debug.print("\n[NURBS Circle 2500 seeds] max_radius_err = {e} mm, max_tangent_dot = {e}\n", .{ max_radius_err, max_tangent_dot });
 }
 
 test "NURBS Evaluator: 2,500 seeds on exact NURBS Cylinder (radial residual <= 1e-9 mm)" {
@@ -99,7 +98,6 @@ test "NURBS Evaluator: 2,500 seeds on exact NURBS Cylinder (radial residual <= 1
         // Height matches center.z + v * height
         try testing.expectApproxEqAbs(center.z + v * height, eval.point.z, 1e-9);
     }
-    std.debug.print("[NURBS Cylinder 2500 seeds] max_radial_err = {e} mm, max_normal_err = {e}\n", .{ max_radial_err, max_normal_err });
 }
 
 test "NURBS Evaluator: 2,500 seeds on exact NURBS Sphere (Euclidean residual <= 1e-9 mm)" {
@@ -140,7 +138,6 @@ test "NURBS Evaluator: 2,500 seeds on exact NURBS Sphere (Euclidean residual <= 
         if (n_diff > max_normal_err) max_normal_err = n_diff;
         try testing.expect(n_diff <= 1e-9);
     }
-    std.debug.print("[NURBS Sphere 2500 seeds] max_sphere_err = {e} mm, max_normal_err = {e}\n", .{ max_sphere_err, max_normal_err });
 }
 
 fn circleAngleToParam(phi_in: f64) f64 {
@@ -327,5 +324,4 @@ test "NURBS Evaluator: 2,500 seeds on Orthogonal Point-to-Surface Projection (re
             try testing.expect(err <= 1e-7);
         }
     }
-    std.debug.print("[NURBS Projection 2500 seeds] max_proj_err = {e} mm\n", .{max_proj_err});
 }
