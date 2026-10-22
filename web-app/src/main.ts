@@ -205,6 +205,45 @@ async function initApp() {
     () => import('./plugins/git-cad/index')
   );
 
+  pluginManager.register(
+    {
+      id: 'sheetmetal',
+      name: 'Sheet Metal Workbench',
+      version: '1.0.0',
+      icon: '📦',
+      category: 'manufacturing',
+      description: 'DIN 6935 K-factor bend allowances, corner reliefs, hems, and 2D flat-pattern unfolding',
+      wasmUrl: '/cad_sheetmetal.wasm',
+    },
+    () => import('./plugins/sheetmetal/index')
+  );
+
+  pluginManager.register(
+    {
+      id: 'drawing',
+      name: '2D Engineering Drawings',
+      version: '1.0.0',
+      icon: '📋',
+      category: 'manufacturing',
+      description: 'Multi-view orthographic blueprints, ANSI31 section hatching, GD&T feature control frames, and DXF/SVG export',
+      wasmUrl: '/cad_mfg_cam.wasm',
+    },
+    () => import('./plugins/drawing/index')
+  );
+
+  pluginManager.register(
+    {
+      id: 'cam-hlr',
+      name: 'CAM & 3D Print',
+      version: '1.0.0',
+      icon: '⚙️',
+      category: 'manufacturing',
+      description: 'Subtractive 2.5D/3D CNC G-code toolpath generation, SLS sinter box & FDM bed nesting, and 3MF production packaging',
+      wasmUrl: '/cad_mfg_cam.wasm',
+    },
+    () => import('./plugins/cam-hlr/index')
+  );
+
   const pluginContext: PluginContext = {
     viewer,
     bridge,

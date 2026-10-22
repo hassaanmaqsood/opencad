@@ -53,6 +53,8 @@ pub const NurbsMod = @import("geom/nurbs.zig");
 pub const SsiMod = @import("geom/ssi.zig");
 pub const assembly_solver = @import("solver/assembly_solver.zig");
 pub const se3 = @import("solver/se3.zig");
+pub const SheetMetalMod = @import("sheetmetal/mod.zig");
+pub const CamHlrMod = @import("cam_hlr/mod.zig");
 
 // Global handle registry
 var next_handle: u64 = 1;

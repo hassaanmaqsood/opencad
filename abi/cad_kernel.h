@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -989,6 +990,448 @@ void* cad_shared_alloc(size_t size);
  * @param size Allocation size in bytes
  */
 void cad_shared_free(void* ptr, size_t size);
+
+/* ------------------------------------------------------------------------- */
+/* Wave 7: Sheet Metal Operations & 2D Flat-Pattern Unfolding                */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * @brief Corner/notch relief punch geometry for sheet metal bends.
+ */
+typedef enum cad_relief_type_e {
+    CAD_RELIEF_RECTANGULAR = 0,         /**< Rectangular corner punch relief */
+    CAD_RELIEF_ROUND = 1,               /**< Cylindrical/semi-circular punch relief */
+    CAD_RELIEF_TEAR = 2,                /**< Zero-width slit / tear relief cut */
+    CAD_RELIEF_NONE = 3                 /**< No relief cut (open boundary) */
+} cad_relief_type_t;
+typedef cad_relief_type_t CadReliefType;
+
+/**
+ * @brief Global and feature-specific sheet metal material and bend configuration.
+ */
+typedef struct cad_sheetmetal_config_s {
+    double thickness;                   /**< Sheet stock thickness (mm, e.g. 0.5 to 10.0) */
+    double bend_radius;                 /**< Inner bend radius (mm, default = thickness) */
+    double k_factor;                    /**< Neutral axis ratio (0.0 to 1.0, typical 0.33 to 0.50 per DIN 6935) */
+    cad_relief_type_t relief_type;      /**< Corner/tear relief cut geometry */
+    double relief_width;                /**< Width of relief cut (mm, default = thickness) */
+    double relief_depth;                /**< Depth of relief cut past bend line (mm) */
+} cad_sheetmetal_config_t;
+typedef cad_sheetmetal_config_t CadSheetMetalConfig;
+
+/**
+ * @brief Hem profile styles for sheet metal edge finishing.
+ */
+typedef enum cad_hem_type_e {
+    CAD_HEM_CLOSED = 0,                 /**< Fully flattened / mashed hem */
+    CAD_HEM_OPEN = 1,                   /**< Open U-shape hem with clearance air gap */
+    CAD_HEM_TEARDROP = 2,               /**< Curved teardrop loop */
+    CAD_HEM_ROLLED = 3                  /**< 270-360 degree rolled safety bead */
+} cad_hem_type_t;
+typedef cad_hem_type_t CadHemType;
+
+/**
+ * @brief Sheet metal extruded bend flange payload.
+ */
+typedef struct cad_flange_op_s {
+    cad_topo_id_t target_edge_id;       /**< Base edge CadTopoId where flange is bent */
+    double length;                      /**< Length / height of extruded flange (mm) */
+    double angle_rad;                   /**< Bend angle in radians (e.g. PI/2 for 90-degree bend) */
+    double offset_start;                /**< Offset from edge start vertex (mm) */
+    double offset_end;                  /**< Offset from edge end vertex (mm) */
+    cad_sheetmetal_config_t config;     /**< Sheet metal bend parameters */
+} cad_flange_op_t;
+typedef cad_flange_op_t CadFlangeOp;
+
+/**
+ * @brief Sheet metal hem payload.
+ */
+typedef struct cad_hem_op_s {
+    cad_topo_id_t target_edge_id;       /**< Edge CadTopoId for hemming */
+    cad_hem_type_t hem_type;            /**< Hem profile style */
+    double length;                      /**< Hem return length (mm) */
+    double gap;                         /**< Air gap for open / teardrop hems (mm) */
+    cad_sheetmetal_config_t config;     /**< Sheet metal bend parameters */
+} cad_hem_op_t;
+typedef cad_hem_op_t CadHemOp;
+
+/**
+ * @brief Fold direction annotation for flat-pattern bend centerlines.
+ */
+typedef enum cad_bend_direction_e {
+    CAD_BEND_UP = 0,                    /**< Sheet folded upward (+Z in local frame) */
+    CAD_BEND_DOWN = 1                   /**< Sheet folded downward (-Z in local frame) */
+} cad_bend_direction_t;
+typedef cad_bend_direction_t CadBendDirection;
+
+/**
+ * @brief 2D bend centerline annotation with manufacturing fold instructions.
+ */
+typedef struct cad_bend_centerline_s {
+    double start_point[2];              /**< Flat pattern 2D start coordinate [X, Y] */
+    double end_point[2];                /**< Flat pattern 2D end coordinate [X, Y] */
+    double bend_angle_rad;              /**< Fold angle in radians */
+    double bend_radius;                 /**< Inner bend radius (mm) */
+    cad_bend_direction_t direction;     /**< Up or Down fold direction */
+    double bend_allowance;              /**< Computed DIN 6935 bend allowance (mm) */
+    cad_topo_id_t source_bend_edge;     /**< Persistent TopoId of original 3D bend edge */
+} cad_bend_centerline_t;
+typedef cad_bend_centerline_t CadBendCenterline;
+
+/**
+ * @brief Unfolded 2D flat-pattern representation for CNC laser, plasma, and punch cutting.
+ */
+typedef struct cad_flat_pattern_s {
+    cad_solid_handle_t flat_solid;      /**< 2D planar unbent B-Rep sheet solid handle */
+    const cad_bend_centerline_t* bend_lines; /**< Array of bend centerlines */
+    uint32_t bend_line_count;           /**< Number of bend centerlines */
+    double bounding_box_2d[4];          /**< [min_x, min_y, max_x, max_y] of flat stock */
+    double total_cut_length;            /**< Perimeter cutting length for CNC laser/waterjet */
+    double total_area;                  /**< Flat sheet blank surface area (mm^2) */
+} cad_flat_pattern_t;
+typedef cad_flat_pattern_t CadFlatPattern;
+
+/**
+ * @brief Apply an angled extruded flange to a sheet metal body edge.
+ */
+cad_status_t cad_sheetmetal_flange(
+    cad_solid_handle_t solid,
+    const cad_flange_op_t* flange_op,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Apply a hem finishing edge to a sheet metal body edge.
+ */
+cad_status_t cad_sheetmetal_hem(
+    cad_solid_handle_t solid,
+    const cad_hem_op_t* hem_op,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Unfold a 3D folded sheet metal solid into a 2D flat-pattern B-Rep and bend centerlines.
+ *
+ * @param solid Input folded 3D sheet metal solid handle
+ * @param fixed_face_id Base face CadTopoId that remains fixed during unfolding
+ * @param out_flat_pattern Output flat-pattern B-Rep solid, bend lines, and metrics
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_sheetmetal_unfold(
+    cad_solid_handle_t solid,
+    cad_topo_id_t fixed_face_id,
+    cad_flat_pattern_t* out_flat_pattern
+);
+
+/**
+ * @brief Release memory resources allocated in a flat pattern.
+ */
+cad_status_t cad_flat_pattern_free(cad_flat_pattern_t* flat_pattern);
+
+/* ------------------------------------------------------------------------- */
+/* Wave 7: 2D Engineering Drawings, Hidden-Line Removal & Vector Export      */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * @brief Orthographic, isometric, or section drawing projection type.
+ */
+typedef enum cad_projection_type_e {
+    CAD_PROJ_TOP = 0,                   /**< Top orthographic view (+Z -> -Z) */
+    CAD_PROJ_FRONT = 1,                 /**< Front orthographic view (+Y -> -Y) */
+    CAD_PROJ_RIGHT = 2,                 /**< Right orthographic view (+X -> -X) */
+    CAD_PROJ_ISOMETRIC = 3,             /**< Standard 30-degree isometric axonometric view */
+    CAD_PROJ_SECTION = 4,               /**< Cross-sectional cut with hatching */
+    CAD_PROJ_CUSTOM = 5                 /**< Custom camera direction and up vector */
+} cad_projection_type_t;
+typedef cad_projection_type_t CadProjectionType;
+
+/**
+ * @brief Curve visibility class in 2D projected engineering drawing.
+ */
+typedef enum cad_curve_visibility_e {
+    CAD_CURVE_VISIBLE = 0,              /**< Unobstructed outer/sharp silhouette (solid line) */
+    CAD_CURVE_HIDDEN = 1,               /**< Occluded interior boundary (dashed/hidden line) */
+    CAD_CURVE_SILHOUETTE = 2,           /**< Smooth curved surface horizon silhouette */
+    CAD_CURVE_CENTERLINE = 3,           /**< Cylindrical hole / boss axis centerline (dash-dot) */
+    CAD_CURVE_HATCH = 4                 /**< Section-cut cross-hatch boundary line */
+} cad_curve_visibility_t;
+typedef cad_curve_visibility_t CadCurveVisibility;
+
+/**
+ * @brief 2D projected polyline curve with topological provenance.
+ */
+typedef struct cad_drawing_curve_s {
+    cad_curve_visibility_t visibility;  /**< Visible, hidden, silhouette, centerline, or hatch */
+    const float* points_2d;             /**< Packed flat array of 2D coordinates [X0, Y0, X1, Y1, ...] */
+    uint32_t point_count;               /**< Number of 2D coordinate pairs */
+    cad_topo_id_t source_topo_id;       /**< Source 3D B-Rep Edge or Face CadTopoId */
+} cad_drawing_curve_t;
+typedef cad_drawing_curve_t CadDrawingCurve;
+
+/**
+ * @brief Planar cross-section definition for section drawings.
+ */
+typedef struct cad_section_plane_s {
+    double origin[3];                   /**< Section cut plane origin [X, Y, Z] */
+    double normal[3];                   /**< Section cut plane unit normal [Nx, Ny, Nz] */
+    double hatch_angle_rad;             /**< Hatch line rotation angle (e.g. PI/4 = 45 deg) */
+    double hatch_spacing;               /**< Hatch line spacing in drawing units (mm) */
+} cad_section_plane_t;
+typedef cad_section_plane_t CadSectionPlane;
+
+/**
+ * @brief Drawing view projection request parameters.
+ */
+typedef struct cad_drawing_view_params_s {
+    cad_projection_type_t proj_type;    /**< Projection mode (Top, Front, Right, Isometric, Section, Custom) */
+    double camera_dir[3];               /**< View direction vector for CAD_PROJ_CUSTOM */
+    double up_dir[3];                   /**< Up vector for CAD_PROJ_CUSTOM */
+    double scale;                       /**< Drawing scale factor (1.0 = 1:1, 0.5 = 1:2) */
+    bool include_hidden_lines;          /**< Extract and return occluded dashed lines */
+    bool include_smooth_silhouettes;    /**< Extract curved horizon silhouettes */
+    bool include_centerlines;           /**< Extract hole / cylinder centerlines */
+    cad_section_plane_t section_cut;    /**< Section cut plane when proj_type == CAD_PROJ_SECTION */
+} cad_drawing_view_params_t;
+typedef cad_drawing_view_params_t CadDrawingViewParams;
+
+/**
+ * @brief Projected 2D engineering drawing view containing classified vector polylines.
+ */
+typedef struct cad_drawing_view_s {
+    const cad_drawing_curve_t* curves;  /**< Array of projected 2D curves */
+    uint32_t curve_count;               /**< Number of curves in view */
+    double view_bbox[4];                /**< [min_x, min_y, max_x, max_y] bounding box in drawing mm */
+    double section_cut_area;            /**< Solid cross-sectional area if section view (mm^2) */
+} cad_drawing_view_t;
+typedef cad_drawing_view_t CadDrawingView;
+
+/**
+ * @brief Project a 3D B-Rep solid into a 2D engineering drawing view via exact Hidden-Line Removal.
+ */
+cad_status_t cad_hlr_project_view(
+    cad_solid_handle_t solid,
+    const cad_drawing_view_params_t* params,
+    cad_drawing_view_t* out_view
+);
+
+/**
+ * @brief Free allocated memory associated with a projected 2D drawing view.
+ */
+cad_status_t cad_drawing_view_free(cad_drawing_view_t* view);
+
+/**
+ * @brief Export projected drawing view curves to industry-standard AutoCAD DXF R12/2000 text.
+ *
+ * @param view Projected 2D drawing view
+ * @param out_dxf_str Pointer to heap-allocated null-terminated DXF string
+ * @param out_dxf_len Number of bytes written
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_export_dxf(
+    const cad_drawing_view_t* view,
+    char** out_dxf_str,
+    size_t* out_dxf_len
+);
+
+/**
+ * @brief Export projected drawing view curves to W3C SVG vector document with standard engineering layers.
+ *
+ * @param view Projected 2D drawing view
+ * @param sheet_width_mm Drawing sheet width (e.g. 420.0 for ISO A3)
+ * @param sheet_height_mm Drawing sheet height (e.g. 297.0 for ISO A3)
+ * @param out_svg_str Pointer to heap-allocated null-terminated SVG string
+ * @param out_svg_len Number of bytes written
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_export_svg_drawing(
+    const cad_drawing_view_t* view,
+    double sheet_width_mm,
+    double sheet_height_mm,
+    char** out_svg_str,
+    size_t* out_svg_len
+);
+
+/* ------------------------------------------------------------------------- */
+/* Wave 7: Additive & Subtractive CAM, 3MF Production & Build Nesting        */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * @brief Production 3MF export packaging options conforming to 3MF Core & Production Extensions.
+ */
+typedef struct cad_3mf_production_options_s {
+    const char* part_number;            /**< Manufacturing Part Number / SKU identifier */
+    const char* material_name;          /**< Material name (e.g. PA12, Ti-6Al-4V, PLA, 6061-T6) */
+    double layer_height_mm;             /**< Target additive slice layer height (mm) */
+    bool include_thumbnail;             /**< Embed rendered PNG viewport preview */
+    bool use_compression;               /**< Apply Deflate ZIP container compression */
+} cad_3mf_production_options_t;
+typedef cad_3mf_production_options_t Cad3mfProductionOptions;
+
+/**
+ * @brief Export an assembly or collection of solids into a production-grade 3MF container.
+ *
+ * @param solids Array of B-Rep solid handles
+ * @param transforms_4x4 Flat array of 4x4 column-major transforms (solid_count * 16 floats), or NULL for identity
+ * @param solid_count Number of solids to package
+ * @param options Production metadata and packaging options
+ * @param out_3mf_bytes Pointer to allocated byte buffer containing the 3MF archive
+ * @param out_3mf_len Byte length of the generated 3MF package
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_export_3mf_production(
+    const cad_solid_handle_t* solids,
+    const float* transforms_4x4,
+    uint32_t solid_count,
+    const cad_3mf_production_options_t* options,
+    uint8_t** out_3mf_bytes,
+    size_t* out_3mf_len
+);
+
+/**
+ * @brief Nesting solver optimization strategy.
+ */
+typedef enum cad_nesting_mode_e {
+    CAD_NESTING_2D_BUILD_PLATE = 0,     /**< FDM / CNC 2D flat plate nesting with part spacing */
+    CAD_NESTING_3D_SINTER_BOX = 1       /**< SLS / DMLS 3D volumetric dense bounding-box / voxel packing */
+} cad_nesting_mode_t;
+typedef cad_nesting_mode_t CadNestingMode;
+
+/**
+ * @brief Configuration parameters for build volume nesting and packing algorithms.
+ */
+typedef struct cad_nesting_config_s {
+    cad_nesting_mode_t mode;            /**< 2D bed or 3D powder chamber */
+    double build_volume_dx;             /**< Printable width X (mm) */
+    double build_volume_dy;             /**< Printable depth Y (mm) */
+    double build_volume_dz;             /**< Printable height Z (mm, ignored if 2D) */
+    double part_spacing_mm;             /**< Minimum clearance margin between parts (mm) */
+    double margin_boundary_mm;          /**< Clearance from chamber perimeter walls (mm) */
+    bool allow_rotation_xy;             /**< Allow 90 or arbitrary Z-axis rotation */
+    bool allow_rotation_3d;             /**< Allow arbitrary SO(3) 3D re-orientation (SLS only) */
+} cad_nesting_config_t;
+typedef cad_nesting_config_t CadNestingConfig;
+
+/**
+ * @brief Placement transform and status for an individual nested part instance.
+ */
+typedef struct cad_nest_instance_s {
+    cad_solid_handle_t solid;           /**< Part solid handle */
+    float transform_4x4[16];            /**< Computed column-major placement transform matrix */
+    bool fits_in_volume;                /**< True if successfully packed without collision */
+} cad_nest_instance_t;
+typedef cad_nest_instance_t CadNestInstance;
+
+/**
+ * @brief Build volume nesting optimization results and packing efficiency metrics.
+ */
+typedef struct cad_nesting_result_s {
+    const cad_nest_instance_t* instances; /**< Packed instances array */
+    uint32_t instance_count;            /**< Total number of instances requested */
+    double packing_density_percent;     /**< Volumetric density: (part_volumes / chamber_volume) * 100 */
+    double max_height_reached_mm;       /**< Maximum Z-height used (determines SLS print cycle time) */
+    uint32_t parts_packed_count;        /**< Count of parts successfully packed within volume */
+    uint32_t parts_overflow_count;      /**< Count of parts that could not fit */
+} cad_nesting_result_t;
+typedef cad_nesting_result_t CadNestingResult;
+
+/**
+ * @brief Nest and pack multiple part solids into an SLS sinter box or FDM build plate.
+ *
+ * @param solids Array of unique part solid handles
+ * @param quantities Quantity required for each part solid
+ * @param part_type_count Number of entries in solids and quantities arrays
+ * @param config Build chamber volume and clearance constraints
+ * @param out_result Output nested instance transforms and packing efficiency metrics
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_nest_build_volume(
+    const cad_solid_handle_t* solids,
+    const uint32_t* quantities,
+    uint32_t part_type_count,
+    const cad_nesting_config_t* config,
+    cad_nesting_result_t* out_result
+);
+
+/**
+ * @brief Free allocated memory associated with a nesting result.
+ */
+cad_status_t cad_nest_result_free(cad_nesting_result_t* result);
+
+/**
+ * @brief Subtractive CNC milling and drilling toolpath strategies.
+ */
+typedef enum cad_toolpath_strategy_e {
+    CAD_CAM_2D_CONTOUR = 0,             /**< 2.5D perimeter profiling with lead-in/lead-out arcs */
+    CAD_CAM_2D_POCKET = 1,              /**< 2.5D concentric / raster pocket clearing */
+    CAD_CAM_ADAPTIVE_CLEARING = 2,      /**< Constant tool engagement angle high-speed trochoidal clearing */
+    CAD_CAM_DRILL_CYCLE = 3,            /**< G81 standard / G83 peck drilling for cylindrical holes */
+    CAD_CAM_SURFACE_3D = 4              /**< 3D parallel / scallop finish toolpath */
+} cad_toolpath_strategy_t;
+typedef cad_toolpath_strategy_t CadToolpathStrategy;
+
+/**
+ * @brief Subtractive cutting tool definition.
+ */
+typedef struct cad_tool_definition_s {
+    uint32_t tool_number;               /**< Tool slot / position (T1, T2, etc.) */
+    double diameter_mm;                 /**< Endmill or drill diameter (mm) */
+    double corner_radius_mm;            /**< Flat endmill (0), bullnose (R), or ballnose (D/2) */
+    double flute_length_mm;             /**< Maximum cutting depth per pass (mm) */
+    uint32_t flute_count;               /**< Number of flutes (for chip load calculation) */
+} cad_tool_definition_t;
+typedef cad_tool_definition_t CadToolDefinition;
+
+/**
+ * @brief CNC toolpath generation parameters.
+ */
+typedef struct cad_cam_params_s {
+    cad_toolpath_strategy_t strategy;   /**< Milling strategy (Contour, Pocket, Adaptive, Drill, 3D) */
+    cad_tool_definition_t tool;         /**< Cutting tool geometry */
+    double spindle_rpm;                 /**< Spindle speed RPM */
+    double feed_cutting_mmpm;           /**< Cutting feedrate (mm/min) */
+    double feed_plunge_mmpm;            /**< Plunge feedrate (mm/min) */
+    double stepover_mm;                 /**< Radial stepover distance (mm) */
+    double stepdown_mm;                 /**< Axial stepdown depth per pass (mm) */
+    double stock_to_leave;              /**< Material stock left for finish pass (mm) */
+    double clearance_height_mm;         /**< Rapid clearance plane Z (mm) */
+    double retract_height_mm;           /**< Intermediate retract plane Z (mm) */
+    cad_topo_id_t target_face_id;       /**< Floor or wall face CadTopoId to machine */
+} cad_cam_params_t;
+typedef cad_cam_params_t CadCamParams;
+
+/**
+ * @brief Generated CNC toolpath containing G-code and 3D visual preview polylines.
+ */
+typedef struct cad_cam_toolpath_s {
+    cad_toolpath_strategy_t strategy;   /**< Strategy used */
+    const char* gcode_text;             /**< Formatted standard RS-274 / ISO G-code string */
+    size_t gcode_len;                   /**< Byte length of G-code string */
+    double estimated_time_seconds;      /**< Machining cycle time estimation */
+    double total_path_length_mm;        /**< Total feed distance (mm) */
+    double rapid_distance_mm;           /**< Rapid traverse distance (mm) */
+    const float* visual_points;         /**< Packed 3D toolpath coordinates [X0, Y0, Z0, ...] for Three.js preview */
+    uint32_t visual_point_count;        /**< Number of 3D visual vertices */
+} cad_cam_toolpath_t;
+typedef cad_cam_toolpath_t CadCamToolpath;
+
+/**
+ * @brief Generate a subtractive CNC toolpath and RS-274 G-code for a target feature or solid.
+ *
+ * @param solid Input B-Rep solid handle
+ * @param params Tooling, feeds, speeds, and strategy parameters
+ * @param out_toolpath Output G-code buffer, cycle metrics, and visual toolpath points
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_cam_generate_toolpath(
+    cad_solid_handle_t solid,
+    const cad_cam_params_t* params,
+    cad_cam_toolpath_t* out_toolpath
+);
+
+/**
+ * @brief Free allocated memory associated with a generated CAM toolpath.
+ */
+cad_status_t cad_cam_toolpath_free(cad_cam_toolpath_t* toolpath);
 
 #ifdef __cplusplus
 }
