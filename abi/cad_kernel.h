@@ -1433,6 +1433,283 @@ cad_status_t cad_cam_generate_toolpath(
  */
 cad_status_t cad_cam_toolpath_free(cad_cam_toolpath_t* toolpath);
 
+/* ========================================================================= */
+/* Wave 8: Tetrahedral Meshing, FEA & FACT Compliant Flexure Synthesis       */
+/* ========================================================================= */
+
+/**
+ * @brief Finite element solver formulation modes.
+ */
+typedef enum cad_fea_mode_e {
+    CAD_FEA_MODE_LINEAR_ELASTIC = 0,            /**< Small-displacement linear elastic PCG solver */
+    CAD_FEA_MODE_COROTATIONAL_NONLINEAR = 1     /**< Corotational formulation for geometric large-deflection analysis */
+} cad_fea_mode_t;
+typedef cad_fea_mode_t CadFeaMode;
+
+/**
+ * @brief Tetrahedral finite element discretization order.
+ */
+typedef enum cad_fea_element_type_e {
+    CAD_FEA_ELEMENT_TET4 = 4,                   /**< 4-node linear constant-strain tetrahedron */
+    CAD_FEA_ELEMENT_TET10 = 10                  /**< 10-node quadratic isoparametric tetrahedron */
+} cad_fea_element_type_t;
+typedef cad_fea_element_type_t CadFeaElementType;
+
+/**
+ * @brief Material isotropic mechanical properties for structural FEA and flexures.
+ */
+typedef struct cad_material_props_s {
+    double youngs_modulus_pa;                   /**< Young's modulus E in Pascals (e.g. 210e9 for Structural Steel, 69e9 for Al 6061-T6) */
+    double poisson_ratio;                       /**< Poisson's ratio nu (e.g. 0.30 for Steel, 0.33 for Aluminum) */
+    double yield_strength_pa;                   /**< Yield strength sigma_y in Pascals (e.g. 250e6 for Steel, 276e6 for Al 6061-T6) */
+    double density;                             /**< Mass density rho in kg/m^3 (e.g. 7850 for Steel, 2700 for Aluminum) */
+} cad_material_props_t;
+typedef cad_material_props_t CadMaterialProps;
+
+/**
+ * @brief Structural boundary condition types.
+ */
+typedef enum cad_bc_type_e {
+    CAD_BC_FIXED_FACE = 0,                      /**< Restrains all 3 translational DOFs (u_x = u_y = u_z = 0) */
+    CAD_BC_FORCE_VECTOR = 1,                     /**< Distributed surface traction or nodal force vector [Fx, Fy, Fz] in Newtons */
+    CAD_BC_MOMENT_VECTOR = 2,                    /**< Torsional / bending moment vector [Mx, My, Mz] in N*m */
+    CAD_BC_PRESCRIBED_DISPLACEMENT = 3           /**< Enforced nodal displacement vector [dx, dy, dz] in meters */
+} cad_bc_type_t;
+typedef cad_bc_type_t CadBcType;
+
+/**
+ * @brief Boundary condition or load applied to a sub-shape CadTopoId.
+ */
+typedef struct cad_boundary_condition_s {
+    cad_bc_type_t type;                          /**< Fixed support, force, moment, or displacement */
+    cad_topo_id_t target_topo_id;                /**< Persistent CadTopoId of target face, edge, or vertex */
+    double value[3];                             /**< Vector value [X, Y, Z] (Forces in N, Moments in N*m, Displacements in m) */
+} cad_boundary_condition_t;
+typedef cad_boundary_condition_t CadBoundaryCondition;
+
+/**
+ * @brief Tetrahedral mesh generator parameters.
+ */
+typedef struct cad_fea_mesh_params_s {
+    cad_fea_element_type_t element_type;         /**< Tet4 (linear) or Tet10 (quadratic) */
+    double max_element_size_m;                   /**< Maximum tetrahedral edge length (meters) */
+    double growth_rate;                          /**< Element gradation factor (e.g. 1.2 to 1.5) */
+    bool optimize_aspect_ratio;                  /**< Delaunay quality optimization to eliminate sliver tets */
+} cad_fea_mesh_params_t;
+typedef cad_fea_mesh_params_t CadFeaMeshParams;
+
+/**
+ * @brief Zero-copy tetrahedral volume mesh representation.
+ */
+typedef struct cad_tet_mesh_s {
+    const float* node_positions;                 /**< Packed nodal coordinates [X0, Y0, Z0, ...] in meters (Float32Array) */
+    uint32_t node_count;                         /**< Total number of nodes (positions len = node_count * 3) */
+    const uint32_t* element_indices;             /**< Packed element connectivity [n0, n1, n2, n3, ...] (Uint32Array) */
+    uint32_t element_count;                      /**< Total number of elements (stride = element_type) */
+    cad_fea_element_type_t element_type;         /**< Tet4 (stride 4) or Tet10 (stride 10) */
+} cad_tet_mesh_t;
+typedef cad_tet_mesh_t CadTetMesh;
+
+/**
+ * @brief Maximum number of natural vibration or buckling mode shapes computed.
+ */
+#define CAD_FEA_NUM_MODE_SHAPES 6
+
+/**
+ * @brief Natural vibration eigenfrequency or linear buckling mode shape.
+ */
+typedef struct cad_fea_mode_shape_s {
+    double natural_frequency_hz;                 /**< Resonant eigenfrequency (Hz) or buckling load factor lambda */
+    const float* eigenmode_displacements;        /**< Zero-copy normalized nodal displacement vector [ux0, uy0, uz0, ...] */
+} cad_fea_mode_shape_t;
+typedef cad_fea_mode_shape_t CadFeaModeShape;
+
+/**
+ * @brief Zero-copy FEA solver results slice for high-performance Three.js WebGL visualization.
+ */
+typedef struct cad_fea_result_slice_s {
+    uint32_t node_count;                         /**< Total nodes in discretized model */
+    uint32_t element_count;                      /**< Total tetrahedral elements */
+
+    /**
+     * Zero-copy nodal displacement vectors u_xyz [ux0, uy0, uz0, ux1, uy1, uz1, ...] in meters.
+     * Array length = node_count * 3 (Float32Array).
+     */
+    const float* u_xyz;
+
+    /**
+     * Zero-copy Von Mises equivalent stress scalar field in Pascals (N/m^2).
+     * Array length = node_count (Float32Array) for node-averaged colormap rendering.
+     */
+    const float* von_mises_stresses;
+
+    /**
+     * Zero-copy structural safety factor map: sigma_yield / sigma_von_mises.
+     * Array length = node_count (Float32Array).
+     */
+    const float* safety_factor_map;
+
+    /**
+     * Critical scalar response extrema
+     */
+    float max_displacement_m;                    /**< Maximum resultant nodal deflection |u|_max (meters) */
+    float max_von_mises_pa;                      /**< Peak Von Mises equivalent stress (Pascals) */
+    float min_safety_factor;                     /**< Minimum factor of safety (yield margin) across solid */
+
+    /**
+     * Natural vibration and buckling eigenmodes
+     */
+    cad_fea_mode_shape_t mode_shapes[CAD_FEA_NUM_MODE_SHAPES]; /**< First 6 mode shapes */
+    uint32_t mode_shape_count;                   /**< Number of valid mode shapes (up to 6) */
+
+    /**
+     * Tetrahedral volume mesh geometry
+     */
+    cad_tet_mesh_t mesh;
+} cad_fea_result_slice_t;
+typedef cad_fea_result_slice_t CadFeaResultSlice;
+
+/**
+ * @brief FACT (Freedom and Constraint Topologies) screw axis types.
+ */
+typedef enum cad_fact_screw_type_e {
+    CAD_FACT_PURE_ROTATION = 0,                  /**< Zero pitch screw axis (pure rotational freedom line or constraint line) */
+    CAD_FACT_PURE_TRANSLATION = 1,               /**< Infinite pitch (pure translational freedom direction or constraint plane) */
+    CAD_FACT_GENERAL_SCREW = 2                   /**< Finite pitch helical screw axis */
+} cad_fact_screw_type_t;
+typedef cad_fact_screw_type_t CadFactScrewType;
+
+/**
+ * @brief Individual FACT spatial screw-axis line segment.
+ */
+typedef struct cad_fact_screw_axis_s {
+    cad_fact_screw_type_t type;                  /**< Pure rotation, translation, or helical screw */
+    double origin[3];                            /**< Origin coordinate on axis [X, Y, Z] in stage frame */
+    double direction[3];                         /**< Unit axis vector [Dx, Dy, Dz] */
+    double pitch;                                /**< Screw pitch h (meters / radian) */
+    bool is_freedom_line;                        /**< True = freedom twist axis (green), False = constraint wrench line (red) */
+} cad_fact_screw_axis_t;
+typedef cad_fact_screw_axis_t CadFactScrewAxis;
+
+/**
+ * @brief Compliant mechanism flexure analysis metrics, 6x6 spatial compliance/stiffness matrices, and FACT visualization.
+ */
+typedef struct cad_flexure_analysis_s {
+    /**
+     * Extracted 6x6 spatial compliance matrix C [rad/N, rad/(N*m); m/N, m/(N*m)].
+     * Row-major flat array of 36 double-precision floats:
+     * [delta_theta_x, delta_theta_y, delta_theta_z, delta_x, delta_y, delta_z]^T = C * [Fx, Fy, Fz, Mx, My, Mz]^T
+     */
+    double compliance_matrix_6x6[36];
+
+    /**
+     * Extracted 6x6 spatial stiffness matrix K = C^-1 [N/rad, (N*m)/rad; N/m, (N*m)/m].
+     * Row-major flat array of 36 double-precision floats.
+     */
+    double stiffness_matrix_6x6[36];
+
+    /**
+     * 3D Coordinates of the Elastic Center of Stiffness [X, Y, Z] in stage coordinate space.
+     * Center where pure transverse forces produce zero parasitic angular tilt.
+     */
+    double center_of_stiffness[3];
+
+    /**
+     * Parasitic axis cross-coupling drift error metrics:
+     */
+    double parasitic_drift_translation[3];       /**< Off-axis translational displacement drift under primary motion (m) */
+    double parasitic_drift_rotation[3];          /**< Off-axis parasitic angular tilt (radians) */
+
+    /**
+     * FACT (Freedom and Constraint Topologies) screw axes
+     */
+    const cad_fact_screw_axis_t* fact_screw_axes; /**< Array of freedom and constraint screw lines */
+    uint32_t fact_screw_axis_count;              /**< Total screw lines */
+
+    /**
+     * Zero-copy packed 3D line segment vertices [X0, Y0, Z0, X1, Y1, Z1, ...] (Float32Array).
+     * Ready for direct Three.js LineSegments buffer geometry rendering.
+     */
+    const float* fact_visual_lines;
+    uint32_t fact_visual_line_count;             /**< Number of 2-point line segments (vertices = count * 2) */
+} cad_flexure_analysis_t;
+typedef cad_flexure_analysis_t CadFlexureAnalysis;
+
+/**
+ * @brief Generate a tetrahedral Delaunay mesh from a B-Rep solid body.
+ *
+ * @param solid Target solid handle
+ * @param params Meshing element type, maximum edge size, and quality parameters
+ * @param out_mesh Output zero-copy tetrahedral mesh structure
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_fea_mesh_generate(
+    cad_solid_handle_t solid,
+    const cad_fea_mesh_params_t* params,
+    cad_tet_mesh_t* out_mesh
+);
+
+/**
+ * @brief Free allocated memory associated with a tetrahedral mesh.
+ */
+cad_status_t cad_fea_mesh_free(cad_tet_mesh_t* mesh);
+
+/**
+ * @brief Execute finite element analysis (FEA) on a B-Rep solid body.
+ *
+ * Discretizes the solid into a tetrahedral mesh, applies boundary conditions and loads,
+ * and solves the equilibrium system using Jacobi-preconditioned conjugate gradient (PCG).
+ *
+ * @param solid Target B-Rep solid handle
+ * @param mode Solver formulation (CAD_FEA_MODE_LINEAR_ELASTIC or CAD_FEA_MODE_COROTATIONAL_NONLINEAR)
+ * @param material Material mechanical properties (Young's modulus, Poisson's ratio, yield strength, density)
+ * @param mesh_params Discretization element type and edge length constraints
+ * @param boundary_conditions Array of boundary constraints and force/moment loads
+ * @param bc_count Number of entries in boundary_conditions array
+ * @param out_result Output zero-copy FEA results slice (displacements, stresses, modes)
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_fea_solve(
+    cad_solid_handle_t solid,
+    cad_fea_mode_t mode,
+    const cad_material_props_t* material,
+    const cad_fea_mesh_params_t* mesh_params,
+    const cad_boundary_condition_t* boundary_conditions,
+    uint32_t bc_count,
+    cad_fea_result_slice_t* out_result
+);
+
+/**
+ * @brief Free allocated memory associated with an FEA result slice.
+ */
+cad_status_t cad_fea_result_free(cad_fea_result_slice_t* result);
+
+/**
+ * @brief Synthesize and evaluate compliant mechanism flexure performance.
+ *
+ * Extracts the 6x6 spatial compliance and stiffness matrices, calculates the center of stiffness,
+ * quantifies parasitic cross-axis drift, and outputs FACT freedom and constraint screw lines.
+ *
+ * @param solid Target compliant mechanism solid handle
+ * @param fixed_face_id Persistent CadTopoId of the fixed reference ground face
+ * @param stage_face_id Persistent CadTopoId of the moving stage / tip face
+ * @param material Material Young's modulus, Poisson's ratio, and yield strength
+ * @param out_analysis Output compliance matrix, center of stiffness, drift, and FACT visualization
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_flexure_analyze(
+    cad_solid_handle_t solid,
+    cad_topo_id_t fixed_face_id,
+    cad_topo_id_t stage_face_id,
+    const cad_material_props_t* material,
+    cad_flexure_analysis_t* out_analysis
+);
+
+/**
+ * @brief Free allocated memory associated with a flexure compliance analysis.
+ */
+cad_status_t cad_flexure_analysis_free(cad_flexure_analysis_t* analysis);
+
 #ifdef __cplusplus
 }
 #endif

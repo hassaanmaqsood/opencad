@@ -55,6 +55,7 @@ pub const assembly_solver = @import("solver/assembly_solver.zig");
 pub const se3 = @import("solver/se3.zig");
 pub const SheetMetalMod = @import("sheetmetal/mod.zig");
 pub const CamHlrMod = @import("cam_hlr/mod.zig");
+pub const FeaFlexureMod = @import("fea_flexure/mod.zig");
 
 // Global handle registry
 var next_handle: u64 = 1;
