@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CadMeshRawBuffers, CadTessellatedSolidSlice, SubShapeSelection } from '../types/cad';
+import type { VisualDiffData } from '../core-shell/PluginTypes';
 import { CadWorkerBridge } from '../worker/worker_bridge';
 import { FpsCounter } from './fps_counter';
 import { MeshManager } from './mesh_manager';
@@ -226,6 +227,10 @@ export class CadViewer {
   ): void {
     this.meshManager.updateLOD(coarseGeom, mediumGeom, fineGeom);
     this.setSelection({ type: 'none' });
+  }
+
+  public setVisualDiff(diff: VisualDiffData | null): void {
+    this.meshManager.setVisualDiff(diff);
   }
 
   public enterSketchMode(plane: DatumPlane = 'XY'): void {

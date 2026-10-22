@@ -4,6 +4,7 @@ import {
   CadTessellatedSolidSlice,
   formatCadTopoId,
 } from '../types/cad';
+import type { VisualDiffData } from '../core-shell/PluginTypes';
 
 export class MeshManager {
   public group: THREE.Group;
@@ -14,6 +15,7 @@ export class MeshManager {
   public highlightEdgeLines: THREE.LineSegments;
   public instancedMesh: THREE.InstancedMesh | null = null;
   public lodGroup: THREE.LOD | null = null;
+  public diffGroup: THREE.Group | null = null;
 
   private currentBuffers: CadMeshRawBuffers | null = null;
   private currentSlice: CadTessellatedSolidSlice | null = null;
@@ -553,6 +555,82 @@ export class MeshManager {
     this.lodGroup = lod;
     this.group.add(lod);
     this.solidMesh.visible = false;
+  }
+
+  /**
+   * Wave 6B: Sets 3D Boolean Visual Diff overlay (Green = added, Red = removed).
+   */
+  public setVisualDiff(diff: VisualDiffData | null): void {
+    if (this.diffGroup) {
+      this.group.remove(this.diffGroup);
+      this.diffGroup.traverse((obj) => {
+        if ((obj as THREE.Mesh).geometry) {
+          (obj as THREE.Mesh).geometry.dispose();
+        }
+      });
+      this.diffGroup = null;
+    }
+
+    if (!diff) {
+      if (this.solidMesh.material instanceof THREE.MeshStandardMaterial) {
+        this.solidMesh.material.transparent = false;
+        this.solidMesh.material.opacity = 1.0;
+        this.solidMesh.material.needsUpdate = true;
+      }
+      return;
+    }
+
+    // Semi-transparent base mesh so additions and removals stand out
+    if (this.solidMesh.material instanceof THREE.MeshStandardMaterial) {
+      this.solidMesh.material.transparent = true;
+      this.solidMesh.material.opacity = 0.35;
+      this.solidMesh.material.needsUpdate = true;
+    }
+
+    this.diffGroup = new THREE.Group();
+    this.diffGroup.name = 'cad-diff-overlay';
+
+    // 1. Added Volume Mesh (Emerald Green #22c55e)
+    if (diff.addedPositions && diff.addedIndices && diff.addedPositions.length > 0) {
+      const addedGeom = new THREE.BufferGeometry();
+      addedGeom.setAttribute('position', new THREE.BufferAttribute(diff.addedPositions, 3));
+      addedGeom.setIndex(new THREE.BufferAttribute(diff.addedIndices, 1));
+      addedGeom.computeVertexNormals();
+
+      const addedMat = new THREE.MeshStandardMaterial({
+        color: 0x22c55e,
+        transparent: true,
+        opacity: 0.75,
+        roughness: 0.3,
+        side: THREE.DoubleSide,
+      });
+
+      const addedMesh = new THREE.Mesh(addedGeom, addedMat);
+      addedMesh.name = 'diff-added-mesh';
+      this.diffGroup.add(addedMesh);
+    }
+
+    // 2. Removed Volume Mesh (Crimson Red #ef4444)
+    if (diff.removedPositions && diff.removedIndices && diff.removedPositions.length > 0) {
+      const removedGeom = new THREE.BufferGeometry();
+      removedGeom.setAttribute('position', new THREE.BufferAttribute(diff.removedPositions, 3));
+      removedGeom.setIndex(new THREE.BufferAttribute(diff.removedIndices, 1));
+      removedGeom.computeVertexNormals();
+
+      const removedMat = new THREE.MeshStandardMaterial({
+        color: 0xef4444,
+        transparent: true,
+        opacity: 0.75,
+        roughness: 0.3,
+        side: THREE.DoubleSide,
+      });
+
+      const removedMesh = new THREE.Mesh(removedGeom, removedMat);
+      removedMesh.name = 'diff-removed-mesh';
+      this.diffGroup.add(removedMesh);
+    }
+
+    this.group.add(this.diffGroup);
   }
 }
 

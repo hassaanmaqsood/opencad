@@ -6,6 +6,10 @@ import { SketchHud } from './ui/sketch_hud';
 import { SketchManager } from './renderer/sketch_manager';
 import { FeatureTree } from './ui/feature_tree';
 import { getDefaultDemoFeatureDag } from './worker/dag_evaluator';
+import { PluginManager } from './core-shell/PluginManager';
+import { TopRibbon } from './core-shell/TopRibbon';
+import { TimelineBar } from './core-shell/TimelineBar';
+import { PluginContext } from './core-shell/PluginTypes';
 import {
   SolidGenerationRequest,
   SubShapeSelection,
@@ -16,6 +20,7 @@ import {
   CadFilletMode,
   CadChamferMode,
   CadFeatureType,
+  CadFeatureNode,
 } from './types/cad';
 
 declare global {
@@ -26,6 +31,9 @@ declare global {
     __cadSketchManager?: SketchManager;
     __cadSketchHud?: SketchHud;
     __cadFeatureTree?: FeatureTree;
+    __cadPluginManager?: PluginManager;
+    __cadTopRibbon?: TopRibbon;
+    __cadTimelineBar?: TimelineBar;
     __evaluateDag?: (rollbackIndex?: number) => Promise<void>;
     __importStep?: (stepText: string) => Promise<void>;
     __exportStep?: () => Promise<string>;
@@ -62,12 +70,27 @@ async function initApp() {
 
   // 2. Instantiate HUD
   let viewer: CadViewer;
+  let timelineBar: TimelineBar | null = null;
+  let topRibbon: TopRibbon | null = null;
+
+  // Model change listeners for bidirectional Code-CAD / DAG sync
+  let modelChangeListeners: (() => void)[] = [];
+  const notifyModelChange = () => {
+    for (const listener of modelChangeListeners) {
+      try {
+        listener();
+      } catch (e) {
+        console.error('Error in model change listener:', e);
+      }
+    }
+  };
 
   const handleGenerate = async (request: SolidGenerationRequest) => {
     try {
       const buffers = await bridge.generateSolid(request);
       viewer.setGeometry(buffers);
       hud.updateMetadata(buffers.metadata);
+      notifyModelChange();
     } catch (err) {
       console.error('Failed to generate solid:', err);
     }
@@ -89,6 +112,10 @@ async function initApp() {
     },
     onFpsUpdate: (fps: number, frameTimeMs: number) => {
       hud.updateFps(fps, frameTimeMs);
+      const ribbonFps = document.getElementById('ribbon-fps-badge');
+      if (ribbonFps) {
+        ribbonFps.innerText = `${fps.toFixed(1)} FPS`;
+      }
     },
   });
 
@@ -114,6 +141,7 @@ async function initApp() {
       const slice = await bridge.evaluateDag(featureTree.getNodes(), rbIndex);
       viewer.setGeometryFromSlice(slice);
       hud.updateMetadata(slice.metadata);
+      notifyModelChange();
     } catch (err) {
       console.error('Failed to evaluate feature DAG:', err);
     }
@@ -124,6 +152,7 @@ async function initApp() {
     initialNodes: featureDag,
     initialRollbackIndex: featureDag.length - 1,
     onRollbackChange: (index: number) => {
+      timelineBar?.setRollbackIndex(index);
       handleEvaluateDag(index);
     },
     onSuppressionToggle: (_id: number, _suppressed: boolean) => {
@@ -131,7 +160,125 @@ async function initApp() {
     },
   });
 
-  // 6. Wave 4: STEP AP214 Import, Export & Drag-and-Drop
+  // 6. Wave 6B: Extension Host Shell (TimelineBar, TopRibbon & PluginManager)
+  const timelineContainer = document.getElementById('timeline-container');
+  if (timelineContainer) {
+    timelineBar = new TimelineBar({
+      container: timelineContainer,
+      initialNodes: featureDag,
+      initialRollbackIndex: featureDag.length - 1,
+      onRollbackChange: (index: number) => {
+        featureTree.setRollbackIndex(index);
+        handleEvaluateDag(index);
+      },
+    });
+  }
+
+  const pluginManager = new PluginManager();
+  const pluginSidePanel = document.getElementById('plugin-side-panel');
+  const hudTopRight = document.getElementById('hud-top-right');
+
+  // Register dynamically code-split plugins
+  pluginManager.register(
+    {
+      id: 'code-cad',
+      name: 'Code-CAD Editor',
+      version: '1.0.0',
+      icon: '{ }',
+      category: 'modeling',
+      description: 'Bidirectional Code-CAD AST script editor with real-time 3D sync',
+      wasmUrl: '/cad_ast.wasm',
+    },
+    () => import('./plugins/code-cad/index')
+  );
+
+  pluginManager.register(
+    {
+      id: 'git-cad',
+      name: 'Git-for-CAD',
+      version: '1.0.0',
+      icon: '🌿',
+      category: 'versioning',
+      description: 'Semantic Git version control with 3D Boolean visual diff and 3-way AST merge resolution',
+      wasmUrl: '/cad_ast.wasm',
+    },
+    () => import('./plugins/git-cad/index')
+  );
+
+  const pluginContext: PluginContext = {
+    viewer,
+    bridge,
+    featureTree,
+    getDagNodes: () => featureTree.getNodes(),
+    setDagNodes: async (nodes: CadFeatureNode[]) => {
+      featureTree.setNodes(nodes);
+      timelineBar?.setNodes(nodes);
+      await handleEvaluateDag();
+      notifyModelChange();
+    },
+    onModelChange: (listener: () => void) => {
+      modelChangeListeners.push(listener);
+      return () => {
+        modelChangeListeners = modelChangeListeners.filter((l) => l !== listener);
+      };
+    },
+    setVisualDiff: (diff) => {
+      viewer.setVisualDiff(diff);
+    },
+    requestWorkerAction: async (action: string, payload?: any) => {
+      if (action === 'parseAstCount') return bridge.parseAstCount(payload.source);
+      if (action === 'formatAst') return bridge.formatAst(payload.source);
+      if (action === 'mergeAst3Way') return bridge.mergeAst3Way(payload.base, payload.ours, payload.theirs);
+      if (action === 'computeVisualDiff') return bridge.computeVisualDiff(payload.baseNodes, payload.targetNodes);
+      return null;
+    },
+  };
+
+  const topRibbonContainer = document.getElementById('top-ribbon-container');
+  if (topRibbonContainer) {
+    topRibbon = new TopRibbon({
+      container: topRibbonContainer,
+      pluginManager,
+      onEnterSketch: () => viewer.enterSketchMode('XY'),
+      onSelectPrimitive: (type) => {
+        if (type === 'box') {
+          handleGenerate({
+            solidType: 'box',
+            params: { width: 2.0, height: 2.0, depth: 2.0 },
+          });
+        } else if (type === 'cylinder') {
+          handleGenerate({
+            solidType: 'cylinder',
+            params: { radius: 1.2, height: 2.5 },
+          });
+        } else {
+          handleEvaluateDag();
+        }
+      },
+      onApplyDressUp: (op) => handleApplyDressUp(op),
+      onImportStep: () => (document.getElementById('step-file-input') as HTMLInputElement)?.click(),
+      onExportStep: () => handleExportStep(),
+      onSolveAssembly: () => handleSolveAssembly(),
+      onBenchmarkAssembly: () => handleBenchmarkAssembly500(),
+    });
+  }
+
+  pluginManager.init(
+    pluginContext,
+    pluginSidePanel,
+    topRibbon ? topRibbon.getActionContainer() : null
+  );
+
+  pluginManager.onWorkbenchChange((activePluginId) => {
+    if (activePluginId) {
+      if (hudTopRight) hudTopRight.style.display = 'none';
+    } else {
+      if (hudTopRight) hudTopRight.style.display = 'block';
+      if (topRibbon) topRibbon.renderDesignActions();
+    }
+  });
+
+  // 7. Wave 4: STEP AP214 Import, Export & Drag-and-Drop
   const handleImportStep = async (stepText: string) => {
     try {
       const slice = await bridge.importStep(stepText);
@@ -259,6 +406,8 @@ async function initApp() {
         },
       ]);
       featureTree.setRollbackIndex(featureTree.getNodes().length - 1);
+      timelineBar?.setNodes(featureTree.getNodes(), featureTree.getNodes().length - 1);
+      notifyModelChange();
       return slice;
     } catch (err) {
       console.error(`Failed to apply ${opType}:`, err);
@@ -426,6 +575,9 @@ async function initApp() {
   window.__cadSketchManager = viewer.sketchManager;
   window.__cadSketchHud = sketchHud;
   window.__cadFeatureTree = featureTree;
+  window.__cadPluginManager = pluginManager;
+  window.__cadTopRibbon = topRibbon ?? undefined;
+  window.__cadTimelineBar = timelineBar ?? undefined;
   window.__evaluateDag = handleEvaluateDag;
   window.__importStep = handleImportStep;
   window.__exportStep = handleExportStep;

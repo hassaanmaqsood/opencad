@@ -11,6 +11,9 @@
       <!-- 3D Full-Viewport Canvas -->
       <canvas id="cad-canvas"></canvas>
 
+      <!-- Wave 6B: Top Ribbon & Workbench Tabs -->
+      <div id="top-ribbon-container"></div>
+
       <!-- Top-Left Performance & Stats HUD -->
       <div id="hud-top-left" class="hud-panel" data-testid="hud-performance">
         <div class="brand-header">
@@ -148,6 +151,9 @@
         </div>
       </div>
 
+      <!-- Wave 6B: Right-Docked Plugin Side Panel -->
+      <div id="plugin-side-panel" class="plugin-side-panel" style="display: none;"></div>
+
       <!-- Drag-and-Drop Visual Overlay (Wave 4) -->
       <div id="drop-overlay" class="drop-overlay" data-testid="drop-overlay">
         <div class="drop-overlay-content">
@@ -170,6 +176,9 @@
           <div><b>Right Drag:</b> Pan View</div>
         </div>
       </div>
+
+      <!-- Wave 6B: Chronological Feature Timeline Bar & Rollback Scrubber -->
+      <div id="timeline-container"></div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

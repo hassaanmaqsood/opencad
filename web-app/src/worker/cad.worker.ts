@@ -25,6 +25,9 @@ import { solveSketch } from './sketch_solver';
 import { evaluateFeatureDag, getDefaultDemoFeatureDag } from './dag_evaluator';
 import { parseStep, exportStep } from './step_io';
 import { solveAssemblyClient } from './assembly_solver';
+import { WorkerPluginBridge } from './WorkerPluginBridge';
+
+const workerPluginBridge = new WorkerPluginBridge();
 
 interface WasmExports {
   memory: WebAssembly.Memory;
@@ -668,6 +671,80 @@ self.onmessage = async (e: MessageEvent) => {
       slice.edgePolylines.buffer,
       slice.edgeToTopoId.buffer,
     ]);
+    return;
+  }
+
+  // --- Wave 6B: Dynamic Workbench Plugin Handlers ---
+  if (data.type === 'LOAD_PLUGIN_WASM') {
+    const success = await workerPluginBridge.loadPluginWasm(data.pluginId, data.wasmBinary);
+    self.postMessage({
+      type: 'PLUGIN_WASM_LOADED',
+      pluginId: data.pluginId,
+      success,
+    });
+    return;
+  }
+
+  if (data.type === 'AST_PARSE_COUNT') {
+    const requestId = data.requestId ?? 0;
+    const count = workerPluginBridge.parseAstCount(data.source);
+    self.postMessage({
+      type: 'AST_PARSE_COUNT_RESULT',
+      requestId,
+      count,
+    });
+    return;
+  }
+
+  if (data.type === 'AST_FORMAT') {
+    const requestId = data.requestId ?? 0;
+    const formatted = workerPluginBridge.formatAst(data.source);
+    self.postMessage({
+      type: 'AST_FORMAT_RESULT',
+      requestId,
+      formatted,
+    });
+    return;
+  }
+
+  if (data.type === 'AST_MERGE_3WAY') {
+    const requestId = data.requestId ?? 0;
+    const result = workerPluginBridge.merge3Way(data.base, data.ours, data.theirs);
+    self.postMessage({
+      type: 'AST_MERGE_3WAY_RESULT',
+      requestId,
+      mergedScript: result.mergedScript,
+      conflictCount: result.conflictCount,
+    });
+    return;
+  }
+
+  if (data.type === 'COMPUTE_VISUAL_DIFF') {
+    const requestId = data.requestId ?? 0;
+    const baseNodes = data.baseNodes || [];
+    const targetNodes = data.targetNodes || cachedDagNodes;
+    const diff = workerPluginBridge.computeVisualDiff(baseNodes, targetNodes);
+
+    const transferList: Transferable[] = [];
+    if (diff.addedPositions) transferList.push(diff.addedPositions.buffer);
+    if (diff.addedIndices) transferList.push(diff.addedIndices.buffer);
+    if (diff.removedPositions) transferList.push(diff.removedPositions.buffer);
+    if (diff.removedIndices) transferList.push(diff.removedIndices.buffer);
+
+    self.postMessage(
+      {
+        type: 'VISUAL_DIFF_RESULT',
+        requestId,
+        diff: {
+          addedPositions: diff.addedPositions?.buffer,
+          addedIndices: diff.addedIndices?.buffer,
+          removedPositions: diff.removedPositions?.buffer,
+          removedIndices: diff.removedIndices?.buffer,
+          summary: diff.summary,
+        },
+      },
+      transferList
+    );
     return;
   }
 };
