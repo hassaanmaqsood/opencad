@@ -74,8 +74,12 @@ cd kernel-zig && zig build
 
 ### 5. Playwright End-to-End Viewport Verification (`verify-web-viewport`)
 ```bash
-cd web-app && npx playwright test tests/wave9_implicit.spec.ts
-# Result: 2/2 tests passed, exit code 0
-# - Mounts ribbon, loads block stack notebook, and updates Code-CAD syntax: PASS
-# - Generates 3D Dual Contoured lattice and 2D slice contour in Three.js: PASS
+cd web-app && npx playwright test
+# Result: 31/31 tests passed, exit code 0 (7.0m)
+# - Viewport & Sub-Shape Picking: 17/17 tests passed
+# - Extension Shell & Plugins: 7/7 tests passed
+# - Wave 7 Manufacturing (Sheet Metal, 2D Drawing, CAM/3MF): 3/3 tests passed
+# - Wave 8 Mechanics & FACT Flexures: 2/2 tests passed
+# - Wave 9 Implicit & Field Modeling: 2/2 tests passed
+```
 ```
