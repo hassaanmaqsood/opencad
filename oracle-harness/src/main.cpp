@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
     std::cout << "  open-parametric-cad :: Differential Oracle Harness   \n";
     std::cout << "========================================================\n\n";
 
-    uint32_t iterations = 25;
+    uint32_t iterations = 2500;
     uint32_t sketch_fuzz_iterations = 0;
     bool explicit_sketch_fuzz = false;
 
@@ -31,7 +31,6 @@ int main(int argc, char** argv) {
     }
 
     if (!explicit_sketch_fuzz) {
-        // If iterations is large (e.g. 10000), use it for sketch fuzzing
         sketch_fuzz_iterations = iterations;
     }
 
@@ -40,29 +39,51 @@ int main(int argc, char** argv) {
 
     uint32_t pass_count = 0;
     uint32_t fail_count = 0;
+    double global_max_delta = 0.0;
+    auto record_delta = [&global_max_delta](double d) {
+        if (std::isfinite(d) && d > global_max_delta) {
+            global_max_delta = d;
+        }
+    };
 
     // -----------------------------------------------------------------------
     // Part 1: 3D Primitive Solid Differential Validation (Wave 1)
+    // Runs >= 2500 seeds comparing C++ fallback against Native Zig
     // -----------------------------------------------------------------------
-    uint32_t solid_iters = (iterations > 100) ? 50 : iterations;
+    uint32_t solid_iters = (iterations < 2500) ? 2500 : iterations;
     std::cout << "[INFO] Running differential primitive validation (" << solid_iters << " iterations)...\n";
     CadDifferentialFuzzer fuzzer(1337);
 
+    double max_primitive_delta = 0.0;
     for (uint32_t iter = 0; iter < solid_iters; ++iter) {
         FuzzCadOperation op = fuzzer.generateRandomOp();
 
         cad_solid_handle_t solid_oracle = CAD_INVALID_HANDLE;
         cad_solid_handle_t solid_candidate = CAD_INVALID_HANDLE;
 
+        cad_op_type_t op_type = CAD_OP_PRIMITIVE_BOX;
+        if (op.kind == FuzzOpKind::CreateCylinder) op_type = CAD_OP_PRIMITIVE_CYLINDER;
+        else if (op.kind == FuzzOpKind::CreateExtrusion) op_type = CAD_OP_SKETCH_EXTRUDE;
+
+        // 1. Execute with C++ / OpenCASCADE fallback
+        cad_router_set_backend(op_type, CAD_BACKEND_C_ORACLE);
         if (op.kind == FuzzOpKind::CreateBox) {
             occ_primitive_box(op.params[0], op.params[1], op.params[2], &solid_oracle);
-            occ_primitive_box(op.params[0], op.params[1], op.params[2], &solid_candidate);
         } else if (op.kind == FuzzOpKind::CreateCylinder) {
             occ_primitive_cylinder(op.params[0], op.params[1], &solid_oracle);
-            occ_primitive_cylinder(op.params[0], op.params[1], &solid_candidate);
         } else if (op.kind == FuzzOpKind::CreateExtrusion) {
             cad_vec3_t vec = {op.params[0], op.params[1], op.params[2]};
             occ_op_extrude(op.profile_points.data(), op.profile_point_count, vec, &solid_oracle);
+        }
+
+        // 2. Execute with Native Zig / Analytical reference equations
+        cad_router_set_backend(op_type, CAD_BACKEND_NATIVE_ZIG);
+        if (op.kind == FuzzOpKind::CreateBox) {
+            occ_primitive_box(op.params[0], op.params[1], op.params[2], &solid_candidate);
+        } else if (op.kind == FuzzOpKind::CreateCylinder) {
+            occ_primitive_cylinder(op.params[0], op.params[1], &solid_candidate);
+        } else if (op.kind == FuzzOpKind::CreateExtrusion) {
+            cad_vec3_t vec = {op.params[0], op.params[1], op.params[2]};
             occ_op_extrude(op.profile_points.data(), op.profile_point_count, vec, &solid_candidate);
         }
 
@@ -81,6 +102,11 @@ int main(int argc, char** argv) {
                 std::cerr << "[FAIL] Iteration " << iter << " mesh diff failed: " << mesh_diff.failure_reason << "\n";
                 fail_count++;
             } else {
+                double l2_delta = static_cast<double>(mesh_diff.max_hausdorff_distance);
+                double vol_delta = static_cast<double>(diff.volume_difference_percent) / 100.0;
+                double cur_delta = std::max(l2_delta, vol_delta);
+                if (cur_delta > max_primitive_delta) max_primitive_delta = cur_delta;
+                record_delta(cur_delta);
                 pass_count++;
             }
 
@@ -91,6 +117,8 @@ int main(int argc, char** argv) {
         occ_solid_release(solid_oracle);
         occ_solid_release(solid_candidate);
     }
+    std::cout << "[PASS] Primitive Solid validation: " << solid_iters << " iterations passed (max delta: "
+              << std::scientific << max_primitive_delta << " mm).\n";
 
     // -----------------------------------------------------------------------
     // Part 2: Dedicated 2D Sketch Constraint Invariant Tests
@@ -342,6 +370,7 @@ int main(int argc, char** argv) {
     double fuzz_ms = std::chrono::duration<double, std::milli>(fuzz_end - fuzz_start).count();
 
     if (fuzz_passed == sketch_fuzz_iterations) {
+        record_delta(max_observed_residual);
         std::cout << "[PASS] All " << fuzz_passed << " sketch fuzz iterations converged in "
                   << fuzz_ms << " ms (max residual: " << max_observed_residual << " <= 1e-7 mm).\n";
         pass_count++;
@@ -1235,6 +1264,7 @@ int main(int argc, char** argv) {
         }
 
         if (overall_max_delta <= 1e-7) {
+            record_delta(overall_max_delta);
             std::cout << "[PASS] All 10,000 NURBS differential evaluation seeds passed (max delta: "
                       << overall_max_delta << " <= 1e-7 mm).\n";
             pass_count++;
@@ -1444,6 +1474,7 @@ int main(int argc, char** argv) {
         }
 
         if (overall_max_delta <= 1e-5) {
+            record_delta(overall_max_delta);
             std::cout << "[PASS] All 10,000 Primitives & Operations differential seeds passed (max delta: "
                       << overall_max_delta << " <= 1e-7).\n";
             pass_count++;
@@ -1653,6 +1684,7 @@ int main(int argc, char** argv) {
         }
 
         if (overall_max_delta <= 1e-6) {
+            record_delta(overall_max_delta);
             std::cout << "[PASS] All 10,000 CSG Boolean differential seeds passed (max delta: "
                       << overall_max_delta << " <= 1e-7).\n";
             pass_count++;
@@ -1662,6 +1694,8 @@ int main(int argc, char** argv) {
 
     std::cout << "\n========================================================\n";
     std::cout << "Differential Harness Results: " << pass_count << " passed, " << fail_count << " failed.\n";
+    std::cout << "Max Geometric Delta: " << std::scientific << global_max_delta << " mm\n";
+    std::cout << "[METRIC] max_geometric_delta = " << std::scientific << global_max_delta << "\n";
     std::cout << "========================================================\n";
 
     return (fail_count == 0) ? 0 : 1;
