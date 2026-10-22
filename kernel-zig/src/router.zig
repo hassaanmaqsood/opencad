@@ -11,23 +11,12 @@ pub const Router = struct {
         var r = Router{
             .backends = undefined,
         };
+        // Pure native Zig architecture across all CAD operations
         const count: usize = @intCast(@intFromEnum(CadOpType.Count));
         var i: usize = 0;
         while (i < count) : (i += 1) {
             r.backends[i] = .NativeZig;
         }
-        // Native Zig verified implementations (Milestones 4.1 & 4.2)
-        r.backends[@intCast(@intFromEnum(CadOpType.PrimitiveBox))] = .NativeZig;
-        r.backends[@intCast(@intFromEnum(CadOpType.PrimitiveCylinder))] = .NativeZig;
-        r.backends[@intCast(@intFromEnum(CadOpType.PrimitiveSphere))] = .NativeZig;
-        r.backends[@intCast(@intFromEnum(CadOpType.SketchExtrude))] = .NativeZig;
-
-        // Base initialization default routing
-        r.backends[@intCast(@intFromEnum(CadOpType.BooleanUnion))] = .COracle;
-        r.backends[@intCast(@intFromEnum(CadOpType.BooleanDifference))] = .COracle;
-        r.backends[@intCast(@intFromEnum(CadOpType.BooleanIntersection))] = .COracle;
-        r.backends[@intCast(@intFromEnum(CadOpType.Fillet))] = .COracle;
-        r.backends[@intCast(@intFromEnum(CadOpType.Chamfer))] = .COracle;
 
         return r;
     }

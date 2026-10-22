@@ -29,8 +29,23 @@ typedef enum cad_status_e {
     CAD_STATUS_ERROR_TOPOLOGY_INVALID = 3,
     CAD_STATUS_ERROR_GEOMETRY_INTERSECTION = 4,
     CAD_STATUS_ERROR_OP_FAILED = 5,
-    CAD_STATUS_ERROR_NOT_IMPLEMENTED = 6
+    CAD_STATUS_ERROR_NOT_IMPLEMENTED = 6,
+    CAD_STATUS_ERROR_TIMEOUT = 7,
+    CAD_STATUS_ERROR_NON_MANIFOLD = 8,
+    CAD_STATUS_ERROR_LIMIT_EXCEEDED = 9
 } cad_status_t;
+
+/* Deterministic Error Code Short Aliases */
+#define CAD_ERR_OK CAD_STATUS_OK
+#define CAD_ERR_INVALID_ARGUMENT CAD_STATUS_ERROR_INVALID_ARGUMENT
+#define CAD_ERR_OOM CAD_STATUS_ERROR_OUT_OF_MEMORY
+#define CAD_ERR_TOPOLOGY_INVALID CAD_STATUS_ERROR_TOPOLOGY_INVALID
+#define CAD_ERR_GEOMETRY_INTERSECTION CAD_STATUS_ERROR_GEOMETRY_INTERSECTION
+#define CAD_ERR_OP_FAILED CAD_STATUS_ERROR_OP_FAILED
+#define CAD_ERR_NOT_IMPLEMENTED CAD_STATUS_ERROR_NOT_IMPLEMENTED
+#define CAD_ERR_TIMEOUT CAD_STATUS_ERROR_TIMEOUT
+#define CAD_ERR_NON_MANIFOLD CAD_STATUS_ERROR_NON_MANIFOLD
+#define CAD_ERR_LIMIT_EXCEEDED CAD_STATUS_ERROR_LIMIT_EXCEEDED
 
 /* ------------------------------------------------------------------------- */
 /* Feature Flag & Backend Routing                                            */
@@ -858,6 +873,122 @@ cad_status_t cad_solid_tessellate_lod(
     cad_lod_level_t lod_level,
     cad_tessellated_solid_slice_t* out_slice
 );
+
+/* ------------------------------------------------------------------------- */
+/* Wave 6A: Universal Custom Feature & Plugin Extension ABI                  */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * @brief Dynamic execution limits and sandbox constraints for untrusted inputs.
+ */
+typedef struct cad_kernel_limits_s {
+    uint64_t max_wasm_memory_bytes; /**< Max dynamic heap allocation in bytes (default: 256 MiB) */
+    uint32_t max_solver_iterations;  /**< Max iterations for 2D/3D non-linear solvers (default: 500) */
+    uint32_t max_boolean_faces;      /**< Max faces allowed in boolean intersection operands (default: 100000) */
+    uint32_t eval_timeout_ms;        /**< Max execution wall-clock timeout per operation in ms (default: 5000) */
+} cad_kernel_limits_t;
+typedef cad_kernel_limits_t CadKernelLimits;
+
+/**
+ * @brief Virtual method table for custom feature plugins and companion workbenches.
+ * Enables Sheet Metal, FEA, Flexures, nTop Implicit, CAM/3MF, and 2D HLR modules
+ * to register custom DAG operations that execute directly over shared memory B-Rep SoA.
+ */
+typedef struct cad_plugin_op_vtable_s {
+    uint32_t op_type_id;             /**< Unique custom operation identifier (>= 1000) */
+    const char* op_name;             /**< Human-readable operation name */
+
+    /**
+     * @brief Evaluate custom parametric operation and produce an updated B-Rep solid handle.
+     */
+    cad_status_t (*evaluate_fn)(
+        uint32_t op_type_id,
+        const cad_feature_node_t* node,
+        const cad_solid_handle_t* input_solids,
+        uint32_t input_count,
+        cad_solid_handle_t* out_solid
+    );
+
+    /**
+     * @brief Optional custom LOD tessellator for non-standard B-Rep or implicit solids.
+     * Pass NULL to default to standard B-Rep surface triangulation.
+     */
+    cad_status_t (*tessellate_fn)(
+        cad_solid_handle_t solid,
+        double chordal_tol,
+        double angular_tol,
+        cad_tessellated_solid_slice_t* out_slice
+    );
+
+    /**
+     * @brief Serialize custom feature node into declarative Code-CAD AST text.
+     */
+    cad_status_t (*serialize_ast_fn)(
+        const cad_feature_node_t* node,
+        char* out_buf,
+        size_t buf_size,
+        size_t* out_written
+    );
+
+    /**
+     * @brief Release custom plugin resources associated with a solid handle.
+     */
+    void (*free_fn)(cad_solid_handle_t solid);
+} cad_plugin_op_vtable_t;
+typedef cad_plugin_op_vtable_t CadPluginOpVTable;
+
+/**
+ * @brief Register a custom feature operation VTable with the core DAG evaluator.
+ *
+ * @param vtable Pointer to persistent or statically allocated plugin VTable
+ * @return CAD_STATUS_OK on success, CAD_STATUS_ERROR_INVALID_ARGUMENT if op_type_id < 1000 or vtable is NULL
+ */
+cad_status_t cad_register_plugin_op(const cad_plugin_op_vtable_t* vtable);
+
+/**
+ * @brief Unregister a custom feature operation.
+ *
+ * @param op_type_id Operation ID previously registered
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_unregister_plugin_op(uint32_t op_type_id);
+
+/**
+ * @brief Dispatch evaluation of a registered custom plugin operation.
+ */
+cad_status_t cad_execute_plugin_op(
+    uint32_t op_type_id,
+    const cad_feature_node_t* node,
+    const cad_solid_handle_t* input_solids,
+    uint32_t input_count,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Configure kernel resource limits and sandboxing thresholds.
+ */
+cad_status_t cad_set_kernel_limits(const cad_kernel_limits_t* limits);
+
+/**
+ * @brief Retrieve current kernel resource limits.
+ */
+cad_status_t cad_get_kernel_limits(cad_kernel_limits_t* out_limits);
+
+/**
+ * @brief Allocate shared linear memory buffer accessible across core and plugin WASM modules.
+ *
+ * @param size Number of bytes to allocate
+ * @return Pointer to allocated buffer in linear memory, or NULL on failure
+ */
+void* cad_shared_alloc(size_t size);
+
+/**
+ * @brief Free shared linear memory buffer.
+ *
+ * @param ptr Pointer previously returned by cad_shared_alloc
+ * @param size Allocation size in bytes
+ */
+void cad_shared_free(void* ptr, size_t size);
 
 #ifdef __cplusplus
 }

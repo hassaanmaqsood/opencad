@@ -1,6 +1,7 @@
 pub const half_edge = @import("half_edge.zig");
 pub const topo_naming = @import("topo_naming.zig");
 pub const dag = @import("dag.zig");
+pub const plugin_registry = @import("plugin_registry.zig");
 
 pub const SoASolid = half_edge.SoASolid;
 pub const CadTopoId = half_edge.CadTopoId;
@@ -21,6 +22,7 @@ test {
     _ = half_edge;
     _ = topo_naming;
     _ = dag;
+    _ = plugin_registry;
     _ = @import("test_topo_suite.zig");
 }
 

@@ -55,3 +55,60 @@ test "C ABI Lifecycle & Zero-Leak Verification with std.testing.allocator" {
     const deinit_status = cad.cad_kernel_deinit();
     try testing.expectEqual(cad.CadStatus.Ok, deinit_status);
 }
+
+test "Wave 6A Plugin VTable and Resource Sandbox Limits" {
+    _ = cad.cad_kernel_init();
+    defer _ = cad.cad_kernel_deinit();
+
+    // 1. Verify and configure resource limits
+    var limits = cad.c_abi.CadKernelLimits{
+        .max_wasm_memory_bytes = 16 * 1024 * 1024,
+        .max_solver_iterations = 100,
+        .max_boolean_faces = 5_000,
+        .eval_timeout_ms = 1000,
+    };
+    try testing.expectEqual(cad.CadStatus.Ok, cad.cad_set_kernel_limits(&limits));
+
+    var query_limits: cad.c_abi.CadKernelLimits = std.mem.zeroes(cad.c_abi.CadKernelLimits);
+    try testing.expectEqual(cad.CadStatus.Ok, cad.cad_get_kernel_limits(&query_limits));
+    try testing.expectEqual(limits.max_wasm_memory_bytes, query_limits.max_wasm_memory_bytes);
+    try testing.expectEqual(limits.max_solver_iterations, query_limits.max_solver_iterations);
+
+    // 2. Shared allocator bounds enforcement
+    const valid_buf = cad.cad_shared_alloc(512);
+    try testing.expect(valid_buf != null);
+    cad.cad_shared_free(valid_buf, 512);
+
+    // Beyond limit should fail safely
+    const oversized_buf = cad.cad_shared_alloc(32 * 1024 * 1024);
+    try testing.expectEqual(@as(?[*]u8, null), oversized_buf);
+
+    // 3. Register custom operation VTable
+    const custom_vtable = cad.c_abi.CadPluginOpVTable{
+        .op_type_id = 1100,
+        .op_name = "SheetMetalBendOp",
+        .evaluate_fn = struct {
+            fn eval(
+                _: u32,
+                _: ?*const cad.c_abi.CadFeatureNode,
+                _: ?[*]const cad.CadSolidHandle,
+                _: u32,
+                out_solid: *cad.CadSolidHandle,
+            ) callconv(.c) cad.CadStatus {
+                out_solid.* = 7777;
+                return .Ok;
+            }
+        }.eval,
+        .tessellate_fn = null,
+        .serialize_ast_fn = null,
+        .free_fn = null,
+    };
+
+    try testing.expectEqual(cad.CadStatus.Ok, cad.cad_register_plugin_op(&custom_vtable));
+
+    var out_solid: cad.CadSolidHandle = 0;
+    try testing.expectEqual(cad.CadStatus.Ok, cad.cad_execute_plugin_op(1100, null, null, 0, &out_solid));
+    try testing.expectEqual(@as(cad.CadSolidHandle, 7777), out_solid);
+
+    try testing.expectEqual(cad.CadStatus.Ok, cad.cad_unregister_plugin_op(1100));
+}

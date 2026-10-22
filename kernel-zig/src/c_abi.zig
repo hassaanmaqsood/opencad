@@ -8,6 +8,9 @@ pub const CadStatus = enum(c_int) {
     GeometryIntersection = 4,
     OpFailed = 5,
     NotImplemented = 6,
+    Timeout = 7,
+    NonManifold = 8,
+    LimitExceeded = 9,
 };
 
 pub const CadBackend = enum(c_int) {
@@ -209,6 +212,8 @@ pub const CadFeatureType = enum(c_int) {
     Chamfer = 7,
     Shell = 8,
     Draft = 9,
+    CustomPlugin = 1000,
+    _,
 };
 
 pub const CAD_MAX_FEATURE_PARENTS: usize = 8;
@@ -358,5 +363,37 @@ pub const CadLodLevel = enum(c_int) {
     Coarse = 0,
     Medium = 1,
     Fine = 2,
+};
+
+pub const CadKernelLimits = extern struct {
+    max_wasm_memory_bytes: u64,
+    max_solver_iterations: u32,
+    max_boolean_faces: u32,
+    eval_timeout_ms: u32,
+};
+
+pub const CadPluginOpVTable = extern struct {
+    op_type_id: u32,
+    op_name: ?[*:0]const u8,
+    evaluate_fn: ?*const fn (
+        op_type_id: u32,
+        node: ?*const CadFeatureNode,
+        input_solids: ?[*]const CadSolidHandle,
+        input_count: u32,
+        out_solid: *CadSolidHandle,
+    ) callconv(.c) CadStatus,
+    tessellate_fn: ?*const fn (
+        solid: CadSolidHandle,
+        chordal_tol: f64,
+        angular_tol: f64,
+        out_slice: *CadTessellatedSolidSlice,
+    ) callconv(.c) CadStatus,
+    serialize_ast_fn: ?*const fn (
+        node: ?*const CadFeatureNode,
+        out_buf: [*]u8,
+        buf_size: usize,
+        out_written: *usize,
+    ) callconv(.c) CadStatus,
+    free_fn: ?*const fn (solid: CadSolidHandle) callconv(.c) void,
 };
 
