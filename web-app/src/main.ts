@@ -244,6 +244,19 @@ async function initApp() {
     () => import('./plugins/cam-hlr/index')
   );
 
+  pluginManager.register(
+    {
+      id: 'fea-flexure',
+      name: 'Simulation & Flexure Workbench',
+      version: '1.0.0',
+      icon: '⚡',
+      category: 'simulation',
+      description: 'In-browser Tet4/Tet10 FEA mechanics, GPU Von Mises colormap shader, and FACT compliant flexure synthesis',
+      wasmUrl: '/cad_fea_flexure.wasm',
+    },
+    () => import('./plugins/fea/index')
+  );
+
   const pluginContext: PluginContext = {
     viewer,
     bridge,
