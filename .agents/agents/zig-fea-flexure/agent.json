@@ -1,0 +1,11 @@
+{
+  "name": "zig-fea-flexure",
+  "description": "Computational Mechanics & Compliant Flexure Specialist implementing Tet4/Tet10 meshing, sparse PCG FEA, spatial compliance matrices, FACT flexure synthesis, and K-factor sheet metal unfolding in Zig.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "high",
+  "write_scope": [
+    "kernel-zig/src/fea_flexure/",
+    "kernel-zig/src/sheetmetal/"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}

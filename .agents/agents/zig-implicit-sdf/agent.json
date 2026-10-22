@@ -1,0 +1,10 @@
+{
+  "name": "zig-implicit-sdf",
+  "description": "Implicit Surface & Lattice Specialist implementing nTop-style SIMD SDF bytecode evaluators, TPMS minimal surfaces, FEA field modulation, and Dual Contouring in Zig.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "high",
+  "write_scope": [
+    "kernel-zig/src/implicit/"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}

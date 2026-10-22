@@ -38,6 +38,10 @@ pub const CadFeatureParams = c_abi.CadFeatureParams;
 pub const CadFeatureNode = c_abi.CadFeatureNode;
 pub const CadTessellatedSolidSlice = c_abi.CadTessellatedSolidSlice;
 
+// Wave 6A: Universal Plugin Extension ABI & Sandbox Limits
+pub const CadKernelLimits = c_abi.CadKernelLimits;
+pub const CadPluginOpVTable = c_abi.CadPluginOpVTable;
+
 // Export internal modules for unit tests
 pub const TopologyMod = topology;
 pub const BoxMod = box;
@@ -276,6 +280,24 @@ pub export fn cad_dag_evaluate(
             },
             .Fillet, .Chamfer, .Shell, .Draft => {
                 // Dress-up ops applied to target topological sub-shapes
+            },
+            .CustomPlugin, _ => {
+                const op_id: u32 = @intCast(@intFromEnum(node.type));
+                if (op_id >= 1000) {
+                    var out_plugin_solid: c_abi.CadSolidHandle = 0;
+                    var input_handles = [1]c_abi.CadSolidHandle{last_solid_handle};
+                    const has_input = (last_solid_handle != 0);
+                    const st = plugin_registry.executePlugin(
+                        op_id,
+                        &node,
+                        if (has_input) &input_handles else null,
+                        if (has_input) 1 else 0,
+                        &out_plugin_solid,
+                    );
+                    if (st == .Ok and out_plugin_solid != 0) {
+                        last_solid_handle = out_plugin_solid;
+                    }
+                }
             },
         }
     }
@@ -881,6 +903,58 @@ pub export fn cad_wasm_assembly_get_max_residual() f64 {
     return wasm_assembly_status.max_residual;
 }
 
+// ---------------------------------------------------------------------------
+// Wave 6A: Universal Plugin Extension ABI & Shared Memory Exports
+// ---------------------------------------------------------------------------
+
+pub const plugin_registry = topology.topo.plugin_registry;
+
+pub export fn cad_register_plugin_op(vtable: ?*const c_abi.CadPluginOpVTable) c_abi.CadStatus {
+    const vt = vtable orelse return .InvalidArguments;
+    return plugin_registry.registerPlugin(vt);
+}
+
+pub export fn cad_unregister_plugin_op(op_type_id: u32) c_abi.CadStatus {
+    return plugin_registry.unregisterPlugin(op_type_id);
+}
+
+pub export fn cad_execute_plugin_op(
+    op_type_id: u32,
+    node: ?*const c_abi.CadFeatureNode,
+    input_solids: ?[*]const c_abi.CadSolidHandle,
+    input_count: u32,
+    out_solid: ?*c_abi.CadSolidHandle,
+) c_abi.CadStatus {
+    const out_s = out_solid orelse return .InvalidArguments;
+    return plugin_registry.executePlugin(op_type_id, node, input_solids, input_count, out_s);
+}
+
+pub export fn cad_set_kernel_limits(limits: ?*const c_abi.CadKernelLimits) c_abi.CadStatus {
+    const lim = limits orelse return .InvalidArguments;
+    return plugin_registry.setLimits(lim.*);
+}
+
+pub export fn cad_get_kernel_limits(out_limits: ?*c_abi.CadKernelLimits) c_abi.CadStatus {
+    const out_l = out_limits orelse return .InvalidArguments;
+    out_l.* = plugin_registry.getLimits();
+    return .Ok;
+}
+
+pub export fn cad_shared_alloc(size: usize) ?[*]u8 {
+    if (size == 0) return null;
+    const limits = plugin_registry.getLimits();
+    if (size > limits.max_wasm_memory_bytes) return null;
+    const alloc = memory.getAllocator();
+    const slice = alloc.alloc(u8, size) catch return null;
+    return slice.ptr;
+}
+
+pub export fn cad_shared_free(ptr: ?[*]u8, size: usize) void {
+    if (ptr == null or size == 0) return;
+    const alloc = memory.getAllocator();
+    alloc.free(ptr.?[0..size]);
+}
+
 test {
     _ = @import("geom/vec2.zig");
     _ = @import("solver/types.zig");
@@ -895,6 +969,11 @@ test {
     _ = @import("tess/bvh.zig");
     _ = @import("geom/nurbs.zig");
     _ = @import("geom/ssi.zig");
+    _ = @import("ast/mod.zig");
+    _ = @import("sheetmetal/mod.zig");
+    _ = @import("fea_flexure/mod.zig");
+    _ = @import("implicit/mod.zig");
+    _ = @import("cam_hlr/mod.zig");
 }
 
 test "STEP C ABI and WASM round-trip export and import" {
@@ -922,4 +1001,57 @@ test "STEP C ABI and WASM round-trip export and import" {
 
     try std.testing.expectEqual(@as(u32, 12), slice.triangle_count);
     try std.testing.expect(slice.vertex_count > 0);
+}
+
+test "Wave 6A Plugin Registry & Shared Allocator C ABI" {
+    _ = cad_kernel_init();
+    defer _ = cad_kernel_deinit();
+
+    // Test kernel limits
+    const lim = c_abi.CadKernelLimits{
+        .max_wasm_memory_bytes = 64 * 1024 * 1024,
+        .max_solver_iterations = 300,
+        .max_boolean_faces = 20_000,
+        .eval_timeout_ms = 4000,
+    };
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_set_kernel_limits(&lim));
+    var out_lim: c_abi.CadKernelLimits = std.mem.zeroes(c_abi.CadKernelLimits);
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_get_kernel_limits(&out_lim));
+    try std.testing.expectEqual(lim.max_wasm_memory_bytes, out_lim.max_wasm_memory_bytes);
+    try std.testing.expectEqual(lim.max_solver_iterations, out_lim.max_solver_iterations);
+
+    // Test shared alloc / free
+    const mem_size = 1024;
+    const mem_ptr = cad_shared_alloc(mem_size);
+    try std.testing.expect(mem_ptr != null);
+    @memset(mem_ptr.?[0..mem_size], 0xAA);
+    try std.testing.expectEqual(@as(u8, 0xAA), mem_ptr.?[0]);
+    cad_shared_free(mem_ptr, mem_size);
+
+    // Test plugin op registration
+    const mock_vtable = c_abi.CadPluginOpVTable{
+        .op_type_id = 1050,
+        .op_name = "TestCustomPlugin",
+        .evaluate_fn = struct {
+            fn eval(
+                _: u32,
+                _: ?*const c_abi.CadFeatureNode,
+                _: ?[*]const c_abi.CadSolidHandle,
+                _: u32,
+                out_solid: *c_abi.CadSolidHandle,
+            ) callconv(.c) c_abi.CadStatus {
+                out_solid.* = 9999;
+                return .Ok;
+            }
+        }.eval,
+        .tessellate_fn = null,
+        .serialize_ast_fn = null,
+        .free_fn = null,
+    };
+
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_register_plugin_op(&mock_vtable));
+    var out_solid: c_abi.CadSolidHandle = 0;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_execute_plugin_op(1050, null, null, 0, &out_solid));
+    try std.testing.expectEqual(@as(c_abi.CadSolidHandle, 9999), out_solid);
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_unregister_plugin_op(1050));
 }

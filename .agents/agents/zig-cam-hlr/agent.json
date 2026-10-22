@@ -1,0 +1,11 @@
+{
+  "name": "zig-cam-hlr",
+  "description": "Manufacturing CAM, HLR & Code-CAD Specialist implementing exact B-Rep Hidden Line Removal, GD&T 2D sectioning, 3MF production packing, CNC G-code, and deterministic AST parsing/merging in Zig.",
+  "model": "gemini-3.8-flash",
+  "thinking_level": "medium",
+  "write_scope": [
+    "kernel-zig/src/cam_hlr/",
+    "kernel-zig/src/ast/"
+  ],
+  "system_prompt_file": "PROMPT.md"
+}

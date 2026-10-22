@@ -1,0 +1,41 @@
+{
+  "name": "@open-cad/core",
+  "version": "0.1.0",
+  "description": "Standalone zero-dependency open-source parametric B-Rep CAD core and geometric solver for Web, Node.js, Bun, and CLI environments",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "../../web-app/node_modules/.bin/tsc || tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "keywords": [
+    "cad",
+    "b-rep",
+    "parametric",
+    "sketch-solver",
+    "step",
+    "webassembly",
+    "solid-modeling",
+    "threejs"
+  ],
+  "author": "OpenCAD Team",
+  "license": "Apache-2.0"
+}

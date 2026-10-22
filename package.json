@@ -4,12 +4,15 @@
   "private": true,
   "description": "Browser-based parametric B-Rep CAD application using a Zig WebAssembly kernel, C++ Differential Oracle Harness, and Three.js Web Worker frontend",
   "workspaces": [
-    "web-app"
+    "web-app",
+    "packages/*"
   ],
   "scripts": {
     "dev": "npm --prefix web-app run dev",
-    "build": "npm run build:kernel && npm --prefix web-app run build",
+    "build": "npm run build:kernel && npm run build:sdk && npm run build:core && npm --prefix web-app run build",
     "build:kernel": "cd kernel-zig && zig build",
+    "build:sdk": "npm --prefix packages/kernel-sdk run build",
+    "build:core": "npm --prefix packages/core-sdk run build",
     "test": "npm run test:kernel && npm run test:oracle && npm run test:web",
     "test:kernel": "cd kernel-zig && zig build test --summary all",
     "test:oracle": "cd oracle-harness/build && make -j$(nproc) && ./cad_differential_runner",
