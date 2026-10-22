@@ -257,6 +257,19 @@ async function initApp() {
     () => import('./plugins/fea/index')
   );
 
+  pluginManager.register(
+    {
+      id: 'implicit',
+      name: 'Implicit & Field Workbench (nTop)',
+      version: '1.0.0',
+      icon: '🧬',
+      category: 'modeling',
+      description: 'nTop-style SIMD SDF bytecode evaluators, TPMS minimal surfaces, FEA field-driven lattice modulation, and Dual Contouring meshing',
+      wasmUrl: '/cad_implicit_ntop.wasm',
+    },
+    () => import('./plugins/implicit/index')
+  );
+
   const pluginContext: PluginContext = {
     viewer,
     bridge,

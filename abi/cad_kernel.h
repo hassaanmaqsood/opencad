@@ -1710,6 +1710,242 @@ cad_status_t cad_flexure_analyze(
  */
 cad_status_t cad_flexure_analysis_free(cad_flexure_analysis_t* analysis);
 
+/* ------------------------------------------------------------------------- */
+/* Wave 9: Implicit SDF Modeling, TPMS Minimal Surfaces, Adaptive Dual       */
+/*         Contouring & Direct 2D Slicing                                    */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * @brief Opcodes for the SIMD Implicit Signed Distance Field (SDF) Bytecode VM.
+ */
+typedef enum cad_implicit_opcode_e {
+    CAD_IMPLICIT_OP_PRIMITIVE = 0,               /**< SDF_PRIMITIVE: Sphere, box, cylinder, torus, plane */
+    CAD_IMPLICIT_OP_BREP_DISTANCE = 1,           /**< SDF_BREP_DISTANCE: Exact distance to B-Rep surface */
+    CAD_IMPLICIT_OP_TPMS_GYROID = 2,             /**< SDF_TPMS_GYROID: Triply Periodic Minimal Surface Gyroid */
+    CAD_IMPLICIT_OP_TPMS_SCHWARZ_P = 3,          /**< SDF_TPMS_SCHWARZ_P: TPMS Schwarz Primitive */
+    CAD_IMPLICIT_OP_TPMS_DIAMOND = 4,            /**< SDF_TPMS_DIAMOND: TPMS Schwarz Diamond */
+    CAD_IMPLICIT_OP_STRESS_FIELD_MODULATE = 5,   /**< SDF_STRESS_FIELD_MODULATE: FEA stress-driven thickness */
+    CAD_IMPLICIT_OP_SMOOTH_UNION = 6,            /**< SDF_SMOOTH_UNION: Polynomial smooth CSG union */
+    CAD_IMPLICIT_OP_SMOOTH_INTERSECT = 7,        /**< SDF_SMOOTH_INTERSECT: Polynomial smooth CSG intersection */
+    CAD_IMPLICIT_OP_SMOOTH_DIFFERENCE = 8,       /**< SDF_SMOOTH_DIFFERENCE: Polynomial smooth CSG difference */
+    CAD_IMPLICIT_OP_SHELL = 9,                   /**< SDF_SHELL: Hollow boundary shell */
+    CAD_IMPLICIT_OP_OFFSET = 10,                 /**< SDF_OFFSET: Iso-surface dilation/erosion */
+    CAD_IMPLICIT_OP_WARP = 11                    /**< SDF_WARP: Non-linear coordinate twist, taper, or warp */
+} cad_implicit_opcode_t;
+typedef cad_implicit_opcode_t CadImplicitOpcode;
+
+#define SDF_PRIMITIVE CAD_IMPLICIT_OP_PRIMITIVE
+#define SDF_BREP_DISTANCE CAD_IMPLICIT_OP_BREP_DISTANCE
+#define SDF_TPMS_GYROID CAD_IMPLICIT_OP_TPMS_GYROID
+#define SDF_TPMS_SCHWARZ_P CAD_IMPLICIT_OP_TPMS_SCHWARZ_P
+#define SDF_TPMS_DIAMOND CAD_IMPLICIT_OP_TPMS_DIAMOND
+#define SDF_STRESS_FIELD_MODULATE CAD_IMPLICIT_OP_STRESS_FIELD_MODULATE
+#define SDF_SMOOTH_UNION CAD_IMPLICIT_OP_SMOOTH_UNION
+#define SDF_SMOOTH_INTERSECT CAD_IMPLICIT_OP_SMOOTH_INTERSECT
+#define SDF_SMOOTH_DIFFERENCE CAD_IMPLICIT_OP_SMOOTH_DIFFERENCE
+#define SDF_SHELL CAD_IMPLICIT_OP_SHELL
+#define SDF_OFFSET CAD_IMPLICIT_OP_OFFSET
+#define SDF_WARP CAD_IMPLICIT_OP_WARP
+
+/**
+ * @brief Analytic geometric primitive types for CAD_IMPLICIT_OP_PRIMITIVE.
+ */
+typedef enum cad_implicit_prim_type_e {
+    CAD_IMPLICIT_PRIM_SPHERE = 0,                /**< Sphere: radius in dimensions[0] */
+    CAD_IMPLICIT_PRIM_BOX = 1,                   /**< Box: half-dimensions [dx, dy, dz] in dimensions */
+    CAD_IMPLICIT_PRIM_CYLINDER = 2,              /**< Cylinder: radius in dimensions[0], half-height in dimensions[1] */
+    CAD_IMPLICIT_PRIM_TORUS = 3,                 /**< Torus: major radius in dimensions[0], minor radius in dimensions[1] */
+    CAD_IMPLICIT_PRIM_PLANE = 4                  /**< Plane: unit normal in dimensions, offset in center[0] */
+} cad_implicit_prim_type_t;
+typedef cad_implicit_prim_type_t CadImplicitPrimType;
+
+/**
+ * @brief Warp transformation modes for CAD_IMPLICIT_OP_WARP.
+ */
+typedef enum cad_implicit_warp_type_e {
+    CAD_IMPLICIT_WARP_TWIST = 0,                 /**< Angular twist along specified axis (rad/mm) */
+    CAD_IMPLICIT_WARP_TAPER = 1,                 /**< Linear scale dilation along axis */
+    CAD_IMPLICIT_WARP_BEND = 2                   /**< Cylindrical curvature bend */
+} cad_implicit_warp_type_t;
+typedef cad_implicit_warp_type_t CadImplicitWarpType;
+
+/**
+ * @brief Bytecode instruction for the SIMD Implicit SDF Virtual Machine.
+ */
+typedef struct cad_implicit_op_s {
+    cad_implicit_opcode_t opcode;                /**< Instruction opcode */
+    uint16_t out_reg;                            /**< Target register index */
+    uint16_t in_reg_a;                           /**< First operand register index */
+    uint16_t in_reg_b;                           /**< Second operand register index */
+    uint16_t reserved;                           /**< Alignment padding */
+
+    union {
+        struct {
+            cad_implicit_prim_type_t type;       /**< Primitive shape */
+            double center[3];                    /**< Center offset [X, Y, Z] */
+            double dimensions[3];                /**< Characteristic dimensions */
+        } primitive;
+
+        struct {
+            cad_solid_handle_t solid;            /**< Target B-Rep solid handle */
+            double max_distance;                 /**< Maximum search clamp distance */
+        } brep_distance;
+
+        struct {
+            double cell_size;                    /**< Spatial cell period / wavelength (mm) */
+            double wall_thickness;               /**< Nominal wall thickness (mm) */
+            bool is_sheet;                       /**< True = sheet TPMS level set, False = skeletal network */
+        } tpms;
+
+        struct {
+            double min_thickness;                /**< Minimum wall thickness at lowest stress (mm) */
+            double max_thickness;                /**< Maximum wall thickness at peak stress (mm) */
+            double max_stress_pa;                /**< Reference / yield stress (Pa) for saturation */
+            const cad_fea_result_slice_t* fea_result; /**< Field source from FEA solve */
+        } stress_modulate;
+
+        struct {
+            double blend_radius_k;               /**< Polynomial blend radius k (mm) */
+        } smooth_boolean;
+
+        struct {
+            double thickness;                    /**< Hollow shell wall thickness (mm) */
+        } shell;
+
+        struct {
+            double offset_distance;              /**< Iso-surface dilation (+) or erosion (-) in mm */
+        } offset;
+
+        struct {
+            cad_implicit_warp_type_t warp_type;  /**< Twist, taper, or bend */
+            double axis_origin[3];               /**< Axis anchor point */
+            double axis_direction[3];            /**< Axis unit direction */
+            double factor;                       /**< Rate of deformation */
+        } warp;
+    } params;
+} cad_implicit_op_t;
+typedef cad_implicit_op_t CadImplicitOp;
+
+/**
+ * @brief Closed 2D polygon contour loop resulting from planar implicit slicing.
+ */
+typedef struct cad_slice_contour_2d_s {
+    const float* points;                         /**< Flat interleaved 2D coordinates [X0, Y0, X1, Y1, ...] (mm) */
+    uint32_t point_count;                        /**< Number of vertices (points array length = point_count * 2) */
+    bool is_outer_boundary;                      /**< True = exterior solid boundary (CCW), False = interior cavity/hole (CW) */
+} cad_slice_contour_2d_t;
+typedef cad_slice_contour_2d_t CadSliceContour2D;
+
+/**
+ * @brief Zero-copy 2D layer slice for direct SLS / SLA / DLP additive manufacturing print paths.
+ */
+typedef struct cad_slice_2d_s {
+    double z_height;                             /**< Planar slicing height along Z axis (mm) */
+    const cad_slice_contour_2d_t* contours;      /**< Array of closed boundary and hole contour loops */
+    uint32_t contour_count;                      /**< Number of contour loops */
+    double bbox[4];                              /**< Planar bounding box [min_x, min_y, max_x, max_y] */
+    double total_solid_area;                     /**< Net cross-sectional solid material area (mm^2) */
+} cad_slice_2d_t;
+typedef cad_slice_2d_t CadSlice2D;
+
+/**
+ * @brief Infill a B-Rep solid cavity with an implicit TPMS or lattice field graph.
+ *
+ * Bounds the implicit lattice inside the internal volume of the specified B-Rep solid,
+ * maintaining exact analytical B-Rep geometry on designated functional mounting faces
+ * (e.g., bolt holes, contact faces, flange mounts).
+ *
+ * @param target_solid Handle to the enclosing boundary B-Rep solid
+ * @param preserve_face_ids Array of persistent CadTopoIds for mounting faces kept exact
+ * @param preserve_face_count Number of preserved mounting faces
+ * @param skin_thickness Outer solid shell skin thickness (mm)
+ * @param bytecode Bytecode instruction buffer defining the implicit infill lattice field
+ * @param instruction_count Number of bytecode instructions
+ * @param out_solid Output handle to the resulting hybrid B-Rep solid
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_implicit_infill_brep(
+    cad_solid_handle_t target_solid,
+    const cad_topo_id_t* preserve_face_ids,
+    uint32_t preserve_face_count,
+    double skin_thickness,
+    const cad_implicit_op_t* bytecode,
+    uint32_t instruction_count,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Generate a boundary surface mesh from an implicit field graph using adaptive Dual Contouring.
+ *
+ * Uses octree-adaptive feature-preserving Dual Contouring to extract an exact zero-copy
+ * mesh with sharp feature edges preserved via Quadratic Error Functions (QEF).
+ *
+ * @param bytecode Bytecode instruction stream defining the implicit field
+ * @param instruction_count Number of bytecode instructions
+ * @param bounds_min Minimum bounding coordinates [min_x, min_y, min_z]
+ * @param bounds_max Maximum bounding coordinates [max_x, max_y, max_z]
+ * @param octree_depth Adaptive octree depth (e.g., 6 to 10 levels)
+ * @param feature_threshold Sharp edge threshold angle in radians (e.g., 0.2 rad)
+ * @param out_slice Output zero-copy tessellated solid slice (positions, normals, indices)
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_implicit_dual_contour(
+    const cad_implicit_op_t* bytecode,
+    uint32_t instruction_count,
+    cad_vec3_t bounds_min,
+    cad_vec3_t bounds_max,
+    uint32_t octree_depth,
+    double feature_threshold,
+    cad_tessellated_solid_slice_t* out_slice
+);
+
+/**
+ * @brief Extract 2D closed polygon contours directly from an implicit field graph at planar height z.
+ *
+ * Slices the implicit level set directly at height z without generating an intermediate
+ * multi-million-triangle STL surface, producing zero-copy vector boundaries optimized
+ * for laser galvanometer scanpaths in SLS/SLA/DLP 3D printers.
+ *
+ * @param bytecode Bytecode instruction stream defining the implicit field
+ * @param instruction_count Number of bytecode instructions
+ * @param bounds_min_xy 2D bounding box minimum [min_x, min_y] (mm)
+ * @param bounds_max_xy 2D bounding box maximum [max_x, max_y] (mm)
+ * @param z_height Planar slice height along Z axis (mm)
+ * @param resolution_xy Spatial sampling grid spacing / chordal tolerance (mm)
+ * @param out_slice_2d Output zero-copy 2D layer slice with closed boundary loops
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_implicit_slice_2d(
+    const cad_implicit_op_t* bytecode,
+    uint32_t instruction_count,
+    const double bounds_min_xy[2],
+    const double bounds_max_xy[2],
+    double z_height,
+    double resolution_xy,
+    cad_slice_2d_t* out_slice_2d
+);
+
+/**
+ * @brief Free allocated memory associated with a direct 2D implicit slice.
+ */
+cad_status_t cad_implicit_slice_2d_free(cad_slice_2d_t* slice);
+
+/**
+ * @brief Evaluate the signed distance scalar of an implicit field graph at a 3D coordinate point.
+ *
+ * @param bytecode Bytecode instruction stream
+ * @param instruction_count Number of instructions
+ * @param point 3D coordinates [X, Y, Z]
+ * @param out_distance Output signed distance value (d < 0 inside solid, d = 0 surface, d > 0 exterior)
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_implicit_eval_point(
+    const cad_implicit_op_t* bytecode,
+    uint32_t instruction_count,
+    cad_vec3_t point,
+    double* out_distance
+);
+
 #ifdef __cplusplus
 }
 #endif

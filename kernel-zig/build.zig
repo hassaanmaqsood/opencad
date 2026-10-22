@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) void {
         "tests/test_adversarial_fuzz.zig",
         "tests/test_wave7_manufacturing.zig",
         "tests/test_wave8_fea_flexure.zig",
+        "tests/test_wave9_implicit.zig",
     };
 
     inline for (test_files) |test_path| {
