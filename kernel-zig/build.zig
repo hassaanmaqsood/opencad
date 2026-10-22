@@ -3,6 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const strip = b.option(bool, "strip", "Strip debug symbols") orelse (optimize == std.builtin.OptimizeMode.ReleaseFast);
 
     const kernel_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -95,6 +96,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "cad_fea_flexure", .src = "src/fea_flexure/wasm.zig", .out_name = "cad_fea_flexure.wasm" },
         .{ .name = "cad_implicit_ntop", .src = "src/implicit/wasm.zig", .out_name = "cad_implicit_ntop.wasm" },
         .{ .name = "cad_mfg_cam", .src = "src/cam_hlr/wasm.zig", .out_name = "cad_mfg_cam.wasm" },
+        .{ .name = "cad_ast", .src = "src/ast/wasm.zig", .out_name = "cad_ast.wasm" },
     };
 
     inline for (wasm_targets) |wt| {
@@ -102,7 +104,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path(wt.src),
             .target = wasm_target,
             .optimize = .ReleaseFast,
-            .strip = true,
+            .strip = strip,
         });
 
         const wasm = b.addExecutable(.{

@@ -67,7 +67,7 @@ html, body {
 
 /* Top-Left: Branding & Performance HUD */
 #hud-top-left {
-  top: 16px;
+  top: 96px;
   left: 16px;
   min-width: 260px;
   padding: 14px 18px;
@@ -128,7 +128,7 @@ html, body {
 
 /* Top-Right: Parametric Controls */
 #hud-top-right {
-  top: 16px;
+  top: 96px;
   right: 16px;
   width: 280px;
   padding: 16px;
@@ -225,13 +225,17 @@ html, body {
 .sketch-hud-container {
   display: none;
   pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 120;
 }
 
 .sketch-toolbar {
-  top: 16px;
+  top: 96px;
   left: 300px;
   width: 320px;
   padding: 14px 18px;
+  z-index: 120;
 }
 
 .sketch-header {
@@ -482,7 +486,7 @@ html, body {
 
 /* Bottom-Center: Sub-Shape Selection HUD */
 #hud-bottom {
-  bottom: 20px;
+  bottom: 64px;
   left: 50%;
   transform: translateX(-50%);
   min-width: 380px;
@@ -533,10 +537,10 @@ html, body {
 /* Feature Tree & Draggable Rollback Bar (Wave 3)                            */
 /* ------------------------------------------------------------------------- */
 .feature-tree-panel {
-  top: 220px;
+  top: 310px;
   left: 16px;
   width: 280px;
-  max-height: calc(100vh - 240px);
+  max-height: calc(100vh - 380px);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -906,5 +910,522 @@ body.dragging-rollback * {
   border-color: #f59e0b;
   color: #fff;
 }
+
+/* ==========================================================================
+   Wave 6B: Fusion 360 / Onshape UI Chrome (Top Ribbon, Timeline, Side Panel)
+   ========================================================================== */
+
+/* Top Ribbon Bar */
+.opencad-top-ribbon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.ribbon-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: rgba(15, 23, 42, 0.98);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ribbon-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ribbon-logo {
+  font-size: 18px;
+}
+
+.ribbon-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: 0.5px;
+}
+
+.ribbon-pill {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.ribbon-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.ribbon-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #94a3b8;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ribbon-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+}
+
+.ribbon-tab-btn.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.ribbon-right-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ribbon-status-badge {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+/* Action Ribbon Bar */
+.ribbon-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 16px;
+  overflow-x: auto;
+  min-height: 48px;
+}
+
+.ribbon-action-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ribbon-action-group:last-child {
+  border-right: none;
+}
+
+.ribbon-group-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-right: 4px;
+  letter-spacing: 0.5px;
+}
+
+.ribbon-action-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.ribbon-action-btn:hover {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+/* Bottom Timeline Bar */
+.opencad-timeline-bar {
+  position: absolute;
+  bottom: 0;
+  left: 280px;
+  right: 0;
+  height: 52px;
+  z-index: 95;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  user-select: none;
+}
+
+.timeline-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.timeline-ctrl-btn {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.timeline-ctrl-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  color: #fff;
+  border-color: #38bdf8;
+}
+
+.timeline-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow-x: auto;
+  padding: 6px 0;
+}
+
+.timeline-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #e2e8f0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.timeline-node.active {
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.12);
+  color: #f0f9ff;
+}
+
+.timeline-node.rolled-back {
+  opacity: 0.4;
+  border-style: dashed;
+}
+
+.timeline-node.suppressed {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
+
+.timeline-scrubber {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 8px;
+  background: #f59e0b;
+  border-radius: 2px;
+  cursor: ew-resize;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+  z-index: 10;
+  transform: translateX(-4px);
+}
+
+/* Right-Docked Plugin Side Panel */
+.plugin-side-panel {
+  position: absolute;
+  top: 96px;
+  right: 16px;
+  width: 380px;
+  bottom: 68px;
+  z-index: 90;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+}
+
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(15, 23, 42, 0.98);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.side-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Code-CAD Styles */
+.codecad-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.codecad-editor-wrapper {
+  flex: 1;
+  display: flex;
+  background: #0d1117;
+  overflow: hidden;
+}
+
+.codecad-textarea {
+  flex: 1;
+  background: transparent;
+  color: #e6edf3;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 12px;
+  border: none;
+  outline: none;
+  resize: none;
+  tab-size: 2;
+}
+
+.codecad-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.98);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.codecad-status {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.btn-codecad-execute {
+  background: #0284c7;
+  color: #fff;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-codecad-execute:hover {
+  background: #0369a1;
+}
+
+/* Git-CAD Styles */
+.git-branch-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.git-branch-selector select {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.git-commit-box {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.git-commit-input {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.btn-git-commit {
+  background: #10b981;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.git-diff-section,
+.git-merge-section {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.git-diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.git-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
+
+.btn-toggle-diff,
+.btn-merge-action {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.git-diff-legend {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.legend-badge {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.legend-badge.added {
+  color: #22c55e;
+}
+
+.legend-badge.removed {
+  color: #ef4444;
+}
+
+.git-diff-summary,
+.git-merge-status {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.git-history-title {
+  padding: 8px 14px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.git-commit-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.git-commit-item {
+  padding: 8px 10px;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.git-commit-item:hover {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.git-commit-item.selected {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.commit-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  margin-bottom: 3px;
+}
+
+.commit-hash {
+  font-family: var(--font-mono);
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.commit-time {
+  color: #64748b;
+}
+
+.commit-message {
+  font-size: 11px;
+  color: #f1f5f9;
+  font-weight: 500;
+}
+
+.commit-author {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
 
 
