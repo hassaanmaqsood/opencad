@@ -16,7 +16,8 @@
     "test": "npm run test:kernel && npm run test:oracle && npm run test:web",
     "test:kernel": "cd kernel-zig && zig build test --summary all",
     "test:oracle": "cd oracle-harness/build && make -j$(nproc) && ./cad_differential_runner",
-    "test:web": "npm --prefix web-app run test"
+    "test:web": "npm --prefix web-app run test",
+    "test:sdk": "npm --prefix packages/kernel-sdk test"
   },
   "keywords": [
     "cad",
