@@ -118,6 +118,34 @@
           <button id="btn-export-step" class="btn-step" data-testid="btn-export-step">📤 Export STEP</button>
         </div>
         <input type="file" id="step-file-input" accept=".step,.stp" style="display: none;" />
+
+        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;" />
+        <div class="hud-section-title">Dress-Up Operations</div>
+        <div class="dressup-btn-group">
+          <button id="btn-fillet" class="btn-dressup" data-testid="btn-fillet">Fillet</button>
+          <button id="btn-chamfer" class="btn-dressup" data-testid="btn-chamfer">Chamfer</button>
+          <button id="btn-shell" class="btn-dressup" data-testid="btn-shell">Shell</button>
+        </div>
+
+        <div class="control-group" style="margin-top: 8px;">
+          <div class="control-row">
+            <label for="lod-select">Tessellation LOD:</label>
+          </div>
+          <select id="lod-select" data-testid="lod-select">
+            <option value="fine" selected>Fine (High Fidelity)</option>
+            <option value="medium">Medium</option>
+            <option value="coarse">Coarse</option>
+          </select>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;" />
+        <div class="hud-section-title">3D Assembly Mates</div>
+        <div class="assembly-btn-group">
+          <button id="btn-insert-part" class="btn-assembly" data-testid="btn-insert-part">➕ Add Part</button>
+          <button id="btn-add-mate" class="btn-assembly" data-testid="btn-add-mate">🔗 Add Mate</button>
+          <button id="btn-solve-assembly" class="btn-assembly" data-testid="btn-solve-assembly">⚡ Solve Assembly</button>
+          <button id="btn-benchmark-assembly" class="btn-assembly btn-bench" data-testid="btn-benchmark-assembly">🚀 500 Instances @ 60 FPS</button>
+        </div>
       </div>
 
       <!-- Drag-and-Drop Visual Overlay (Wave 4) -->

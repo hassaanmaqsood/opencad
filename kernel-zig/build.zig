@@ -23,6 +23,7 @@ pub fn build(b: *std.Build) void {
         "tests/test_ssi.zig",
         "tests/test_primitives_ops.zig",
         "tests/test_booleans.zig",
+        "tests/test_assembly_solver.zig",
     };
 
     inline for (test_files) |test_path| {

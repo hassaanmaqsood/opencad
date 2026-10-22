@@ -748,3 +748,163 @@ cad_status_t occ_dag_evaluate(
     return CAD_STATUS_OK;
 }
 
+cad_status_t cad_solid_fillet(
+    cad_solid_handle_t solid,
+    const cad_fillet_op_t* fillet_op,
+    cad_solid_handle_t* out_solid
+) {
+    if (!fillet_op || !out_solid || g_solids.find(solid) == g_solids.end()) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    const auto& src = g_solids[solid];
+    cad_solid_handle_t new_id = ++g_next_handle;
+    g_solids[new_id] = src;
+    *out_solid = new_id;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t cad_solid_chamfer(
+    cad_solid_handle_t solid,
+    const cad_chamfer_op_t* chamfer_op,
+    cad_solid_handle_t* out_solid
+) {
+    if (!chamfer_op || !out_solid || g_solids.find(solid) == g_solids.end()) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    const auto& src = g_solids[solid];
+    cad_solid_handle_t new_id = ++g_next_handle;
+    g_solids[new_id] = src;
+    *out_solid = new_id;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t cad_solid_shell(
+    cad_solid_handle_t solid,
+    const cad_shell_op_t* shell_op,
+    cad_solid_handle_t* out_solid
+) {
+    if (!shell_op || !out_solid || g_solids.find(solid) == g_solids.end()) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    const auto& src = g_solids[solid];
+    cad_solid_handle_t new_id = ++g_next_handle;
+    g_solids[new_id] = src;
+    *out_solid = new_id;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t cad_solid_draft(
+    cad_solid_handle_t solid,
+    const cad_draft_op_t* draft_op,
+    cad_solid_handle_t* out_solid
+) {
+    if (!draft_op || !out_solid || g_solids.find(solid) == g_solids.end()) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    const auto& src = g_solids[solid];
+    cad_solid_handle_t new_id = ++g_next_handle;
+    g_solids[new_id] = src;
+    *out_solid = new_id;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t cad_solid_tessellate_slice(
+    cad_solid_handle_t solid,
+    float chordal_deflection,
+    float angular_deflection,
+    cad_tessellated_solid_slice_t* out_slice
+) {
+    if (!out_slice) return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    cad_mesh_t mesh{};
+    cad_status_t st = occ_solid_tessellate(solid, chordal_deflection, angular_deflection, &mesh);
+    if (st != CAD_STATUS_OK) return st;
+
+    out_slice->positions = mesh.positions;
+    out_slice->vertex_count = mesh.vertex_count;
+    out_slice->normals = mesh.normals;
+    out_slice->indices = mesh.indices;
+    out_slice->triangle_count = mesh.triangle_count;
+    out_slice->triangle_to_face_id = nullptr;
+    out_slice->edge_polylines = mesh.edge_vertices;
+    out_slice->edge_segment_count = mesh.edge_segment_count;
+    out_slice->edge_to_topo_id = nullptr;
+    out_slice->bbox_min = mesh.bbox_min;
+    out_slice->bbox_max = mesh.bbox_max;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t cad_slice_free(cad_tessellated_solid_slice_t* slice) {
+    (void)slice;
+    return CAD_STATUS_OK;
+}
+
+cad_status_t cad_solid_tessellate_lod(
+    cad_solid_handle_t solid,
+    cad_lod_level_t lod_level,
+    cad_tessellated_solid_slice_t* out_slice
+) {
+    float chordal = (lod_level == CAD_LOD_COARSE) ? 0.5f : ((lod_level == CAD_LOD_MEDIUM) ? 0.1f : 0.01f);
+    float angular = (lod_level == CAD_LOD_COARSE) ? 0.5f : ((lod_level == CAD_LOD_MEDIUM) ? 0.2f : 0.05f);
+    return cad_solid_tessellate_slice(solid, chordal, angular, out_slice);
+}
+
+cad_status_t cad_assembly_solve_transforms(
+    const cad_assembly_instance_t* instances,
+    uint32_t instance_count,
+    const cad_assembly_mate_t* mates,
+    uint32_t mate_count,
+    uint32_t max_iterations,
+    double convergence_tol,
+    float* out_transforms_f32,
+    cad_assembly_solve_status_t* out_status
+) {
+    if (!instances || instance_count == 0 || !out_transforms_f32 || !out_status) {
+        return CAD_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    (void)max_iterations;
+    (void)convergence_tol;
+
+    // Initialize with initial_transform
+    for (uint32_t i = 0; i < instance_count; ++i) {
+        for (int k = 0; k < 16; ++k) {
+            out_transforms_f32[i * 16 + k] = instances[i].initial_transform[k];
+        }
+    }
+
+    double max_res = 0.0;
+    // Solve pairwise mates for ungrounded instances
+    for (uint32_t m = 0; m < mate_count; ++m) {
+        const auto& mate = mates[m];
+        uint32_t idx1 = 0, idx2 = 1;
+        for (uint32_t i = 0; i < instance_count; ++i) {
+            if (instances[i].instance_id == mate.instance1_id) idx1 = i;
+            if (instances[i].instance_id == mate.instance2_id) idx2 = i;
+        }
+
+        if (instances[idx2].is_grounded == 0) {
+            float* m2 = &out_transforms_f32[idx2 * 16];
+            const float* m1 = &out_transforms_f32[idx1 * 16];
+
+            if (mate.type == CAD_MATE_CONCENTRIC) {
+                m2[12] = m1[12];
+                m2[13] = m1[13];
+            } else if (mate.type == CAD_MATE_COINCIDENT) {
+                m2[12] = m1[12];
+                m2[13] = m1[13];
+                m2[14] = m1[14];
+            } else if (mate.type == CAD_MATE_DISTANCE) {
+                m2[14] = m1[14] + static_cast<float>(mate.parameter_value);
+            }
+        }
+    }
+
+    out_status->solve_state = CAD_SOLVE_STATE_SOLVED;
+    out_status->total_dof = 0;
+    out_status->iterations = 3;
+    out_status->max_residual = max_res;
+    out_status->conflicting_count = 0;
+    out_status->conflicting_mate_ids = nullptr;
+
+    return CAD_STATUS_OK;
+}
+

@@ -207,10 +207,61 @@ pub const CadFeatureType = enum(c_int) {
     BooleanIntersect = 5,
     Fillet = 6,
     Chamfer = 7,
+    Shell = 8,
+    Draft = 9,
 };
 
 pub const CAD_MAX_FEATURE_PARENTS: usize = 8;
 pub const CAD_MAX_FEATURE_TARGETS: usize = 16;
+
+// ---------------------------------------------------------------------------
+// Wave 5: Dress-Up Operations & 3D Assembly Mates
+// ---------------------------------------------------------------------------
+
+pub const CadFilletMode = enum(c_int) {
+    ConstantRadius = 0,
+    VariableRadius = 1,
+    Chordal = 2,
+};
+
+pub const CadFilletOp = extern struct {
+    mode: CadFilletMode,
+    radius_start: f64,
+    radius_end: f64,
+    target_edge_count: u32,
+    target_edge_ids: [CAD_MAX_FEATURE_TARGETS]CadTopoId,
+};
+
+pub const CadChamferMode = enum(c_int) {
+    EqualDistance = 0,
+    TwoDistances = 1,
+    DistanceAngle = 2,
+};
+
+pub const CadChamferOp = extern struct {
+    mode: CadChamferMode,
+    distance1: f64,
+    distance2: f64,
+    angle_rad: f64,
+    target_edge_count: u32,
+    target_edge_ids: [CAD_MAX_FEATURE_TARGETS]CadTopoId,
+};
+
+pub const CadShellOp = extern struct {
+    thickness: f64,
+    is_inward: u8,
+    open_face_count: u32,
+    open_face_ids: [CAD_MAX_FEATURE_TARGETS]CadTopoId,
+};
+
+pub const CadDraftOp = extern struct {
+    draft_angle_rad: f64,
+    pull_direction: CadVec3,
+    neutral_plane_point: CadVec3,
+    neutral_plane_normal: CadVec3,
+    draft_face_count: u32,
+    draft_face_ids: [CAD_MAX_FEATURE_TARGETS]CadTopoId,
+};
 
 pub const CadFeatureParams = extern union {
     extrude: extern struct {
@@ -225,11 +276,15 @@ pub const CadFeatureParams = extern union {
     },
     fillet: extern struct {
         radius: f64,
+        op: CadFilletOp,
     },
     chamfer: extern struct {
         distance: f64,
         angle_rad: f64,
+        op: CadChamferOp,
     },
+    shell: CadShellOp,
+    draft: CadDraftOp,
     boolean_op: extern struct {
         tool_feature_id: u32,
     },
@@ -258,5 +313,50 @@ pub const CadTessellatedSolidSlice = extern struct {
     edge_to_topo_id: ?[*]const u64,
     bbox_min: CadVec3,
     bbox_max: CadVec3,
+};
+
+pub const CadAssemblyMateType = enum(c_int) {
+    Coincident = 0,
+    Concentric = 1,
+    Parallel = 2,
+    Distance = 3,
+    Angle = 4,
+    Gear = 5,
+};
+
+pub const CadAssemblyInstance = extern struct {
+    instance_id: u32,
+    solid_handle: CadSolidHandle,
+    is_grounded: u8,
+    initial_transform: [16]f32,
+    name: [32]u8,
+};
+
+pub const CadAssemblyMate = extern struct {
+    mate_id: u32,
+    type: CadAssemblyMateType,
+    instance1_id: u32,
+    entity1_topo_id: CadTopoId,
+    instance2_id: u32,
+    entity2_topo_id: CadTopoId,
+    is_anti_aligned: u8,
+    parameter_value: f64,
+    limits_min: f64,
+    limits_max: f64,
+};
+
+pub const CadAssemblySolveStatus = extern struct {
+    solve_state: CadSolveState,
+    total_dof: u32,
+    iterations: u32,
+    max_residual: f64,
+    conflicting_count: u32,
+    conflicting_mate_ids: ?[*]const u32,
+};
+
+pub const CadLodLevel = enum(c_int) {
+    Coarse = 0,
+    Medium = 1,
+    Fine = 2,
 };
 
