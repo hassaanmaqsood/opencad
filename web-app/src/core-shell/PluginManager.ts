@@ -48,6 +48,10 @@ export class PluginManager {
     return this.loadedPlugins.get(this.activePluginId) || null;
   }
 
+  public getPlugin(pluginId: string): OpenCadExtensionPlugin | null {
+    return this.loadedPlugins.get(pluginId) || null;
+  }
+
   public isPluginLoaded(id: string): boolean {
     return this.loadedPlugins.has(id);
   }

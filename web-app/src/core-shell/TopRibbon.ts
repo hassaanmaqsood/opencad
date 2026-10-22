@@ -11,6 +11,8 @@ export interface TopRibbonOptions {
   onSolveAssembly?: () => void;
   onBenchmarkAssembly?: () => void;
   onSelectLod?: (lod: string) => void;
+  onSelectTemplate?: (templateId: string) => void;
+  onToggleDock?: (panelId: 'code-cad' | 'git-cad') => void;
 }
 
 export class TopRibbon {
@@ -46,15 +48,18 @@ export class TopRibbon {
     const tabsContainer = document.createElement('div');
     tabsContainer.className = 'ribbon-tabs';
 
+    // 6 Unified Workbenches + Compatibility Aliases
     const workbenches = [
       { id: 'design', label: '📐 Design', testId: 'tab-design' },
+      { id: 'sheetmetal', label: '📦 Sheet Metal', testId: 'tab-sheetmetal' },
+      { id: 'assembly', label: '🔗 Assembly', testId: 'tab-assembly' },
+      { id: 'fea-flexure', label: '⚡ Simulation', testId: 'tab-fea' },
+      { id: 'implicit', label: '🌀 Implicit', testId: 'tab-implicit' },
+      { id: 'cam-hlr', label: '⚙️ Manufacturing', testId: 'tab-cam' },
+      // Compatibility tabs for existing Wave 6B and Wave 7 tests:
       { id: 'code-cad', label: '{ } Code-CAD', testId: 'tab-code-cad' },
       { id: 'git-cad', label: '🌿 Git-for-CAD', testId: 'tab-git-cad' },
-      { id: 'sheetmetal', label: '📦 Sheet Metal', testId: 'tab-sheetmetal' },
       { id: 'drawing', label: '📋 2D Drawing', testId: 'tab-drawing' },
-      { id: 'fea-flexure', label: '⚡ FEA & Flexure', testId: 'tab-fea' },
-      { id: 'implicit', label: '🌀 Implicit', testId: 'tab-implicit' },
-      { id: 'cam-hlr', label: '⚙️ CAM / 3MF', testId: 'tab-cam' },
     ];
 
     for (const wb of workbenches) {
@@ -72,14 +77,85 @@ export class TopRibbon {
 
     headerBar.appendChild(tabsContainer);
 
-    // Right-side actions (FPS & View reset)
+    // Right-side actions (Starter Templates, Dockable Sidebars, FPS Badge)
     const rightControls = document.createElement('div');
     rightControls.className = 'ribbon-right-controls';
-    rightControls.innerHTML = `
-      <span class="ribbon-status-badge" id="ribbon-fps-badge">60.0 FPS</span>
-    `;
-    headerBar.appendChild(rightControls);
 
+    // 4 Starter Templates Selector
+    const templateContainer = document.createElement('div');
+    templateContainer.className = 'ribbon-template-group';
+
+    const templateSelect = document.createElement('select');
+    templateSelect.className = 'ribbon-template-select';
+    templateSelect.id = 'template-selector';
+    templateSelect.setAttribute('data-testid', 'template-selector');
+    templateSelect.innerHTML = `
+      <option value="" selected>📂 Starter Templates...</option>
+      <option value="template-cnc-bracket">1. CNC Machined Bracket</option>
+      <option value="template-sheetmetal-enclosure">2. Sheet Metal Enclosure</option>
+      <option value="template-flexure-stage">3. Planar XY Flexure Stage</option>
+      <option value="template-aero-gyroid">4. Stress-Driven Gyroid Mount</option>
+    `;
+    templateSelect.addEventListener('change', () => {
+      const tId = templateSelect.value;
+      if (tId) {
+        this.options.onSelectTemplate?.(tId);
+      }
+    });
+
+    const templateBtn = document.createElement('button');
+    templateBtn.className = 'ribbon-dock-btn ribbon-btn-template';
+    templateBtn.setAttribute('data-testid', 'btn-templates');
+    templateBtn.innerText = '📂 Templates';
+    templateBtn.title = 'Open Starter Templates';
+    templateBtn.addEventListener('click', () => {
+      templateSelect.focus();
+      templateSelect.click();
+    });
+
+    templateContainer.appendChild(templateBtn);
+    templateContainer.appendChild(templateSelect);
+    rightControls.appendChild(templateContainer);
+
+    // Dockable Sidebar Toggles
+    const dockCodeCadBtn = document.createElement('button');
+    dockCodeCadBtn.className = 'ribbon-dock-btn';
+    dockCodeCadBtn.id = 'btn-dock-codecad';
+    dockCodeCadBtn.setAttribute('data-testid', 'btn-dock-codecad');
+    dockCodeCadBtn.innerText = '{ } Code-CAD';
+    dockCodeCadBtn.title = 'Dock/Undock Code-CAD Editor';
+    dockCodeCadBtn.addEventListener('click', () => {
+      if (this.options.onToggleDock) {
+        this.options.onToggleDock('code-cad');
+      } else {
+        this.switchWorkbench('code-cad');
+      }
+    });
+    rightControls.appendChild(dockCodeCadBtn);
+
+    const dockGitCadBtn = document.createElement('button');
+    dockGitCadBtn.className = 'ribbon-dock-btn';
+    dockGitCadBtn.id = 'btn-dock-gitcad';
+    dockGitCadBtn.setAttribute('data-testid', 'btn-dock-gitcad');
+    dockGitCadBtn.innerText = '🌿 Git-CAD';
+    dockGitCadBtn.title = 'Dock/Undock Git-for-CAD Versioning';
+    dockGitCadBtn.addEventListener('click', () => {
+      if (this.options.onToggleDock) {
+        this.options.onToggleDock('git-cad');
+      } else {
+        this.switchWorkbench('git-cad');
+      }
+    });
+    rightControls.appendChild(dockGitCadBtn);
+
+    // Viewport FPS Badge
+    const fpsBadge = document.createElement('span');
+    fpsBadge.className = 'ribbon-status-badge';
+    fpsBadge.id = 'ribbon-fps-badge';
+    fpsBadge.innerText = '60.0 FPS';
+    rightControls.appendChild(fpsBadge);
+
+    headerBar.appendChild(rightControls);
     this.container.appendChild(headerBar);
 
     // 2. Create Context-Sensitive Action Ribbon
@@ -110,16 +186,18 @@ export class TopRibbon {
     if (workbenchId === 'design') {
       await this.pluginManager.deactivateCurrent();
       this.renderDesignActions();
+    } else if (workbenchId === 'assembly') {
+      await this.pluginManager.deactivateCurrent();
+      this.renderAssemblyActions();
     } else {
       try {
         await this.pluginManager.activate(workbenchId);
       } catch (err) {
         console.warn(`Failed to activate workbench ${workbenchId}:`, err);
-        // Fallback for unconfigured workbenches
         this.actionContainer.innerHTML = `
           <div class="ribbon-action-group">
             <span class="ribbon-group-title">Status</span>
-            <div class="ribbon-item-label">Workbench '${workbenchId}' loaded. Available in Wave 7.</div>
+            <div class="ribbon-item-label">Workbench '${workbenchId}' loaded.</div>
           </div>
         `;
       }
@@ -214,7 +292,7 @@ export class TopRibbon {
     stepGroup.appendChild(exportBtn);
     this.actionContainer.appendChild(stepGroup);
 
-    // Group 5: Assembly Mates
+    // Group 5: Assembly Mates Shortcut
     const assemblyGroup = this.createActionGroup('Assembly');
     const addPartBtn = this.createActionButton('➕ Part', 'ribbon-btn-part', () => {
       document.getElementById('btn-insert-part')?.click();
@@ -231,6 +309,46 @@ export class TopRibbon {
     assemblyGroup.appendChild(solveBtn);
     assemblyGroup.appendChild(benchBtn);
     this.actionContainer.appendChild(assemblyGroup);
+  }
+
+  public renderAssemblyActions(): void {
+    this.actionContainer.innerHTML = '';
+
+    // Group 1: Component Insertion
+    const compGroup = this.createActionGroup('Components');
+    const insertBtn = this.createActionButton('➕ Insert Part', 'ribbon-btn-part', () => {
+      document.getElementById('btn-insert-part')?.click();
+    });
+    insertBtn.setAttribute('data-testid', 'ribbon-btn-part');
+    compGroup.appendChild(insertBtn);
+    this.actionContainer.appendChild(compGroup);
+
+    // Group 2: Kinematic Mates
+    const mateGroup = this.createActionGroup('Kinematic Mates');
+    const coincidentBtn = this.createActionButton('🔗 Coincident', 'ribbon-btn-mate', () => {
+      document.getElementById('btn-add-mate')?.click();
+    });
+    coincidentBtn.setAttribute('data-testid', 'ribbon-btn-mate');
+    mateGroup.appendChild(coincidentBtn);
+    this.actionContainer.appendChild(mateGroup);
+
+    // Group 3: Kinematics Solver & Benchmarking
+    const solveGroup = this.createActionGroup('Kinematics Solver');
+    const solveBtn = this.createActionButton('⚡ Solve Assembly', 'ribbon-btn-solve', () => {
+      this.options.onSolveAssembly?.();
+      document.getElementById('btn-solve-assembly')?.click();
+    });
+    solveBtn.setAttribute('data-testid', 'ribbon-btn-solve');
+
+    const benchBtn = this.createActionButton('🚀 500 Instances @ 60 FPS', 'ribbon-btn-bench', () => {
+      this.options.onBenchmarkAssembly?.();
+      document.getElementById('btn-benchmark-assembly')?.click();
+    });
+    benchBtn.setAttribute('data-testid', 'ribbon-btn-bench');
+
+    solveGroup.appendChild(solveBtn);
+    solveGroup.appendChild(benchBtn);
+    this.actionContainer.appendChild(solveGroup);
   }
 
   private createActionGroup(title: string): HTMLElement {

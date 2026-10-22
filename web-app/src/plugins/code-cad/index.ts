@@ -65,6 +65,14 @@ export class CodeCadPlugin implements OpenCadExtensionPlugin {
     }
   }
 
+  public setScript(code: string): void {
+    this.scriptContent = code;
+    if (this.textarea) {
+      this.textarea.value = code;
+      this.updateAstStats();
+    }
+  }
+
   public renderRibbonActions(container: HTMLElement): void {
     container.innerHTML = '';
 
