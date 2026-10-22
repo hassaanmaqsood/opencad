@@ -3,8 +3,6 @@ import { test, expect } from '@playwright/test';
 test.describe('Wave 9: Implicit & Field-Driven Modeling Workbench (nTop Mode)', () => {
   test.beforeEach(async ({ page }) => {
     test.setTimeout(150000);
-    page.on('console', (msg) => console.log(`[PAGE LOG ${msg.type()}]:`, msg.text()));
-    page.on('pageerror', (err) => console.log('[PAGE ERROR]:', err));
     await page.goto('/');
     await page.waitForSelector('canvas#cad-canvas');
     await page.waitForSelector('[data-testid="ribbon-bar"]');

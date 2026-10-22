@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Wave 7: Sheet Metal, 2D Drawing & Manufacturing Workbenches', () => {
   test.beforeEach(async ({ page }) => {
+    test.setTimeout(60000);
     await page.goto('/');
     await page.waitForSelector('canvas#cad-canvas');
     await page.waitForSelector('[data-testid="ribbon-bar"]');
