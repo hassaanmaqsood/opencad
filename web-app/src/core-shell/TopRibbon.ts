@@ -51,6 +51,7 @@ export class TopRibbon {
       { id: 'code-cad', label: '{ } Code-CAD', testId: 'tab-code-cad' },
       { id: 'git-cad', label: '🌿 Git-for-CAD', testId: 'tab-git-cad' },
       { id: 'sheetmetal', label: '📦 Sheet Metal', testId: 'tab-sheetmetal' },
+      { id: 'drawing', label: '📋 2D Drawing', testId: 'tab-drawing' },
       { id: 'fea-flexure', label: '⚡ FEA & Flexure', testId: 'tab-fea' },
       { id: 'implicit', label: '🌀 Implicit', testId: 'tab-implicit' },
       { id: 'cam-hlr', label: '⚙️ CAM / 3MF', testId: 'tab-cam' },

@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
         "tests/test_booleans.zig",
         "tests/test_assembly_solver.zig",
         "tests/test_adversarial_fuzz.zig",
+        "tests/test_wave7_manufacturing.zig",
     };
 
     inline for (test_files) |test_path| {

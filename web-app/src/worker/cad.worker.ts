@@ -676,10 +676,12 @@ self.onmessage = async (e: MessageEvent) => {
 
   // --- Wave 6B: Dynamic Workbench Plugin Handlers ---
   if (data.type === 'LOAD_PLUGIN_WASM') {
-    const success = await workerPluginBridge.loadPluginWasm(data.pluginId, data.wasmBinary);
+    const pluginId = data.pluginId ?? data.payload?.pluginId;
+    const wasmBinary = data.wasmBinary ?? data.payload?.wasmBinary;
+    const success = await workerPluginBridge.loadPluginWasm(pluginId, wasmBinary);
     self.postMessage({
       type: 'PLUGIN_WASM_LOADED',
-      pluginId: data.pluginId,
+      pluginId: pluginId,
       success,
     });
     return;
