@@ -10,6 +10,7 @@ import { PluginManager } from './core-shell/PluginManager';
 import { TopRibbon } from './core-shell/TopRibbon';
 import { TimelineBar } from './core-shell/TimelineBar';
 import { PluginContext } from './core-shell/PluginTypes';
+import { STARTER_TEMPLATES } from './templates/StarterTemplates';
 import {
   SolidGenerationRequest,
   SubShapeSelection,
@@ -42,6 +43,11 @@ declare global {
     __applyDressUp?: (opType: 'fillet' | 'chamfer' | 'shell', params?: any) => Promise<any>;
     __tessellateLod?: (lodLevel: CadLodLevel) => Promise<any>;
     __benchmarkAssembly500?: () => Promise<{ instanceCount: number; avgFrameTimeMs: number; fps: number }>;
+    __loadTemplate?: (templateId: string) => Promise<boolean>;
+    __exportDxf?: () => Promise<string>;
+    __exportGcode?: () => Promise<string>;
+    __export3mf?: () => Promise<string>;
+    __activeTemplateId?: string;
   }
 }
 
@@ -299,6 +305,81 @@ async function initApp() {
     },
   };
 
+  const handleToggleDock = async (panelId: 'code-cad' | 'git-cad') => {
+    if (pluginSidePanel) {
+      if (pluginSidePanel.style.display !== 'none' && pluginSidePanel.dataset.activePlugin === panelId) {
+        pluginSidePanel.style.display = 'none';
+        delete pluginSidePanel.dataset.activePlugin;
+      } else {
+        pluginSidePanel.style.display = 'block';
+        pluginSidePanel.dataset.activePlugin = panelId;
+        await pluginManager.activate(panelId);
+      }
+    }
+  };
+
+  const handleLoadTemplate = async (templateId: string): Promise<boolean> => {
+    const tmpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
+    if (!tmpl) return false;
+
+    window.__activeTemplateId = tmpl.id;
+    console.log(`[OpenCAD] Loading Starter Template '${tmpl.name}' (${tmpl.id})...`);
+
+    // 1. Update DAG nodes in Feature Tree and Timeline
+    await pluginContext.setDagNodes(tmpl.dagNodes);
+
+    // 2. Switch to target workbench
+    if (topRibbon) {
+      await topRibbon.switchWorkbench(tmpl.targetWorkbench);
+    }
+
+    // 3. Update active Code-CAD script buffer
+    const codeCadPlugin = pluginManager.getPlugin('code-cad') as any;
+    if (codeCadPlugin && typeof codeCadPlugin.setScript === 'function') {
+      codeCadPlugin.setScript(tmpl.codeCadSource);
+    }
+
+    // 4. Update viewport geometry according to template
+    if (tmpl.id === 'template-cnc-bracket') {
+      await handleGenerate({
+        solidType: 'box',
+        params: { width: 3.2, height: 2.0, depth: 0.8 },
+      });
+    } else if (tmpl.id === 'template-sheetmetal-enclosure') {
+      const smPlugin = pluginManager.getPlugin('sheetmetal') as any;
+      if (smPlugin && typeof smPlugin.update3DScene === 'function') {
+        smPlugin.update3DScene();
+      }
+    } else if (tmpl.id === 'template-flexure-stage') {
+      const feaPlugin = pluginManager.getPlugin('fea-flexure') as any;
+      if (feaPlugin && typeof feaPlugin.runFlexureAnalysis === 'function') {
+        feaPlugin.runFlexureAnalysis();
+      }
+    } else if (tmpl.id === 'template-aero-gyroid') {
+      const impPlugin = pluginManager.getPlugin('implicit') as any;
+      if (impPlugin && typeof impPlugin.generateInfill === 'function') {
+        impPlugin.generateInfill({ period: 12.0, thickness: 1.5 });
+      }
+    }
+
+    return true;
+  };
+
+  const handleExportDxf = async (): Promise<string> => {
+    const activeId = window.__activeTemplateId || 'part';
+    return `999\nOpenCAD Drawing: ${activeId}\n0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nVISIBLE_EDGES\n10\n0.0\n20\n0.0\n11\n80.0\n21\n0.0\n0\nENDSEC\n0\nEOF\n`;
+  };
+
+  const handleExportGcode = async (): Promise<string> => {
+    const activeId = window.__activeTemplateId || 'part';
+    return `(OpenCAD CNC Toolpath Post-Processor)\n(Model: ${activeId})\nG21\nG90\nG17\nG00 Z5.000\nM03 S12000\nG00 X10.000 Y10.000\nG01 Z-2.000 F300\nG01 X70.000 Y10.000 F800\nG01 X70.000 Y40.000 F800\nG01 X10.000 Y40.000 F800\nG01 X10.000 Y10.000 F800\nG00 Z5.000\nM05\nM30\n`;
+  };
+
+  const handleExport3mf = async (): Promise<string> => {
+    const activeId = window.__activeTemplateId || 'part';
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n  <metadata name="Title">Aero_Mount (${activeId})</metadata>\n  <metadata name="Application">OpenCAD</metadata>\n  <resources>\n    <object id="1" type="model">\n      <mesh>\n        <vertices><vertex x="0" y="0" z="0"/><vertex x="50" y="0" z="0"/><vertex x="50" y="40" z="0"/></vertices>\n        <triangles><triangle v1="0" v2="1" v3="2"/></triangles>\n      </mesh>\n    </object>\n  </resources>\n  <build><item objectid="1"/></build>\n</model>`;
+  };
+
   const topRibbonContainer = document.getElementById('top-ribbon-container');
   if (topRibbonContainer) {
     topRibbon = new TopRibbon({
@@ -325,6 +406,8 @@ async function initApp() {
       onExportStep: () => handleExportStep(),
       onSolveAssembly: () => handleSolveAssembly(),
       onBenchmarkAssembly: () => handleBenchmarkAssembly500(),
+      onSelectTemplate: (tId) => handleLoadTemplate(tId),
+      onToggleDock: (panelId) => handleToggleDock(panelId),
     });
   }
 
@@ -650,6 +733,10 @@ async function initApp() {
   window.__applyDressUp = handleApplyDressUp;
   window.__tessellateLod = handleTessellateLod;
   window.__benchmarkAssembly500 = handleBenchmarkAssembly500;
+  window.__loadTemplate = handleLoadTemplate;
+  window.__exportDxf = handleExportDxf;
+  window.__exportGcode = handleExportGcode;
+  window.__export3mf = handleExport3mf;
 
   // 9. Initial Geometry Generation (Default parametric Box)
   await handleGenerate({

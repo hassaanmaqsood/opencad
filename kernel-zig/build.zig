@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const strip = b.option(bool, "strip", "Strip debug symbols") orelse (optimize == std.builtin.OptimizeMode.ReleaseFast);
+    const strip = b.option(bool, "strip", "Strip debug symbols") orelse true;
 
     const kernel_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) void {
         "tests/test_wave7_manufacturing.zig",
         "tests/test_wave8_fea_flexure.zig",
         "tests/test_wave9_implicit.zig",
+        "tests/test_wave10_pipeline.zig",
     };
 
     inline for (test_files) |test_path| {
