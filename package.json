@@ -1,0 +1,36 @@
+{
+  "name": "opencad",
+  "version": "0.1.0",
+  "description": "Zero-account GitHub-distributed OpenCAD WebAssembly Core & Web Component",
+  "type": "module",
+  "main": "./opencad.mjs",
+  "module": "./opencad.mjs",
+  "types": "./opencad.d.ts",
+  "exports": {
+    ".": {
+      "import": "./opencad.mjs",
+      "types": "./opencad.d.ts"
+    },
+    "./element": {
+      "import": "./opencad-element.mjs"
+    }
+  },
+  "files": [
+    "opencad.mjs",
+    "opencad.d.ts",
+    "opencad-element.mjs",
+    "cad_core.wasm",
+    "README.md",
+    "python",
+    "rust"
+  ],
+  "keywords": [
+    "cad",
+    "b-rep",
+    "wasm",
+    "parametric",
+    "web-component"
+  ],
+  "author": "OpenCAD Contributors",
+  "license": "Apache-2.0"
+}
