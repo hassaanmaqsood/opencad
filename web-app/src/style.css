@@ -1601,6 +1601,202 @@ body.dragging-rollback * {
   word-break: break-all;
 }
 
+/* ==========================================================================
+   Wave 11: Non-Dev Maker Features (Embed Mode, Sliders, Share Modal)
+   ========================================================================== */
+
+/* Clean Viewport-Only Embed Mode */
+body.embed-mode #top-ribbon-container,
+body.embed-mode #hud-top-left,
+body.embed-mode #timeline-container,
+body.embed-mode #hud-top-right,
+body.embed-mode #feature-tree-panel {
+  display: none !important;
+}
+
+body.embed-mode .parameter-sliders-panel {
+  top: 16px !important;
+  right: 16px !important;
+  max-height: calc(100vh - 32px);
+  z-index: 50;
+}
+
+/* Auto-Generated Parameter Sliders Panel */
+.parameter-sliders-panel {
+  position: absolute;
+  top: 60px;
+  right: 320px;
+  width: 250px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  z-index: 20;
+  backdrop-filter: blur(16px);
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+/* Share & Embed Modal Overlay */
+.share-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.share-modal-card {
+  width: 90%;
+  max-width: 580px;
+  background: #12161f;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.share-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #181d28;
+}
+
+.share-modal-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.share-modal-close:hover {
+  color: #fff;
+}
+
+.share-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.share-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.share-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-bottom: 6px;
+}
+
+.share-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.share-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: #090c10;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #38bdf8;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+}
+
+.share-textarea-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: #090c10;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #a5f3fc;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.share-copy-btn {
+  padding: 8px 14px;
+  background: #0284c7;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.share-copy-btn:hover {
+  background: #0369a1;
+}
+
+.share-download-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: #059669;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s;
+}
+
+.share-download-btn:hover {
+  background: #047857;
+}
+
+.btn-share-embed {
+  background: linear-gradient(135deg, #0284c7, #06b6d4);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-share-embed:hover {
+  background: linear-gradient(135deg, #0369a1, #0891b2);
+}
+
+
 
 
 

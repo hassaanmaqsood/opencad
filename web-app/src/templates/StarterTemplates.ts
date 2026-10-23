@@ -26,11 +26,19 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     codeCadSource: `// OpenCAD Template 1: Parametric CNC Machined Bracket
 import { Part } from '@open-cad/core';
 
+export const params = {
+  length: 80.0,
+  width: 50.0,
+  thickness: 20.0,
+  fillet_radius: 6.0,
+  hole_diameter: 10.0
+};
+
 export default new Part('CNC_Bracket')
-  .box(80.0, 50.0, 20.0)
-  .fillet(6.0, [0, 1, 2, 3])
-  .hole(10.0, { x: 20.0, y: 25.0, z: 20.0 })
-  .hole(10.0, { x: 60.0, y: 25.0, z: 20.0 });
+  .box(params.length, params.width, params.thickness)
+  .fillet(params.fillet_radius, [0, 1, 2, 3])
+  .hole(params.hole_diameter, { x: 20.0, y: 25.0, z: params.thickness })
+  .hole(params.hole_diameter, { x: 60.0, y: 25.0, z: params.thickness });
 `,
     dagNodes: [
       {
@@ -77,15 +85,23 @@ export default new Part('CNC_Bracket')
     codeCadSource: `// OpenCAD Template 2: Sheet Metal Electronics Enclosure
 import { SheetMetalPart } from '@open-cad/core';
 
-export default new SheetMetalPart('Enclosure_Chassis', {
+export const params = {
+  length: 120.0,
+  width: 80.0,
+  flange_height: 30.0,
   thickness: 1.5,
-  bendRadius: 2.0,
+  bend_radius: 2.0
+};
+
+export default new SheetMetalPart('Enclosure_Chassis', {
+  thickness: params.thickness,
+  bendRadius: params.bend_radius,
   kFactor: 0.44,
   relief: 'rectangular'
 })
-  .baseFlange(120.0, 80.0)
-  .edgeFlange(0, 30.0, 90.0)
-  .edgeFlange(1, 30.0, 90.0)
+  .baseFlange(params.length, params.width)
+  .edgeFlange(0, params.flange_height, 90.0)
+  .edgeFlange(1, params.flange_height, 90.0)
   .edgeFlange(2, 25.0, 90.0)
   .edgeFlange(3, 25.0, 90.0);
 `,
@@ -134,10 +150,18 @@ export default new SheetMetalPart('Enclosure_Chassis', {
     codeCadSource: `// OpenCAD Template 3: Precision Planar XY Compliant Flexure Stage
 import { FlexureStage } from '@open-cad/core';
 
+export const params = {
+  stage_size: 60.0,
+  stage_height: 10.0,
+  leaf_length: 35.0,
+  leaf_thickness: 0.8,
+  leaf_width: 10.0
+};
+
 export default new FlexureStage('XY_Nanopositioner')
-  .stageBody(60.0, 60.0, 10.0)
-  .addDoubleParallelogram({ leafLength: 35.0, leafThickness: 0.8, leafWidth: 10.0, axis: 'X' })
-  .addDoubleParallelogram({ leafLength: 35.0, leafThickness: 0.8, leafWidth: 10.0, axis: 'Y' })
+  .stageBody(params.stage_size, params.stage_size, params.stage_height)
+  .addDoubleParallelogram({ leafLength: params.leaf_length, leafThickness: params.leaf_thickness, leafWidth: params.leaf_width, axis: 'X' })
+  .addDoubleParallelogram({ leafLength: params.leaf_length, leafThickness: params.leaf_thickness, leafWidth: params.leaf_width, axis: 'Y' })
   .synthesizeFact();
 `,
     dagNodes: [
@@ -185,12 +209,20 @@ export default new FlexureStage('XY_Nanopositioner')
     codeCadSource: `// OpenCAD Template 4: Stress-Driven Gyroid Lightweight Aerospace Mount
 import { Part, tpms, field } from '@open-cad/core';
 
+export const params = {
+  length: 50.0,
+  width: 40.0,
+  height: 30.0,
+  shell_thickness: 2.5,
+  tpms_period: 12.0
+};
+
 export default new Part('Aero_Mount')
-  .box(50.0, 40.0, 30.0)
-  .shell(2.5)
+  .box(params.length, params.width, params.height)
+  .shell(params.shell_thickness)
   .feaSolve({ loadN: 1500, fixedFace: 0 })
   .infill(tpms.gyroid({
-    period: 12.0,
+    period: params.tpms_period,
     thickness: field.fromStress({ min: 0.8, max: 2.6 })
   }));
 `,

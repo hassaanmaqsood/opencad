@@ -13,6 +13,7 @@
     "build:kernel": "cd kernel-zig && zig build",
     "build:sdk": "npm --prefix packages/kernel-sdk run build",
     "build:core": "npm --prefix packages/core-sdk run build",
+    "build:dist": "node scripts/build_dist_publish.js",
     "test": "npm run test:kernel && npm run test:oracle && npm run test:web",
     "test:kernel": "cd kernel-zig && zig build test --summary all",
     "test:oracle": "cd oracle-harness/build && make -j$(nproc) && ./cad_differential_runner",

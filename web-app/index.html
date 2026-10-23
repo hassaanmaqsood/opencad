@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Open Parametric CAD Viewport</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>" />
+    <script src="/coi-serviceworker.js"></script>
   </head>
   <body>
     <div id="app-container">
@@ -176,6 +177,12 @@
           <div><b>Right Drag:</b> Pan View</div>
         </div>
       </div>
+
+      <!-- Wave 11: Auto-Generated Parameter Sliders Panel for Non-Dev Makers -->
+      <div id="parameter-sliders-panel" class="hud-panel parameter-sliders-panel" data-testid="parameter-sliders-panel" style="display: none;"></div>
+
+      <!-- Wave 11: One-Click Share & Embed Modal Dialog -->
+      <div id="share-embed-modal" class="share-modal-overlay" data-testid="share-embed-modal" style="display: none;"></div>
 
       <!-- Wave 6B: Chronological Feature Timeline Bar & Rollback Scrubber -->
       <div id="timeline-container"></div>

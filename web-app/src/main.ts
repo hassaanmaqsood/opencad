@@ -11,6 +11,8 @@ import { TopRibbon } from './core-shell/TopRibbon';
 import { TimelineBar } from './core-shell/TimelineBar';
 import { PluginContext } from './core-shell/PluginTypes';
 import { STARTER_TEMPLATES } from './templates/StarterTemplates';
+import { ParameterSlidersPanel } from './ui/parameter_sliders';
+import { ShareModal } from './ui/share_modal';
 import {
   SolidGenerationRequest,
   SubShapeSelection,
@@ -48,6 +50,10 @@ declare global {
     __exportGcode?: () => Promise<string>;
     __export3mf?: () => Promise<string>;
     __activeTemplateId?: string;
+    __paramSlidersPanel?: ParameterSlidersPanel;
+    __shareModal?: ShareModal;
+    __getActiveCodeScript?: () => string;
+    __setActiveCodeScript?: (code: string) => void;
   }
 }
 
@@ -318,12 +324,69 @@ async function initApp() {
     }
   };
 
+  // Wave 11: Maker Mode, Script Buffer & File Download Helper
+  let activeCodeScript: string = STARTER_TEMPLATES[0].codeCadSource;
+
+  const triggerFileDownload = (content: string, filename: string, mime: string = 'text/plain') => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const paramSlidersPanel = new ParameterSlidersPanel({
+    onParamChange: async (name, value) => {
+      activeCodeScript = ParameterSlidersPanel.updateCode(activeCodeScript, name, value);
+      const codePlugin = pluginManager.getPlugin('code-cad') as any;
+      if (codePlugin && typeof codePlugin.setScript === 'function') {
+        codePlugin.setScript(activeCodeScript);
+      }
+      await handleGenerate({
+        solidType: 'box',
+        params: {
+          width: paramSlidersPanel.getParam('width') || 2.0,
+          height: paramSlidersPanel.getParam('height') || 2.0,
+          depth: paramSlidersPanel.getParam('depth') || 2.0,
+        },
+      });
+    },
+    onDownloadStep: async () => {
+      const stepText = await handleExportStep();
+      triggerFileDownload(stepText, 'opencad_model.step', 'application/step');
+    },
+    onDownload3mf: async () => {
+      const xml = await handleExport3mf();
+      triggerFileDownload(xml, 'opencad_model.3mf', 'application/xml');
+    },
+    onDownloadDxf: async () => {
+      const dxf = await handleExportDxf();
+      triggerFileDownload(dxf, 'opencad_model.dxf', 'application/dxf');
+    },
+  });
+
+  const shareModal = new ShareModal();
+
   const handleLoadTemplate = async (templateId: string): Promise<boolean> => {
     const tmpl = STARTER_TEMPLATES.find((t) => t.id === templateId);
     if (!tmpl) return false;
 
     window.__activeTemplateId = tmpl.id;
+    activeCodeScript = tmpl.codeCadSource;
     console.log(`[OpenCAD] Loading Starter Template '${tmpl.name}' (${tmpl.id})...`);
+
+    // Parse and render sliders for this template
+    const parsed = ParameterSlidersPanel.parseCode(activeCodeScript);
+    if (parsed.length > 0) {
+      paramSlidersPanel.setParams(parsed);
+      paramSlidersPanel.setVisible(true);
+    } else {
+      paramSlidersPanel.setVisible(false);
+    }
 
     // 1. Update DAG nodes in Feature Tree and Timeline
     await pluginContext.setDagNodes(tmpl.dagNodes);
@@ -408,6 +471,7 @@ async function initApp() {
       onBenchmarkAssembly: () => handleBenchmarkAssembly500(),
       onSelectTemplate: (tId) => handleLoadTemplate(tId),
       onToggleDock: (panelId) => handleToggleDock(panelId),
+      onShareEmbed: () => shareModal.open(activeCodeScript),
     });
   }
 
@@ -737,11 +801,114 @@ async function initApp() {
   window.__exportDxf = handleExportDxf;
   window.__exportGcode = handleExportGcode;
   window.__export3mf = handleExport3mf;
+  window.__paramSlidersPanel = paramSlidersPanel;
+  window.__shareModal = shareModal;
+  window.__getActiveCodeScript = () => activeCodeScript;
+  window.__setActiveCodeScript = (c: string) => { activeCodeScript = c; };
 
   // 9. Initial Geometry Generation (Default parametric Box)
   await handleGenerate({
     solidType: 'box',
     params: { width: 2.0, height: 2.0, depth: 2.0 },
+  });
+
+  // 10. Wave 11: Non-Dev Maker URL & Gist & Hash Handler
+  const handleUrlParameters = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isEmbed = urlParams.get('embed') === 'true';
+    const showSliders = urlParams.get('sliders') !== 'false';
+    const gistId = urlParams.get('gist');
+    const stepUrl = urlParams.get('step-url');
+    const templateId = urlParams.get('template');
+    const hash = window.location.hash;
+
+    if (isEmbed) {
+      document.body.classList.add('embed-mode');
+    }
+
+    if (gistId) {
+      try {
+        const cleanGistId = gistId.replace(/https:\/\/gist\.github\.com\/[^\/]+\//, '').replace(/\/$/, '');
+        const resp = await fetch(`https://api.github.com/gists/${cleanGistId}`);
+        if (resp.ok) {
+          const gistData = await resp.json();
+          const firstFile = Object.values(gistData.files || {})[0] as any;
+          if (firstFile && firstFile.content) {
+            if (firstFile.filename?.endsWith('.step') || firstFile.filename?.endsWith('.stp')) {
+              await handleImportStep(firstFile.content);
+              return;
+            }
+            activeCodeScript = firstFile.content;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load GitHub Gist:', e);
+      }
+    } else if (stepUrl) {
+      try {
+        const resp = await fetch(stepUrl);
+        if (resp.ok) {
+          const text = await resp.text();
+          await handleImportStep(text);
+          return;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch STEP URL:', e);
+      }
+    } else if (hash && hash.includes('code=')) {
+      const raw = hash.split('code=')[1];
+      try {
+        activeCodeScript = decodeURIComponent(escape(atob(decodeURIComponent(raw))));
+      } catch {
+        try {
+          activeCodeScript = decodeURIComponent(raw);
+        } catch (e) {
+          console.warn('Failed to decode hash code:', e);
+        }
+      }
+      const codePlugin = pluginManager.getPlugin('code-cad') as any;
+      if (codePlugin && typeof codePlugin.setScript === 'function') {
+        codePlugin.setScript(activeCodeScript);
+      }
+    } else if (templateId) {
+      const fullTmplId = templateId.startsWith('template-') ? templateId : `template-${templateId}`;
+      const found = STARTER_TEMPLATES.find((t) => t.id === fullTmplId);
+      if (found) {
+        await handleLoadTemplate(fullTmplId);
+        return;
+      }
+    }
+
+    const parsed = ParameterSlidersPanel.parseCode(activeCodeScript);
+    if (parsed.length > 0) {
+      paramSlidersPanel.setParams(parsed);
+      paramSlidersPanel.setVisible(showSliders);
+    } else {
+      paramSlidersPanel.setVisible(false);
+    }
+  };
+
+  await handleUrlParameters();
+
+  // Listen to parent frame postMessages (for <opencad-viewer> Web Component)
+  window.addEventListener('message', async (ev) => {
+    if (!ev.data) return;
+    if (ev.data.type === 'OPENCAD_DOWNLOAD_STEP') {
+      const stepText = await handleExportStep();
+      triggerFileDownload(stepText, 'model.step', 'application/step');
+    } else if (ev.data.type === 'OPENCAD_DOWNLOAD_3MF') {
+      const xml = await handleExport3mf();
+      triggerFileDownload(xml, 'model.3mf', 'application/xml');
+    } else if (ev.data.type === 'OPENCAD_DOWNLOAD_DXF') {
+      const dxf = await handleExportDxf();
+      triggerFileDownload(dxf, 'model.dxf', 'application/dxf');
+    } else if (ev.data.type === 'OPENCAD_SET_CODE' && ev.data.code) {
+      activeCodeScript = ev.data.code;
+      const parsed = ParameterSlidersPanel.parseCode(activeCodeScript);
+      paramSlidersPanel.setParams(parsed);
+    } else if (ev.data.type === 'OPENCAD_SET_TEMPLATE' && ev.data.templateId) {
+      await handleLoadTemplate(ev.data.templateId);
+    }
   });
 }
 

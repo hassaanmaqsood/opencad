@@ -1,17 +1,64 @@
 # OpenCAD (`open-parametric-cad`)
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Zig: 0.17](https://img.shields.io/badge/Zig-0.17-orange.svg)](https://ziglang.org/)
-[![Playwright: 31/31 Passed](https://img.shields.io/badge/Playwright-31%2F31_Passed-brightgreen.svg)](https://playwright.dev/)
-[![WASM Core: 445 KiB](https://img.shields.io/badge/WASM_Core-445_KiB-success.svg)](web-app/public/cad_core.wasm)
+> **Pure-WASM Parametric CAD Engine, In-Browser Studio & Web Component.**  
+> Powered by Zig (WebAssembly), TypeScript & Three.js. Zero native toolchains, zero accounts, zero secret tokens required.
 
-OpenCAD is an open-source, high-performance parametric Computer-Aided Design (CAD) kernel and web application built from the ground up in **Zig (WebAssembly)**, **TypeScript**, and **Three.js**.
-
-Designed around a frozen **Zero-Copy C ABI** (`abi/cad_kernel.h`) and a differential oracle harness (OpenCASCADE + PlaneGCS), OpenCAD delivers sub-millimeter precision, steady 60-FPS rendering, and a complete closed-loop manufacturing pipeline entirely inside the browser or headless in CI/CD.
+[![Live Studio](https://img.shields.io/badge/Live_Studio-hassaanmaqsood.github.io%2Fopencad-blue?style=for-the-badge&logo=googlechrome)](https://hassaanmaqsood.github.io/opencad/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Playwright Tests](https://img.shields.io/badge/Playwright-36%2F36_Passed-brightgreen.svg)](https://playwright.dev/)
+[![WASM Core: 445 KiB](https://img.shields.io/badge/WASM_Core-445_KiB_Stripped-success.svg)](https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/cad_core.wasm)
 
 ---
 
-## Unified Workbenches
+## 🚀 Instant Launch & Maker Links
+
+| Mode | One-Click Launch URL | Output Formats |
+| :--- | :--- | :--- |
+| **🌐 Live Studio** | [**Launch OpenCAD Full Studio**](https://hassaanmaqsood.github.io/opencad/) | Full 6 Workbenches + Code-CAD + Git |
+| **1️⃣ CNC Bracket** | [**Launch CNC Machined Bracket**](https://hassaanmaqsood.github.io/opencad/?template=template-cnc-bracket) | Analytical B-Rep, 2D GD&T Blueprint, G-Code |
+| **2️⃣ Sheet Metal** | [**Launch Electronics Enclosure**](https://hassaanmaqsood.github.io/opencad/?template=template-sheetmetal-enclosure) | Edge Flanges, Miter Reliefs, Unfolded DXF |
+| **3️⃣ Flexure Stage** | [**Launch XY Compliant Stage**](https://hassaanmaqsood.github.io/opencad/?template=template-flexure-stage) | Double-Parallelogram, FACT Screw Axes, FEA |
+| **4️⃣ Gyroid Mount** | [**Launch Stress-Driven Gyroid Mount**](https://hassaanmaqsood.github.io/opencad/?template=template-aero-gyroid) | FEA Stress Field, TPMS Infill, Production 3MF |
+
+---
+
+## ⚡ Zero-Account Distribution (GitHub Native)
+
+Every OpenCAD distribution channel works directly from GitHub without needing npm, PyPI, or Crates.io tokens.
+
+### 1. HTML `<opencad-viewer>` Web Component (2 Lines)
+Embed interactive 3D parametric models with real-time sliders in any HTML page, Notion, or Markdown doc:
+```html
+<script type="module" src="https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad-element.mjs"></script>
+<opencad-viewer template="template-cnc-bracket" sliders="true" height="500px"></opencad-viewer>
+```
+
+### 2. Universal ESM CDN Import (1 Line)
+```javascript
+import { OpenCadCore } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad.mjs';
+
+const cad = await OpenCadCore.create();
+const box = cad.createBox(50, 30, 10);
+```
+
+### 3. Git-Based Package Installs (Zero External Accounts)
+```bash
+# Node.js / Bun (ESM + TypeScript types + WASM)
+npm install github:hassaanmaqsood/opencad#dist
+
+# Python (Pure-WASM via wasmtime on Desktop / WebAssembly in Pyodide)
+pip install "git+https://github.com/hassaanmaqsood/opencad.git@dist#subdirectory=python"
+
+# Rust (Pure-WASM crate with embedded wasm bytes)
+cargo add opencad --git https://github.com/hassaanmaqsood/opencad --branch dist
+```
+
+### 4. Portable Single-File Offline CAD Studio
+Download [**`opencad-portable.html`**](https://hassaanmaqsood.github.io/opencad/opencad-portable.html) and double-click it. It has the WebAssembly kernel and 3D viewport completely inlined—runs anywhere offline with zero internet access.
+
+---
+
+## 🛠️ Unified Workbenches
 
 OpenCAD features 6 unified workbenches, with **Bidirectional Code-CAD** and **Git-for-CAD Semantic Versioning** dockable in every mode:
 
@@ -26,84 +73,53 @@ OpenCAD features 6 unified workbenches, with **Bidirectional Code-CAD** and **Gi
 
 ---
 
-## 4 Built-In Starter Templates
+## 📦 Standalone Headless SDK & CLI
 
-OpenCAD includes 4 production-grade templates illustrating closed-loop engineering workflows:
-
-1. **Parametric CNC Machined Bracket:** Analytical B-Rep solid + multi-view orthographic 2D drawing + 2.5D G-code toolpath.
-2. **Sheet Metal Electronics Enclosure:** Parametric 3D chassis with bent flanges, corner reliefs, and neutral-axis unfolded 2D flat pattern DXF.
-3. **Precision Planar XY Compliant Flexure Stage:** Double-parallelogram leaf flexures with FACT eigen-screw compliance analysis and corotational nonlinear FEA deflection.
-4. **Stress-Driven Gyroid Aerospace Mount:** Hollowed B-Rep mounting bracket filled with FEA stress-modulated Gyroid minimal surfaces and packaged for production 3MF printing.
-
----
-
-## Standalone Headless SDK & CLI
-
-Install the headless WebAssembly CAD package:
-
-```bash
-npm install @open-cad/kernel-wasm
-```
-
-### Headless Pipeline Example (`.ocad.ts -> .step / .3mf / .dxf / .gcode`)
-
-```typescript
-import { OpenCadCore } from '@open-cad/kernel-wasm/core';
-import { OpenCadSheetMetal } from '@open-cad/kernel-wasm/sheetmetal';
-import { OpenCadImplicit } from '@open-cad/kernel-wasm/implicit';
-import { OpenCadCamHlr } from '@open-cad/kernel-wasm/cam-hlr';
-
-// 1. Initialize core WASM kernel
-const core = await OpenCadCore.create('./web-app/public/cad_core.wasm');
-const box = core.generateBox(50, 40, 20);
-
-// 2. Evaluate TPMS infill
-const implicit = await OpenCadImplicit.create('./web-app/public/cad_implicit_ntop.wasm');
-const sdfVal = implicit.evalTpms('gyroid', 10.0, 1.2, 5.0, 5.0, 5.0);
-
-// 3. Project 2D blueprint isometric coordinates
-const cam = await OpenCadCamHlr.create('./web-app/public/cad_mfg_cam.wasm');
-const [isoX, isoY] = cam.projectIsometric(10.0, 20.0, 30.0);
-```
-
-### CLI Headless Build Tool
-
+### CLI Headless Build Tool (`.ocad.ts -> .step / .3mf / .dxf / .gcode`)
 ```bash
 # Build and export all manufacturing outputs in headless CI/CD
 npx opencad build bracket.ocad.ts --step --3mf --dxf --gcode --out-dir ./dist
 ```
 
+### Headless Programmatic Pipeline
+```typescript
+import { OpenCadCore } from 'opencad';
+
+// 1. Initialize core WASM kernel
+const core = await OpenCadCore.create();
+const box = core.createBox(50, 40, 20);
+```
+
 ---
 
-## Quick Start & Developer Setup
+## 🔬 Quick Start & Developer Setup
 
 ### 1. Build Native Zig Kernel & WebAssembly Targets
 ```bash
 cd kernel-zig
-zig build test               # Asserts 0 memory leaks across 15 test suites
+zig build test               # Asserts 0 memory leaks across 16 test suites
 zig build                    # Compiles stripped WASM modules into web-app/public/
 ```
 
-### 2. Run the Web Application
+### 2. Run the Web Application & E2E Tests
 ```bash
 cd web-app
 npm install
 npm run dev                  # Launch local development server (http://localhost:5173)
-npx playwright test          # Run the 31-test E2E browser verification suite
+npx playwright test          # Run all 36 Playwright E2E browser tests
+```
+
+### 3. Assemble Zero-Account Distribution Bundle
+```bash
+npm run build:dist           # Assembles dist-publish/ for GitHub-only distribution
 ```
 
 ---
 
-## Technical Specifications & Architecture
+## 🏛️ Technical Specifications & Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for deep dives into:
 - The zero-copy C ABI memory layout (`CadTessellatedSolidSlice`)
-- The plugin extension VTable architecture (`CadPluginOpVTable`)
-- SIMD interval arithmetic & Quadratic Error Function (QEF) Dual Contouring
-- Freedom and Constraint Topologies (FACT) compliance matrix synthesis
-
----
-
-## License
-
-OpenCAD is open-source software licensed under the [Apache-2.0 License](LICENSE).
+- SIMD Newton-Raphson constraint solving & Shewchuk geometric predicates
+- Extension Host & Dynamic WASM/UI Code-Splitting
+- Continuous differential fuzzing against OpenCASCADE & PlaneGCS
