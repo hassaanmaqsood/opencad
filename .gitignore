@@ -6,3 +6,6 @@ oracle-harness/build/
 web-app/node_modules/
 web-app/dist/
 web-app/test-results/
+dist-publish/
+*.zip
+

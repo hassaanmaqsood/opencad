@@ -218,4 +218,8 @@ export class OpenCadKernel {
         }
     }
 }
+export { OpenCadKernel as OpenCadCore };
+export async function createKernel(source) {
+    return OpenCadKernel.create(source);
+}
 //# sourceMappingURL=kernel.js.map

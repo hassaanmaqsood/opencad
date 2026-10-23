@@ -6,6 +6,14 @@
  * Loads and instantiates the cad_core WebAssembly binary across runtime environments.
  */
 export async function loadCoreWasm(source, importObject = {}) {
+    if (!source) {
+        try {
+            source = new URL('./cad_core.wasm', import.meta.url);
+        }
+        catch {
+            source = 'cad_core.wasm';
+        }
+    }
     let module;
     let instance;
     if (source instanceof WebAssembly.Module) {
@@ -19,7 +27,26 @@ export async function loadCoreWasm(source, importObject = {}) {
     }
     else if (typeof source === 'string' || source instanceof URL) {
         const urlOrPath = source.toString();
-        // Check if in browser/worker or Node/Bun
+        // Check if file:// protocol in Node.js / Bun
+        const proc = globalThis.process;
+        if (urlOrPath.startsWith('file://') && typeof proc !== 'undefined' && proc.versions?.node) {
+            try {
+                const urlMod = await Function('return import("node:url")')();
+                const filePath = urlMod.fileURLToPath(urlOrPath);
+                const nodeFs = await Function('return import("node:fs")')();
+                const bytes = nodeFs.readFileSync(filePath);
+                const res = await WebAssembly.instantiate(bytes, importObject);
+                return {
+                    instance: res.instance ?? res,
+                    module: res.module ?? res,
+                    exports: (res.instance ?? res).exports,
+                };
+            }
+            catch (err) {
+                // Fall back to fetch below
+            }
+        }
+        // Check if in browser/worker or remote HTTP
         if (typeof fetch === 'function' && (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://') || urlOrPath.startsWith('/') || typeof window !== 'undefined')) {
             if (WebAssembly.instantiateStreaming) {
                 try {

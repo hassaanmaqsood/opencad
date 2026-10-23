@@ -28,4 +28,6 @@ export declare class OpenCadKernel {
     private readU64;
     private assertInitialized;
 }
+export { OpenCadKernel as OpenCadCore };
+export declare function createKernel(source?: WasmBinarySource): Promise<OpenCadKernel>;
 //# sourceMappingURL=kernel.d.ts.map

@@ -244,3 +244,10 @@ export class OpenCadKernel {
     }
   }
 }
+
+export { OpenCadKernel as OpenCadCore };
+
+export async function createKernel(source?: WasmBinarySource): Promise<OpenCadKernel> {
+  return OpenCadKernel.create(source);
+}
+

@@ -1,0 +1,158 @@
+name: GitHub-Only Zero-Account CI/CD & Distribution
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # =========================================================================
+  # Job 1: Build, Verify Invariants & Assemble Zero-Account Distribution Bundle
+  # =========================================================================
+  build-and-verify:
+    name: Build Kernel, Verify & Assemble Distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Zig Compiler (0.13.0)
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+
+      - name: Setup Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci || npm install
+
+      - name: Run Zig Native Kernel Tests (std.testing.allocator Zero-Leak Checks)
+        run: |
+          cd kernel-zig
+          zig build test -Doptimize=ReleaseSafe --summary all
+
+      - name: Compile Stripped Production WebAssembly Binaries
+        run: |
+          cd kernel-zig
+          zig build -Doptimize=ReleaseFast -Dstrip=true
+
+      - name: Build Core SDK & Kernel SDK
+        run: |
+          npm run build:sdk
+          npm run build:core
+
+      - name: Build Web Application & Extension Host
+        run: |
+          npm --prefix web-app run build
+
+      - name: Assemble GitHub-Only Distribution Bundle (dist-publish/)
+        run: |
+          npm run build:dist
+
+      - name: Create Release SDK Archive
+        run: |
+          mkdir -p staging-release
+          cp -r dist-publish/* staging-release/
+          cp abi/cad_kernel.h staging-release/
+          cd staging-release && zip -r ../opencad-wasm-sdk.zip ./* && cd ..
+          mv opencad-wasm-sdk.zip dist-publish/
+
+      - name: Upload dist-publish Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-publish
+          path: dist-publish/
+          retention-days: 7
+
+      - name: Upload GitHub Pages Artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-app/dist
+
+  # =========================================================================
+  # Job 2: Force-Push to 'dist' Branch (CDN, npm, pip, cargo instant updates)
+  # =========================================================================
+  publish-dist-branch:
+    name: Publish to 'dist' Branch (Zero-Secret Distribution)
+    needs: build-and-verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download dist-publish Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-publish
+          path: dist-publish
+
+      - name: Commit and Force-Push to dist branch
+        run: |
+          cd dist-publish
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Automated OpenCAD Zero-Account Distribution [commit ${{ github.sha }}] [skip ci]"
+          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push -f origin HEAD:dist
+
+  # =========================================================================
+  # Job 3: Deploy Live Studio & CDN Files to GitHub Pages
+  # =========================================================================
+  deploy-github-pages:
+    name: Deploy to GitHub Pages (Live Gist Studio)
+    needs: build-and-verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # =========================================================================
+  # Job 4: Create GitHub Release on Tags (v*)
+  # =========================================================================
+  create-github-release:
+    name: Create GitHub Release
+    needs: build-and-verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download dist-publish Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-publish
+          path: dist-publish
+
+      - name: Publish GitHub Release Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-publish/opencad-portable.html
+            dist-publish/opencad-wasm-sdk.zip
+            dist-publish/cad_core.wasm
+            dist-publish/opencad.mjs
+            dist-publish/opencad-element.mjs
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

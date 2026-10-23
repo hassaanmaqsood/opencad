@@ -1,0 +1,12 @@
+[package]
+name = "opencad"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-WASM Cross-Platform Parametric CAD & B-Rep Kernel for Rust"
+authors = ["OpenCAD Contributors"]
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["cad", "b-rep", "wasm", "parametric", "3d"]
+categories = ["graphics", "science", "multimedia"]
+
+[dependencies]

@@ -13,6 +13,7 @@ export interface TopRibbonOptions {
   onSelectLod?: (lod: string) => void;
   onSelectTemplate?: (templateId: string) => void;
   onToggleDock?: (panelId: 'code-cad' | 'git-cad') => void;
+  onShareEmbed?: () => void;
 }
 
 export class TopRibbon {
@@ -147,6 +148,18 @@ export class TopRibbon {
       }
     });
     rightControls.appendChild(dockGitCadBtn);
+
+    // Wave 11: Share & Embed Modal Trigger
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'ribbon-dock-btn btn-share-embed';
+    shareBtn.id = 'btn-share-embed';
+    shareBtn.setAttribute('data-testid', 'btn-share-embed');
+    shareBtn.innerText = '🚀 Share';
+    shareBtn.title = 'Share & Embed Model';
+    shareBtn.addEventListener('click', () => {
+      this.options.onShareEmbed?.();
+    });
+    rightControls.appendChild(shareBtn);
 
     // Viewport FPS Badge
     const fpsBadge = document.createElement('span');
