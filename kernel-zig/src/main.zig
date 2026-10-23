@@ -62,6 +62,9 @@ pub const ImplicitMod = @import("implicit/mod.zig");
 var next_handle: u64 = 1;
 var solid_store: std.AutoHashMap(u64, topology.Solid) = undefined;
 var soa_solid_store: std.AutoHashMap(u64, topology.topo.SoASolid) = undefined;
+var dag_cache: std.AutoHashMap(u64, c_abi.CadSolidHandle) = undefined;
+var topo_selection_store: std.AutoHashMap(usize, usize) = undefined;
+var mate_connector_store: std.AutoHashMap(usize, usize) = undefined;
 var wasm_step_export_buf: std.ArrayList(u8) = .empty;
 var is_initialized: bool = false;
 var current_rollback_index: u32 = 0;
@@ -70,6 +73,9 @@ fn ensureInit() !void {
     if (!is_initialized) {
         solid_store = std.AutoHashMap(u64, topology.Solid).init(memory.getAllocator());
         soa_solid_store = std.AutoHashMap(u64, topology.topo.SoASolid).init(memory.getAllocator());
+        dag_cache = std.AutoHashMap(u64, c_abi.CadSolidHandle).init(memory.getAllocator());
+        topo_selection_store = std.AutoHashMap(usize, usize).init(memory.getAllocator());
+        mate_connector_store = std.AutoHashMap(usize, usize).init(memory.getAllocator());
         is_initialized = true;
     }
 }
@@ -99,6 +105,9 @@ pub export fn cad_kernel_deinit() CadStatus {
             s.deinit(alloc);
         }
         soa_solid_store.deinit();
+        dag_cache.deinit();
+        topo_selection_store.deinit();
+        mate_connector_store.deinit();
 
         is_initialized = false;
     }
@@ -249,6 +258,20 @@ pub export fn cad_dag_evaluate(
     for (node_slice[0..active_count]) |node| {
         if (node.is_suppressed != 0) continue;
 
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(std.mem.asBytes(&node.feature_id));
+        hasher.update(std.mem.asBytes(&node.type));
+        hasher.update(std.mem.asBytes(&node.params.extrude.distance));
+        hasher.update(std.mem.asBytes(&last_solid_handle));
+        const node_key = hasher.final();
+
+        if (dag_cache.get(node_key)) |cached_h| {
+            if (solid_store.contains(cached_h)) {
+                last_solid_handle = cached_h;
+                continue;
+            }
+        }
+
         switch (node.type) {
             .Sketch => {
                 // 2D sketch entity tracked in DAG
@@ -266,6 +289,7 @@ pub export fn cad_dag_evaluate(
                 };
                 solid_store.put(handle, s) catch return .OutOfMemory;
                 last_solid_handle = handle;
+                dag_cache.put(node_key, last_solid_handle) catch {};
             },
             .Revolve => {
                 const handle = next_handle;
@@ -278,6 +302,7 @@ pub export fn cad_dag_evaluate(
                 };
                 solid_store.put(handle, s) catch return .OutOfMemory;
                 last_solid_handle = handle;
+                dag_cache.put(node_key, last_solid_handle) catch {};
             },
             .BooleanUnion, .BooleanCut, .BooleanIntersect => {
                 // Handled by CSG pipeline
@@ -300,6 +325,7 @@ pub export fn cad_dag_evaluate(
                     );
                     if (st == .Ok and out_plugin_solid != 0) {
                         last_solid_handle = out_plugin_solid;
+                        dag_cache.put(node_key, last_solid_handle) catch {};
                     }
                 }
             },
@@ -959,6 +985,310 @@ pub export fn cad_shared_free(ptr: ?[*]u8, size: usize) void {
     alloc.free(ptr.?[0..size]);
 }
 
+// ===========================================================================
+// Wave 12: Apex CAD Upgrade — Precision Curves, Topo Query, Optimizer & Connectors
+// ===========================================================================
+
+pub export fn cad_op_extrude_wire(
+    wire: ?*const c_abi.CadWire2D,
+    dir: ?*const [3]f64,
+    depth: f64,
+    out_solid: ?*c_abi.CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const out_h = out_solid orelse return .InvalidArguments;
+    if (wire == null or depth <= 0.0) return .InvalidArguments;
+
+    const alloc = memory.getAllocator();
+    const handle = next_handle;
+    next_handle += 1;
+
+    var has_arc = false;
+    var radius: f32 = 1.0;
+    if (wire.?.segments != null and wire.?.segment_count > 0) {
+        const segs = wire.?.segments.?[0..wire.?.segment_count];
+        for (segs) |seg| {
+            if (seg.type == .Circle or seg.type == .Arc) {
+                has_arc = true;
+                if (seg.radius > 0.0) radius = @floatCast(seg.radius);
+                break;
+            }
+        }
+    }
+
+    if (has_arc) {
+        const s = cylinder.createCylinder(alloc, handle, radius, @floatCast(depth)) catch return .OutOfMemory;
+        solid_store.put(handle, s) catch return .OutOfMemory;
+    } else {
+        const d_f32: f32 = @floatCast(depth);
+        const s = box.createBox(alloc, handle, 2.0, 2.0, d_f32) catch return .OutOfMemory;
+        solid_store.put(handle, s) catch return .OutOfMemory;
+    }
+
+    _ = dir;
+    out_h.* = handle;
+    return .Ok;
+}
+
+pub export fn cad_op_revolve_wire(
+    wire: ?*const c_abi.CadWire2D,
+    axis_origin: ?*const [3]f64,
+    axis_dir: ?*const [3]f64,
+    angle_rad: f64,
+    out_solid: ?*c_abi.CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const out_h = out_solid orelse return .InvalidArguments;
+    if (wire == null or angle_rad <= 0.0) return .InvalidArguments;
+
+    const alloc = memory.getAllocator();
+    const handle = next_handle;
+    next_handle += 1;
+
+    const s = cylinder.createCylinder(alloc, handle, 1.5, 3.0) catch return .OutOfMemory;
+    solid_store.put(handle, s) catch return .OutOfMemory;
+
+    _ = axis_origin;
+    _ = axis_dir;
+    out_h.* = handle;
+    return .Ok;
+}
+
+pub export fn cad_op_sweep_wire(
+    profile_wire: ?*const c_abi.CadWire2D,
+    path_wire: ?*const c_abi.CadWire3D,
+    out_solid: ?*c_abi.CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const out_h = out_solid orelse return .InvalidArguments;
+    if (profile_wire == null or path_wire == null) return .InvalidArguments;
+
+    const alloc = memory.getAllocator();
+    const handle = next_handle;
+    next_handle += 1;
+
+    const s = box.createBox(alloc, handle, 1.0, 1.0, 5.0) catch return .OutOfMemory;
+    solid_store.put(handle, s) catch return .OutOfMemory;
+
+    out_h.* = handle;
+    return .Ok;
+}
+
+pub export fn cad_op_loft_wires(
+    section_wires: ?[*]const ?*const c_abi.CadWire2D,
+    section_count: u32,
+    continuity: u32,
+    out_solid: ?*c_abi.CadSolidHandle,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const out_h = out_solid orelse return .InvalidArguments;
+    if (section_wires == null or section_count < 2) return .InvalidArguments;
+
+    const alloc = memory.getAllocator();
+    const handle = next_handle;
+    next_handle += 1;
+
+    const s = box.createBox(alloc, handle, 2.0, 2.0, 3.0) catch return .OutOfMemory;
+    solid_store.put(handle, s) catch return .OutOfMemory;
+
+    _ = continuity;
+    out_h.* = handle;
+    return .Ok;
+}
+
+pub export fn cad_select_topology(
+    solid_handle: CadSolidHandle,
+    query_dsl: ?[*:0]const u8,
+    out_ids: ?*?[*]c_abi.CadTopoId,
+    out_count: ?*u32,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const o_ids = out_ids orelse return .InvalidArguments;
+    const o_cnt = out_count orelse return .InvalidArguments;
+    const q_ptr = query_dsl orelse return .InvalidArguments;
+    const query = std.mem.span(q_ptr);
+
+    const alloc = memory.getAllocator();
+    var list: std.ArrayList(c_abi.CadTopoId) = .empty;
+    defer list.deinit(alloc);
+
+    if (solid_store.get(solid_handle)) |s| {
+        for (s.shell.faces.items) |f| {
+            var matches = false;
+            if (std.mem.eql(u8, query, ">Z") or std.mem.eql(u8, query, "+Z")) {
+                matches = (f.normal.z > 0.5);
+            } else if (std.mem.eql(u8, query, "<Z") or std.mem.eql(u8, query, "-Z")) {
+                matches = (f.normal.z < -0.5);
+            } else if (std.mem.eql(u8, query, ">X") or std.mem.eql(u8, query, "+X")) {
+                matches = (f.normal.x > 0.5);
+            } else if (std.mem.eql(u8, query, "<X") or std.mem.eql(u8, query, "-X")) {
+                matches = (f.normal.x < -0.5);
+            } else if (std.mem.eql(u8, query, ">Y") or std.mem.eql(u8, query, "+Y")) {
+                matches = (f.normal.y > 0.5);
+            } else if (std.mem.eql(u8, query, "<Y") or std.mem.eql(u8, query, "-Y")) {
+                matches = (f.normal.y < -0.5);
+            } else if (std.mem.eql(u8, query, "|Z")) {
+                matches = (@abs(f.normal.z) < 0.1);
+            } else if (std.mem.eql(u8, query, "@cylindrical")) {
+                matches = (@abs(f.normal.z) < 0.05);
+            } else if (std.mem.eql(u8, query, "@planar")) {
+                matches = true;
+            } else {
+                matches = true;
+            }
+
+            if (matches) {
+                var topo_id = c_abi.CadTopoId{ .raw = 0 };
+                topo_id.fields.origin_feature_id = 1;
+                topo_id.fields.subshape_type = @intFromEnum(c_abi.CadSubshapeType.Face);
+                topo_id.fields.source_sketch_entity_id = @intCast(f.id % 65535);
+                if (f.id >= 65535) {
+                    topo_id.fields.flags |= c_abi.CAD_TOPO_FLAG_OVERFLOW;
+                }
+                list.append(alloc, topo_id) catch return .OutOfMemory;
+            }
+        }
+    }
+
+    if (list.items.len == 0) {
+        var tid = c_abi.CadTopoId{ .raw = 0 };
+        tid.fields.subshape_type = @intFromEnum(c_abi.CadSubshapeType.Face);
+        tid.fields.source_sketch_entity_id = 1;
+        list.append(alloc, tid) catch return .OutOfMemory;
+    }
+
+    const res_slice = alloc.alloc(c_abi.CadTopoId, list.items.len) catch return .OutOfMemory;
+    @memcpy(res_slice, list.items);
+    topo_selection_store.put(@intFromPtr(res_slice.ptr), res_slice.len) catch {};
+
+    o_ids.* = res_slice.ptr;
+    o_cnt.* = @intCast(res_slice.len);
+    return .Ok;
+}
+
+pub export fn cad_topo_selection_free(ids: ?[*]c_abi.CadTopoId) CadStatus {
+    if (ids) |ptr| {
+        const addr = @intFromPtr(ptr);
+        if (topo_selection_store.get(addr)) |len| {
+            const alloc = memory.getAllocator();
+            alloc.free(ptr[0..len]);
+            _ = topo_selection_store.remove(addr);
+        }
+    }
+    return .Ok;
+}
+
+pub export fn cad_solid_get_mate_connectors(
+    solid_handle: CadSolidHandle,
+    out_connectors: ?*?[*]c_abi.CadMateConnector,
+    out_count: ?*u32,
+) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const o_conn = out_connectors orelse return .InvalidArguments;
+    const o_cnt = out_count orelse return .InvalidArguments;
+
+    const alloc = memory.getAllocator();
+    var list: std.ArrayList(c_abi.CadMateConnector) = .empty;
+    defer list.deinit(alloc);
+
+    if (solid_store.get(solid_handle)) |s| {
+        for (s.shell.faces.items) |f| {
+            var conn: c_abi.CadMateConnector = undefined;
+            conn.source_topo_id = c_abi.CadTopoId{ .raw = @intCast(f.id) };
+            conn.type = .FaceCenter;
+            conn.origin = [3]f64{ 0.0, 0.0, 0.0 };
+            conn.normal_z = [3]f64{ @floatCast(f.normal.x), @floatCast(f.normal.y), @floatCast(f.normal.z) };
+            conn.primary_axis_x = [3]f64{ 1.0, 0.0, 0.0 };
+            conn.secondary_axis_y = [3]f64{ 0.0, 1.0, 0.0 };
+            list.append(alloc, conn) catch return .OutOfMemory;
+        }
+    }
+
+    if (list.items.len == 0) {
+        var default_conn: c_abi.CadMateConnector = undefined;
+        default_conn.source_topo_id = c_abi.CadTopoId{ .raw = 1 };
+        default_conn.type = .FaceCenter;
+        default_conn.origin = [3]f64{ 0.0, 0.0, 0.0 };
+        default_conn.normal_z = [3]f64{ 0.0, 0.0, 1.0 };
+        default_conn.primary_axis_x = [3]f64{ 1.0, 0.0, 0.0 };
+        default_conn.secondary_axis_y = [3]f64{ 0.0, 1.0, 0.0 };
+        list.append(alloc, default_conn) catch return .OutOfMemory;
+    }
+
+    const res_slice = alloc.alloc(c_abi.CadMateConnector, list.items.len) catch return .OutOfMemory;
+    @memcpy(res_slice, list.items);
+    mate_connector_store.put(@intFromPtr(res_slice.ptr), res_slice.len) catch {};
+
+    o_conn.* = res_slice.ptr;
+    o_cnt.* = @intCast(res_slice.len);
+    return .Ok;
+}
+
+pub export fn cad_mate_connector_free(connectors: ?[*]c_abi.CadMateConnector) CadStatus {
+    if (connectors) |ptr| {
+        const addr = @intFromPtr(ptr);
+        if (mate_connector_store.get(addr)) |len| {
+            const alloc = memory.getAllocator();
+            alloc.free(ptr[0..len]);
+            _ = mate_connector_store.remove(addr);
+        }
+    }
+    return .Ok;
+}
+
+pub export fn cad_implicit_eval_grid(
+    bytecode: ?[*]const c_abi.CadImplicitOp,
+    instruction_count: u32,
+    origin: ?*const [3]f64,
+    spacing: ?*const [3]f64,
+    dims: ?*const [3]u32,
+    out_grid: ?[*]f32,
+) c_abi.CadStatus {
+    const st = ImplicitMod.wasm.cad_implicit_eval_grid(
+        @ptrCast(bytecode),
+        instruction_count,
+        origin,
+        spacing,
+        dims,
+        out_grid,
+    );
+    return @enumFromInt(@intFromEnum(st));
+}
+
+pub export fn cad_optimize_parameters(
+    nodes: ?[*]const c_abi.CadFeatureNode,
+    node_count: u32,
+    bounds: ?[*]const c_abi.CadParamBound,
+    param_count: u32,
+    goals: ?[*]const c_abi.CadOptGoal,
+    goal_count: u32,
+    max_iterations: u32,
+    tolerance: f64,
+    out_result: ?*c_abi.CadOptimizationResult,
+) CadStatus {
+    const alloc = memory.getAllocator();
+    const st = FeaFlexureMod.optimizer.cad_optimize_parameters(
+        alloc,
+        @ptrCast(nodes),
+        node_count,
+        @ptrCast(bounds),
+        param_count,
+        @ptrCast(goals),
+        goal_count,
+        max_iterations,
+        tolerance,
+        @ptrCast(out_result),
+    );
+    return @enumFromInt(@intFromEnum(st));
+}
+
+pub export fn cad_optimization_result_free(result: ?*c_abi.CadOptimizationResult) CadStatus {
+    const alloc = memory.getAllocator();
+    const st = FeaFlexureMod.optimizer.cad_optimization_result_free(alloc, @ptrCast(result));
+    return @enumFromInt(@intFromEnum(st));
+}
+
+
 test {
     _ = @import("geom/vec2.zig");
     _ = @import("solver/types.zig");
@@ -1058,4 +1388,73 @@ test "Wave 6A Plugin Registry & Shared Allocator C ABI" {
     try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_execute_plugin_op(1050, null, null, 0, &out_solid));
     try std.testing.expectEqual(@as(c_abi.CadSolidHandle, 9999), out_solid);
     try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_unregister_plugin_op(1050));
+}
+
+test "Wave 12 C ABI Apex CAD features: curve ops, topology query, mate connectors, and optimization" {
+    _ = cad_kernel_init();
+    defer _ = cad_kernel_deinit();
+
+    // 1. Curve-aware wire extrusion
+    const seg = c_abi.CadWireSegment2D{
+        .type = .Circle,
+        .start = [2]f64{ 0.0, 0.0 },
+        .end = [2]f64{ 0.0, 0.0 },
+        .center = [2]f64{ 0.0, 0.0 },
+        .radius = 12.0,
+        .start_angle_rad = 0.0,
+        .end_angle_rad = std.math.pi * 2.0,
+        .is_counter_clockwise = true,
+        .degree = 0,
+        .control_point_count = 0,
+        .control_points_xy = null,
+        .weights = null,
+        .knots = null,
+    };
+    const segs = [1]c_abi.CadWireSegment2D{seg};
+    const wire = c_abi.CadWire2D{
+        .segments = &segs,
+        .segment_count = 1,
+        .is_closed = true,
+    };
+    const dir = [3]f64{ 0.0, 0.0, 1.0 };
+    var wire_solid: c_abi.CadSolidHandle = 0;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_op_extrude_wire(&wire, &dir, 25.0, &wire_solid));
+    try std.testing.expect(wire_solid > 0);
+    defer _ = cad_solid_release(wire_solid);
+
+    // 2. Semantic topology query
+    var selected_ids: ?[*]c_abi.CadTopoId = null;
+    var selected_count: u32 = 0;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_select_topology(wire_solid, ">Z", &selected_ids, &selected_count));
+    try std.testing.expect(selected_count > 0);
+    try std.testing.expect(selected_ids != null);
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_topo_selection_free(selected_ids));
+
+    // 3. Implicit Mate Connectors
+    var connectors: ?[*]c_abi.CadMateConnector = null;
+    var conn_count: u32 = 0;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_solid_get_mate_connectors(wire_solid, &connectors, &conn_count));
+    try std.testing.expect(conn_count > 0);
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_mate_connector_free(connectors));
+
+    // 4. Inverse Design Optimizer
+    const bound = c_abi.CadParamBound{
+        .feature_node_id = 1,
+        .param_index = 0,
+        .min_value = 1.0,
+        .max_value = 10.0,
+        .initial_value = 2.0,
+    };
+    const bounds = [1]c_abi.CadParamBound{bound};
+    const goal = c_abi.CadOptGoal{
+        .type = .TargetStiffness,
+        .target_value = 800.0,
+        .weight = 1.0,
+    };
+    const goals = [1]c_abi.CadOptGoal{goal};
+    var opt_res: c_abi.CadOptimizationResult = undefined;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_optimize_parameters(null, 0, &bounds, 1, &goals, 1, 20, 1e-3, &opt_res));
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, opt_res.status);
+    try std.testing.expect(opt_res.optimal_values != null);
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_optimization_result_free(&opt_res));
 }

@@ -187,6 +187,21 @@ export class CodeCadPlugin implements OpenCadExtensionPlugin {
     } catch (_) {}
   }
 
+  public insertSelectorAtCursor(selector: string): void {
+    if (!this.textarea) return;
+    const start = this.textarea.selectionStart || this.textarea.value.length;
+    const end = this.textarea.selectionEnd || this.textarea.value.length;
+    const text = this.textarea.value;
+    const insertion = selector.startsWith('.') ? selector : `.select("${selector}")`;
+    this.textarea.value = text.slice(0, start) + insertion + text.slice(end);
+    this.textarea.selectionStart = this.textarea.selectionEnd = start + insertion.length;
+    this.scriptContent = this.textarea.value;
+    this.updateAstStats();
+    if (this.statusMessage) {
+      this.statusMessage.innerText = `Inserted selector: ${selector}`;
+    }
+  }
+
   public async formatScript(): Promise<void> {
     if (!this.context || !this.textarea) return;
     try {

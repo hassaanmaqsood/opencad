@@ -24,6 +24,7 @@ export class MeshManager {
   private triangleToTopoId: BigUint64Array | null = null;
   private edgeToTopoId: BigUint64Array | null = null;
   private solidType: string = 'box';
+  private defaultSolidMaterial: THREE.Material;
 
   constructor() {
     this.group = new THREE.Group();
@@ -39,6 +40,7 @@ export class MeshManager {
       polygonOffsetUnits: 1,
       side: THREE.DoubleSide,
     });
+    this.defaultSolidMaterial = solidMaterial;
 
     const solidGeometry = new THREE.BufferGeometry();
     this.solidMesh = new THREE.Mesh(solidGeometry, solidMaterial);
@@ -631,6 +633,59 @@ export class MeshManager {
     }
 
     this.group.add(this.diffGroup);
+  }
+
+  public setInspectionMode(mode: 'standard' | 'zebra' | 'curvature' | 'draft'): void {
+    if (mode === 'zebra') {
+      this.solidMesh.material = new THREE.ShaderMaterial({
+        vertexShader: `
+          varying vec3 vNormal;
+          varying vec3 vViewPosition;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            vViewPosition = -mvPosition.xyz;
+            gl_Position = projectionMatrix * mvPosition;
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vNormal;
+          varying vec3 vViewPosition;
+          void main() {
+            vec3 normal = normalize(vNormal);
+            vec3 viewDir = normalize(vViewPosition);
+            vec3 refl = reflect(-viewDir, normal);
+            float stripe = sin(refl.y * 50.0) * 0.5 + 0.5;
+            stripe = step(0.5, stripe);
+            vec3 color = mix(vec3(0.08, 0.08, 0.1), vec3(0.95, 0.95, 0.95), stripe);
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `,
+        side: THREE.DoubleSide,
+      });
+    } else if (mode === 'draft') {
+      this.solidMesh.material = new THREE.ShaderMaterial({
+        vertexShader: `
+          varying vec3 vWorldNormal;
+          void main() {
+            vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vWorldNormal;
+          void main() {
+            float cosAngle = dot(normalize(vWorldNormal), vec3(0.0, 0.0, 1.0));
+            float angleDeg = degrees(acos(clamp(cosAngle, -1.0, 1.0))) - 90.0;
+            vec3 color = angleDeg >= 3.0 ? vec3(0.1, 0.8, 0.2) : (angleDeg >= 0.0 ? vec3(0.9, 0.8, 0.1) : vec3(0.9, 0.1, 0.1));
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `,
+        side: THREE.DoubleSide,
+      });
+    } else {
+      this.solidMesh.material = this.defaultSolidMaterial;
+    }
   }
 }
 

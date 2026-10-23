@@ -4,6 +4,7 @@
  */
 
 import { loadCoreWasm, type WasmBinarySource } from './loader.js';
+import { FluentPart } from './fluent.js';
 import {
   CadStatus,
   CadLodLevel,
@@ -236,6 +237,11 @@ export class OpenCadKernel {
   private readU64(ptr: number): number | bigint {
     const view = new DataView(this.exports.memory.buffer);
     return view.getBigUint64(ptr, true);
+  }
+
+  public part(name = 'Part'): FluentPart {
+    this.assertInitialized();
+    return new FluentPart(name, this);
   }
 
   private assertInitialized(): void {

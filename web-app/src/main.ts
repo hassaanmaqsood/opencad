@@ -122,6 +122,24 @@ async function initApp() {
     bridge,
     onSelectionChange: (selection: SubShapeSelection) => {
       hud.updateSelection(selection);
+
+      // Track 4: Click-to-Semantic-Selector in Code-CAD Mode
+      const codePlugin = pluginManager.getPlugin('code-cad') as any;
+      if (codePlugin && typeof codePlugin.insertSelectorAtCursor === 'function') {
+        const sidePanel = document.getElementById('plugin-side-panel');
+        if (sidePanel && sidePanel.style.display !== 'none' && sidePanel.dataset.activePlugin === 'code-cad') {
+          if (selection.type === 'face' && selection.faceId !== null) {
+            const faceId = selection.faceId;
+            const dirMap: Record<number, string> = { 0: '>Z', 1: '<Z', 2: '>X', 3: '<X', 4: '>Y', 5: '<Y' };
+            const selStr = dirMap[faceId] || `@planar`;
+            const topoStr = selection.topoId ? `0x${selection.topoId.toString(16)}` : `face_${faceId}`;
+            codePlugin.insertSelectorAtCursor(`${selStr} /* topo:${topoStr} */`);
+          } else if (selection.type === 'edge' && selection.edgeId !== null) {
+            const topoStr = selection.topoId ? `0x${selection.topoId.toString(16)}` : `edge_${selection.edgeId}`;
+            codePlugin.insertSelectorAtCursor(`|Z /* topo:${topoStr} */`);
+          }
+        }
+      }
     },
     onFpsUpdate: (fps: number, frameTimeMs: number) => {
       hud.updateFps(fps, frameTimeMs);

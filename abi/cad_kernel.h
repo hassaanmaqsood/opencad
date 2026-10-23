@@ -1946,6 +1946,229 @@ cad_status_t cad_implicit_eval_point(
     double* out_distance
 );
 
+/* ------------------------------------------------------------------------- */
+/* Wave 12: Apex CAD Upgrade — Precision Curves, Topo Query, Optimizer & PMI */
+/* ------------------------------------------------------------------------- */
+
+#define CAD_TOPO_FLAG_OVERFLOW 0x8
+
+/**
+ * @brief Wire segment types for curve-aware 2D sketches and paths.
+ */
+typedef enum cad_wire_segment_type_e {
+    CAD_WIRE_SEG_LINE = 0,
+    CAD_WIRE_SEG_ARC = 1,
+    CAD_WIRE_SEG_CIRCLE = 2,
+    CAD_WIRE_SEG_NURBS = 3
+} cad_wire_segment_type_t;
+
+/**
+ * @brief Precision 64-bit 2D wire segment definition.
+ */
+typedef struct cad_wire_segment_2d_s {
+    cad_wire_segment_type_t type;
+    double start[2];
+    double end[2];
+    double center[2];        /**< Center coordinates for arc/circle */
+    double radius;           /**< Radius for arc/circle */
+    double start_angle_rad;  /**< Start angle for circular arc */
+    double end_angle_rad;    /**< End angle for circular arc */
+    bool is_counter_clockwise;
+    uint32_t degree;         /**< Spline degree for NURBS */
+    uint32_t control_point_count;
+    const double* control_points_xy; /**< Interleaved [x0, y0, x1, y1, ...] */
+    const double* weights;
+    const double* knots;
+} cad_wire_segment_2d_t;
+
+/**
+ * @brief Precision 2D wire loop composed of curve segments.
+ */
+typedef struct cad_wire_2d_s {
+    const cad_wire_segment_2d_t* segments;
+    uint32_t segment_count;
+    bool is_closed;
+} cad_wire_2d_t;
+
+/**
+ * @brief Precision 3D wire trajectory for sweep paths.
+ */
+typedef struct cad_wire_3d_s {
+    const double* points_xyz; /**< Interleaved [x0, y0, z0, x1, ...] */
+    uint32_t point_count;
+    bool is_closed;
+} cad_wire_3d_t;
+
+/**
+ * @brief Extrude a precision 2D curve-loop into a 3D B-Rep solid with exact analytical faces.
+ */
+cad_status_t cad_op_extrude_wire(
+    const cad_wire_2d_t* wire,
+    const double dir[3],
+    double depth,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Revolve a precision 2D curve-loop around a 3D axis.
+ */
+cad_status_t cad_op_revolve_wire(
+    const cad_wire_2d_t* wire,
+    const double axis_origin[3],
+    const double axis_dir[3],
+    double angle_rad,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Sweep a precision 2D profile wire along a 3D path trajectory.
+ */
+cad_status_t cad_op_sweep_wire(
+    const cad_wire_2d_t* profile_wire,
+    const cad_wire_3d_t* path_wire,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Loft a sequence of precision 2D section wires with G0, G1, or G2 continuity.
+ */
+cad_status_t cad_op_loft_wires(
+    const cad_wire_2d_t* const* section_wires,
+    uint32_t section_count,
+    uint32_t continuity,
+    cad_solid_handle_t* out_solid
+);
+
+/**
+ * @brief Semantic topology query selector DSL engine.
+ *
+ * Evaluates queries such as:
+ * - Directional: ">Z", "<X", "|Z", "+Y"
+ * - Geometric: "@cylindrical", "@planar", "@spherical", "@toroidal"
+ * - Feature lineage: "#feature:extrude_1"
+ * - Spatial: "nearest(x,y,z)"
+ */
+cad_status_t cad_select_topology(
+    cad_solid_handle_t solid,
+    const char* query_dsl,
+    cad_topo_id_t** out_ids,
+    uint32_t* out_count
+);
+
+/**
+ * @brief Free array of CadTopoId allocated by cad_select_topology.
+ */
+cad_status_t cad_topo_selection_free(cad_topo_id_t* ids);
+
+/**
+ * @brief Implicit Mate Connector classification.
+ */
+typedef enum cad_mate_connector_type_e {
+    CAD_MATE_CONNECTOR_FACE_CENTER = 0,
+    CAD_MATE_CONNECTOR_CYLINDER_AXIS = 1,
+    CAD_MATE_CONNECTOR_EDGE_MIDPOINT = 2,
+    CAD_MATE_CONNECTOR_VERTEX = 3
+} cad_mate_connector_type_t;
+
+/**
+ * @brief Inferred single-origin local coordinate frame for 1-joint 3D assembly mates.
+ */
+typedef struct cad_mate_connector_s {
+    cad_topo_id_t source_topo_id;
+    cad_mate_connector_type_t type;
+    double origin[3];
+    double normal_z[3];
+    double primary_axis_x[3];
+    double secondary_axis_y[3];
+} cad_mate_connector_t;
+
+/**
+ * @brief Extract all implicit mate connectors inferred across a solid's topology.
+ */
+cad_status_t cad_solid_get_mate_connectors(
+    cad_solid_handle_t solid,
+    cad_mate_connector_t** out_connectors,
+    uint32_t* out_count
+);
+
+/**
+ * @brief Free mate connectors buffer.
+ */
+cad_status_t cad_mate_connector_free(cad_mate_connector_t* connectors);
+
+/**
+ * @brief Goal types for the inverse design optimizer.
+ */
+typedef enum cad_opt_goal_type_e {
+    CAD_OPT_TARGET_STIFFNESS = 0,
+    CAD_OPT_MIN_OFF_AXIS_RATIO = 1,
+    CAD_OPT_MAX_VON_MISES_MPA = 2,
+    CAD_OPT_MINIMIZE_MASS = 3
+} cad_opt_goal_type_t;
+
+/**
+ * @brief Optimization objective goal specification.
+ */
+typedef struct cad_opt_goal_s {
+    cad_opt_goal_type_t type;
+    double target_value;
+    double weight;
+} cad_opt_goal_t;
+
+/**
+ * @brief Parameter variation bounds for inverse design optimization.
+ */
+typedef struct cad_param_bound_s {
+    uint32_t feature_node_id;
+    uint32_t param_index;
+    double min_value;
+    double max_value;
+    double initial_value;
+} cad_param_bound_t;
+
+/**
+ * @brief Optimization result containing converged parameters.
+ */
+typedef struct cad_optimization_result_s {
+    cad_status_t status;
+    uint32_t iterations;
+    double final_objective;
+    double* optimal_values;
+    uint32_t param_count;
+} cad_optimization_result_t;
+
+/**
+ * @brief Execute finite-difference goal-seeking inverse design optimization over DAG + FEA.
+ */
+cad_status_t cad_optimize_parameters(
+    const cad_feature_node_t* nodes,
+    uint32_t node_count,
+    const cad_param_bound_t* bounds,
+    uint32_t param_count,
+    const cad_opt_goal_t* goals,
+    uint32_t goal_count,
+    uint32_t max_iterations,
+    double tolerance,
+    cad_optimization_result_t* out_result
+);
+
+/**
+ * @brief Free optimization result memory.
+ */
+cad_status_t cad_optimization_result_free(cad_optimization_result_t* result);
+
+/**
+ * @brief SIMD Batch 3D Grid Signed Distance Evaluation for TPMS and Implicit fields.
+ */
+cad_status_t cad_implicit_eval_grid(
+    const cad_implicit_op_t* bytecode,
+    uint32_t instruction_count,
+    const double origin[3],
+    const double spacing[3],
+    const uint32_t dims[3],
+    float* out_grid
+);
+
 #ifdef __cplusplus
 }
 #endif

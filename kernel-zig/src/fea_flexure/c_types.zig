@@ -109,3 +109,38 @@ pub const CadFlexureAnalysis = extern struct {
     fact_visual_lines: ?[*]const f32,
     fact_visual_line_count: u32,
 };
+
+pub const CadOptGoalType = enum(c_int) {
+    TargetStiffness = 0,
+    MinOffAxisRatio = 1,
+    MaxVonMisesMpa = 2,
+    MinimizeMass = 3,
+};
+
+pub const CadOptGoal = extern struct {
+    type: CadOptGoalType,
+    target_value: f64,
+    weight: f64,
+};
+
+pub const CadParamBound = extern struct {
+    feature_node_id: u32,
+    param_index: u32,
+    min_value: f64,
+    max_value: f64,
+    initial_value: f64,
+};
+
+pub const CadOptimizationResult = extern struct {
+    status: CadStatus,
+    iterations: u32,
+    final_objective: f64,
+    optimal_values: ?[*]f64,
+    param_count: u32,
+};
+
+pub const CadFeatureNode = extern struct {
+    feature_id: u32,
+    type: u32,
+    is_suppressed: u8,
+};

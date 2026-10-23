@@ -233,6 +233,10 @@ export class CadViewer {
     this.meshManager.setVisualDiff(diff);
   }
 
+  public setInspectionMode(mode: 'standard' | 'zebra' | 'curvature' | 'draft'): void {
+    this.meshManager.setInspectionMode(mode);
+  }
+
   public enterSketchMode(plane: DatumPlane = 'XY'): void {
     this.setSelection({ type: 'none' });
     this.sketchManager.enterSketchMode(plane);
