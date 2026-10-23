@@ -128,6 +128,76 @@ export class FeatureTree {
       itemEl.appendChild(iconSpan);
       itemEl.appendChild(nameSpan);
 
+      // Wave 14: Inline Scrubbable Dimension Badge
+      let dimText = '20.0 mm';
+      if ((node.params as any)?.extrude?.distance) {
+        dimText = `${(node.params as any).extrude.distance.toFixed(1)} mm`;
+      } else if ((node.params as any)?.fillet?.radius) {
+        dimText = `r: ${(node.params as any).fillet.radius.toFixed(1)} mm`;
+      } else if ((node.params as any)?.chamfer?.distance) {
+        dimText = `c: ${(node.params as any).chamfer.distance.toFixed(1)} mm`;
+      } else if ((node.params as any)?.revolve?.angle_rad) {
+        dimText = `${Math.round(((node.params as any).revolve.angle_rad * 180) / Math.PI)}°`;
+      }
+
+      const scrubBadge = document.createElement('span');
+      scrubBadge.className = 'feature-scrub-badge';
+      scrubBadge.setAttribute('data-testid', `scrub-badge-${node.feature_id}`);
+      scrubBadge.setAttribute('data-ocad-node-id', node.feature_id.toString());
+      scrubBadge.title = 'Click or drag to edit dimension';
+      scrubBadge.textContent = dimText;
+
+      scrubBadge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentNum = parseFloat(dimText) || 20.0;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'inline-scrub-input';
+        input.value = currentNum.toString();
+        input.step = '0.5';
+        scrubBadge.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const commit = () => {
+          const val = parseFloat(input.value) || currentNum;
+          if ((node.params as any)?.extrude) (node.params as any).extrude.distance = val;
+          if ((node.params as any)?.fillet) (node.params as any).fillet.radius = val;
+          this.renderFeatureItems();
+          (window as any).__evaluateDag?.();
+        };
+
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (ke) => {
+          if (ke.key === 'Enter') commit();
+        });
+      });
+
+      itemEl.appendChild(scrubBadge);
+
+      // Wave 14: Code-CAD snippet toggle icon
+      const btnCode = document.createElement('button');
+      btnCode.className = 'btn-code-snippet';
+      btnCode.setAttribute('data-testid', `btn-code-snippet-${node.feature_id}`);
+      btnCode.title = 'Toggle Code-CAD representation';
+      btnCode.innerHTML = '{ }';
+
+      const codeSnippet = document.createElement('div');
+      codeSnippet.className = 'feature-code-snippet';
+      codeSnippet.style.display = 'none';
+      codeSnippet.innerHTML = `<code>part.${node.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}();</code>`;
+
+      btnCode.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = codeSnippet.style.display !== 'none';
+        codeSnippet.style.display = isOpen ? 'none' : 'block';
+        btnCode.classList.toggle('active', !isOpen);
+        (window as any).__telemetryBar?.setCommand?.(`part.${node.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}();`);
+      });
+
+      itemEl.appendChild(btnCode);
+      itemEl.appendChild(codeSnippet);
+
       // Status badges
       if (isRolledBack) {
         const rbBadge = document.createElement('span');
@@ -278,6 +348,12 @@ export class FeatureTree {
   public setNodes(nodes: CadFeatureNode[]): void {
     this.nodes = [...nodes];
     this.rollbackIndex = Math.min(this.rollbackIndex, this.nodes.length - 1);
+    this.renderFeatureItems();
+  }
+
+  public addNode(node: CadFeatureNode): void {
+    this.nodes.push(node);
+    this.rollbackIndex = this.nodes.length - 1;
     this.renderFeatureItems();
   }
 

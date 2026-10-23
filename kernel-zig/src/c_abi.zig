@@ -91,12 +91,14 @@ pub const CadSketchPoint2D = extern struct {
     x: f64,
     y: f64,
     is_fixed: u8,
+    is_construction: u8 = 0,
 };
 
 pub const CadSketchLine2D = extern struct {
     id: u32,
     start_point_id: u32,
     end_point_id: u32,
+    is_construction: u8 = 0,
 };
 
 pub const CadSketchArc2D = extern struct {
@@ -105,12 +107,126 @@ pub const CadSketchArc2D = extern struct {
     start_point_id: u32,
     end_point_id: u32,
     radius: f64,
+    is_construction: u8 = 0,
 };
 
 pub const CadSketchCircle2D = extern struct {
     id: u32,
     center_point_id: u32,
     radius: f64,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchSpline2D = extern struct {
+    id: u32,
+    degree: u32,
+    point_count: u32,
+    point_ids: [16]u32,
+    is_periodic: u8,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchEllipse2D = extern struct {
+    id: u32,
+    center_point_id: u32,
+    major_radius: f64,
+    minor_radius: f64,
+    rotation_angle_rad: f64,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchSlot2D = extern struct {
+    id: u32,
+    center1_point_id: u32,
+    center2_point_id: u32,
+    radius: f64,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchPolygon2D = extern struct {
+    id: u32,
+    center_point_id: u32,
+    radius: f64,
+    side_count: u32,
+    rotation_angle_rad: f64,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchText2D = extern struct {
+    id: u32,
+    origin_point_id: u32,
+    text: [64]u8,
+    font_size: f64,
+    rotation_angle_rad: f64,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchBoolOp = enum(c_int) {
+    Union = 0,
+    Subtract = 1,
+    Intersect = 2,
+};
+
+pub const CadSketchRegion = extern struct {
+    region_id: u32,
+    area: f64,
+    perimeter: f64,
+    loop_count: u32,
+    is_outer: u8,
+};
+
+pub const CadSketchPoint3D = extern struct {
+    id: u32,
+    x: f64,
+    y: f64,
+    z: f64,
+    is_fixed: u8,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchLine3D = extern struct {
+    id: u32,
+    start_point_id: u32,
+    end_point_id: u32,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchArc3D = extern struct {
+    id: u32,
+    center_point_id: u32,
+    start_point_id: u32,
+    end_point_id: u32,
+    normal: [3]f64,
+    radius: f64,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketchSpline3D = extern struct {
+    id: u32,
+    degree: u32,
+    point_count: u32,
+    point_ids: [16]u32,
+    is_construction: u8 = 0,
+};
+
+pub const CadSketch3DConstraintType = enum(c_int) {
+    AlongX = 0,
+    AlongY = 1,
+    AlongZ = 2,
+    OnPlane = 3,
+    Tangent = 4,
+    Perpendicular = 5,
+    Distance = 6,
+};
+
+pub const CadSketchConstraint3D = extern struct {
+    id: u32,
+    type: CadSketch3DConstraintType,
+    entity1_id: u32,
+    entity2_id: u32,
+    parameter_value: f64,
+    plane_normal: [3]f64,
+    is_driving: u8,
 };
 
 pub const CadSketchConstraintType = enum(c_int) {
@@ -212,8 +328,88 @@ pub const CadFeatureType = enum(c_int) {
     Chamfer = 7,
     Shell = 8,
     Draft = 9,
+    SplitBody = 10,
+    HoleWizard = 11,
+    Thread = 12,
+    DatumPlane = 13,
+    DatumAxis = 14,
     CustomPlugin = 1000,
     _,
+};
+
+pub const CadBoolMode = enum(c_int) {
+    NewBody = 0,
+    Add = 1,
+    Cut = 2,
+    Intersect = 3,
+};
+
+pub const CadDatumPlaneType = enum(c_int) {
+    Offset = 0,
+    Angle = 1,
+    ThreePoint = 2,
+    Midplane = 3,
+    Tangent = 4,
+};
+
+pub const CadDatumPlane = extern struct {
+    type: CadDatumPlaneType,
+    origin: CadVec3,
+    normal: CadVec3,
+    offset_distance: f64,
+    angle_rad: f64,
+};
+
+pub const CadDatumAxisType = enum(c_int) {
+    Cylinder = 0,
+    TwoPlanes = 1,
+    TwoPoints = 2,
+};
+
+pub const CadDatumAxis = extern struct {
+    type: CadDatumAxisType,
+    point: CadVec3,
+    direction: CadVec3,
+};
+
+pub const CadHoleType = enum(c_int) {
+    Simple = 0,
+    Counterbore = 1,
+    Countersink = 2,
+    Tapped = 3,
+};
+
+pub const CadHoleWizardOp = extern struct {
+    hole_type: CadHoleType,
+    diameter: f64,
+    depth: f64,
+    cbore_diameter: f64,
+    cbore_depth: f64,
+    csink_diameter: f64,
+    csink_angle_deg: f64,
+    thread_pitch: f64,
+    is_through: u8,
+    position: CadVec3,
+    normal: CadVec3,
+};
+
+pub const CadThreadStandard = enum(c_int) {
+    MetricCoarse = 0,
+    MetricFine = 1,
+    Unc = 2,
+    Unf = 3,
+    Trapezoidal = 4,
+};
+
+pub const CadThreadOp = extern struct {
+    standard: CadThreadStandard,
+    nominal_diameter: f64,
+    pitch: f64,
+    length: f64,
+    is_modeled: u8,
+    is_internal: u8,
+    axis_origin: CadVec3,
+    axis_direction: CadVec3,
 };
 
 pub const CAD_MAX_FEATURE_PARENTS: usize = 8;
@@ -293,12 +489,21 @@ pub const CadFeatureParams = extern union {
     boolean_op: extern struct {
         tool_feature_id: u32,
     },
+    hole_wizard: CadHoleWizardOp,
+    thread: CadThreadOp,
+    datum_plane: CadDatumPlane,
+    datum_axis: CadDatumAxis,
+    split_body: extern struct {
+        plane_origin: CadVec3,
+        plane_normal: CadVec3,
+    },
 };
 
 pub const CadFeatureNode = extern struct {
     feature_id: u32,
     type: CadFeatureType,
     is_suppressed: u8,
+    bool_mode: CadBoolMode = .NewBody,
     parent_count: u32,
     parent_ids: [CAD_MAX_FEATURE_PARENTS]u32,
     target_topo_count: u32,
@@ -327,6 +532,15 @@ pub const CadAssemblyMateType = enum(c_int) {
     Distance = 3,
     Angle = 4,
     Gear = 5,
+    RackPinion = 6,
+    Screw = 7,
+    Cam = 8,
+};
+
+pub const CadExplodeTrailLine = extern struct {
+    start: [3]f32,
+    end: [3]f32,
+    instance_id: u32,
 };
 
 pub const CadAssemblyInstance = extern struct {

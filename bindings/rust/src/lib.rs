@@ -32,6 +32,50 @@ impl Solid {
         self
     }
 
+    pub fn add(self, _other: &Solid) -> Self {
+        self
+    }
+
+    pub fn cut(self, _other: &Solid) -> Self {
+        self
+    }
+
+    pub fn intersect(self, _other: &Solid) -> Self {
+        self
+    }
+
+    pub fn union(self, other: &Solid) -> Self {
+        self.add(other)
+    }
+
+    pub fn subtract(self, other: &Solid) -> Self {
+        self.cut(other)
+    }
+
+    pub fn hole_wizard(self, _diameter: f64, _depth: f64) -> Self {
+        self
+    }
+
+    pub fn thread(self, _diameter: f64, _pitch: f64, _length: f64) -> Self {
+        self
+    }
+
+    pub fn datum_plane(self, _offset: f64) -> Self {
+        self
+    }
+
+    pub fn datum_axis(self) -> Self {
+        self
+    }
+
+    pub fn split_body(self) -> (Self, Self) {
+        let name = self.name.clone();
+        (
+            Solid::new(format!("{}_pos", name), self.faces, self.edges, self.vertices),
+            Solid::new(format!("{}_neg", name), self.faces, self.edges, self.vertices),
+        )
+    }
+
     pub fn sketch(self, _plane: &str) -> SketchBuilder {
         SketchBuilder { solid: self }
     }
@@ -61,6 +105,46 @@ impl SketchBuilder {
 
     pub fn circle(self, _cx: f64, _cy: f64, _r: f64) -> Self {
         self
+    }
+
+    pub fn spline(self, _pts: &[[f64; 2]]) -> Self {
+        self
+    }
+
+    pub fn slot(self, _c1: [f64; 2], _c2: [f64; 2], _radius: f64) -> Self {
+        self
+    }
+
+    pub fn ellipse(self, _cx: f64, _cy: f64, _major_r: f64, _minor_r: f64) -> Self {
+        self
+    }
+
+    pub fn polygon(self, _cx: f64, _cy: f64, _radius: f64, _sides: u32) -> Self {
+        self
+    }
+
+    pub fn text(self, _text: &str, _font_size: f64) -> Self {
+        self
+    }
+
+    pub fn fillet(self, _radius: f64) -> Self {
+        self
+    }
+
+    pub fn chamfer(self, _distance: f64) -> Self {
+        self
+    }
+
+    pub fn offset(self, _distance: f64) -> Self {
+        self
+    }
+
+    pub fn boolean(self, _op: &str) -> Self {
+        self
+    }
+
+    pub fn revolve(self, _angle_deg: f64) -> Solid {
+        self.solid
     }
 
     pub fn extrude(self, _depth: f64) -> Solid {

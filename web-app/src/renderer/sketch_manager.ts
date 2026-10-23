@@ -1135,6 +1135,17 @@ export class SketchManager {
     }
   }
 
+  public setTool(tool: SketchToolType): void {
+    this.tools.setTool(tool);
+    this.emitState();
+  }
+
+  public toggleConstruction(): boolean {
+    const res = this.tools.toggleConstruction();
+    this.emitState();
+    return res;
+  }
+
   /* ------------------------------------------------------------------------- */
   /* State Emitter                                                             */
   /* ------------------------------------------------------------------------- */

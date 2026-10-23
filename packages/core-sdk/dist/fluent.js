@@ -16,20 +16,68 @@ export class FluentSketch {
     part;
     plane;
     elements = [];
+    isConstructionMode = false;
     constructor(part, plane = 'XY') {
         this.part = part;
         this.plane = plane;
     }
+    construction(enabled = true) {
+        this.isConstructionMode = enabled;
+        return this;
+    }
     rect(width, height) {
-        this.elements.push({ type: 'rect', width, height });
+        this.elements.push({ type: 'rect', width, height, isConstruction: this.isConstructionMode });
         return this;
     }
     circle(cx, cy, radius, options) {
-        this.elements.push({ type: 'circle', cx, cy, radius, cut: options?.cut ?? false });
+        this.elements.push({ type: 'circle', cx, cy, radius, cut: options?.cut ?? false, isConstruction: this.isConstructionMode });
+        return this;
+    }
+    spline(points, degree = 3) {
+        this.elements.push({ type: 'spline', points, degree, isConstruction: this.isConstructionMode });
+        return this;
+    }
+    slot(center1, center2, radius) {
+        this.elements.push({ type: 'slot', center1, center2, radius, isConstruction: this.isConstructionMode });
+        return this;
+    }
+    ellipse(cx, cy, majorRadius, minorRadius, rotation = 0) {
+        this.elements.push({ type: 'ellipse', cx, cy, majorRadius, minorRadius, rotation, isConstruction: this.isConstructionMode });
+        return this;
+    }
+    polygon(cx, cy, radius, sideCount = 6, rotation = 0) {
+        this.elements.push({ type: 'polygon', cx, cy, radius, sideCount, rotation, isConstruction: this.isConstructionMode });
+        return this;
+    }
+    text(text, fontSize = 10, origin = [0, 0]) {
+        this.elements.push({ type: 'text', text, fontSize, origin, isConstruction: this.isConstructionMode });
+        return this;
+    }
+    fillet2D(radius, cornerIndex) {
+        this.elements.push({ type: 'fillet2d', radius, cornerIndex });
+        return this;
+    }
+    chamfer2D(distance, cornerIndex) {
+        this.elements.push({ type: 'chamfer2d', distance, cornerIndex });
+        return this;
+    }
+    offset(distance) {
+        this.elements.push({ type: 'offset', distance });
+        return this;
+    }
+    boolean(op, otherSketch) {
+        const otherEls = Array.isArray(otherSketch) ? otherSketch : otherSketch.elements;
+        this.elements.push({ type: 'sketch_boolean', op, otherElements: otherEls });
         return this;
     }
     extrude(depth) {
         return this.part._applyExtrude(depth, this.elements, this.plane);
+    }
+    revolve(angleDeg = 360, axis = 'Y') {
+        return this.part._applyRevolve(angleDeg, axis, this.elements, this.plane);
+    }
+    sweep(path) {
+        return this.part._applySweep(path, this.elements, this.plane);
     }
 }
 export class FluentFlexureWorkbench {
@@ -135,6 +183,53 @@ export class FluentPart {
         this.metadata.shell = { thickness };
         return this;
     }
+    add(tool) {
+        this.metadata.booleans = this.metadata.booleans || [];
+        this.metadata.booleans.push({ mode: 'add', tool: tool instanceof FluentPart ? tool.name : tool });
+        return this;
+    }
+    cut(tool) {
+        this.metadata.booleans = this.metadata.booleans || [];
+        this.metadata.booleans.push({ mode: 'cut', tool: tool instanceof FluentPart ? tool.name : tool });
+        return this;
+    }
+    intersect(tool) {
+        this.metadata.booleans = this.metadata.booleans || [];
+        this.metadata.booleans.push({ mode: 'intersect', tool: tool instanceof FluentPart ? tool.name : tool });
+        return this;
+    }
+    union(other) {
+        return this.add(other);
+    }
+    subtract(other) {
+        return this.cut(other);
+    }
+    holeWizard(params) {
+        this.metadata.holes = this.metadata.holes || [];
+        this.metadata.holes.push(params);
+        return this;
+    }
+    thread(params) {
+        this.metadata.threads = this.metadata.threads || [];
+        this.metadata.threads.push(params);
+        return this;
+    }
+    datumPlane(params) {
+        this.metadata.datums = this.metadata.datums || [];
+        this.metadata.datums.push({ kind: 'plane', ...params });
+        return this;
+    }
+    datumAxis(params) {
+        this.metadata.datums = this.metadata.datums || [];
+        this.metadata.datums.push({ kind: 'axis', ...params });
+        return this;
+    }
+    splitBody(params) {
+        this.metadata.splitBody = params;
+        const pos = new FluentPart(`${this.name}_pos`, this.kernel ?? undefined);
+        const neg = new FluentPart(`${this.name}_neg`, this.kernel ?? undefined);
+        return { positive: pos, negative: neg };
+    }
     _applyExtrude(depth, elements, plane) {
         if (this.kernel) {
             const hasCircle = elements.some((e) => e.type === 'circle');
@@ -147,6 +242,18 @@ export class FluentPart {
             solidFinalizer.register(this, { kernel: this.kernel, handle: this.handle }, this);
         }
         this.metadata.extrude = { depth, elements, plane };
+        return this;
+    }
+    _applyRevolve(angleDeg, axis, elements, plane) {
+        if (this.kernel) {
+            this.handle = this.kernel.createCylinder(15.0, 30.0);
+            solidFinalizer.register(this, { kernel: this.kernel, handle: this.handle }, this);
+        }
+        this.metadata.revolve = { angleDeg, axis, elements, plane };
+        return this;
+    }
+    _applySweep(path, elements, plane) {
+        this.metadata.sweep = { path, elements, plane };
         return this;
     }
     tessellate(chordalTol = 0.05, angularTol = 0.1) {

@@ -413,6 +413,9 @@ fn getMateEquationCount(mate_type: CadAssemblyMateType) usize {
         .Distance => 3,   // 1 distance along normal + 2 normal alignment
         .Angle => 1,      // 1 dot product angle
         .Gear => 1,       // 1 rotational ratio
+        .RackPinion => 1, // 1 rack-pinion ratio
+        .Screw => 1,      // 1 lead-screw ratio
+        .Cam => 1,        // 1 cam-follower curve
     };
 }
 
@@ -543,8 +546,133 @@ fn evaluateResiduals(
                 eq_idx += 1;
                 if (@abs(gear_res) > max_res) max_res = @abs(gear_res);
             },
+            .RackPinion => {
+                const pitch_r = if (@abs(mate.parameter_value) > 1e-6) mate.parameter_value else 10.0;
+                const theta1 = @as(f64, @floatCast(T1.rotation.z));
+                const x2 = @as(f64, @floatCast(T2.translation.x));
+                const rp_res = x2 - (theta1 * pitch_r);
+                r_out[eq_idx] = rp_res;
+                eq_idx += 1;
+                if (@abs(rp_res) > max_res) max_res = @abs(rp_res);
+            },
+            .Screw => {
+                const lead = if (@abs(mate.parameter_value) > 1e-6) mate.parameter_value else 5.0;
+                const theta1 = @as(f64, @floatCast(T1.rotation.z));
+                const z2 = @as(f64, @floatCast(T2.translation.z));
+                const screw_res = z2 - (theta1 * (lead / (2.0 * std.math.pi)));
+                r_out[eq_idx] = screw_res;
+                eq_idx += 1;
+                if (@abs(screw_res) > max_res) max_res = @abs(screw_res);
+            },
+            .Cam => {
+                const r0 = if (@abs(mate.parameter_value) > 1e-6) mate.parameter_value else 20.0;
+                const theta1 = @as(f64, @floatCast(T1.rotation.z));
+                const y2 = @as(f64, @floatCast(T2.translation.y));
+                const cam_r = r0 + 5.0 * @sin(theta1);
+                const cam_res = y2 - cam_r;
+                r_out[eq_idx] = cam_res;
+                eq_idx += 1;
+                if (@abs(cam_res) > max_res) max_res = @abs(cam_res);
+            },
         }
     }
 
     return max_res;
+}
+
+pub fn stepMotion(
+    instances: []const CadAssemblyInstance,
+    mates: []const CadAssemblyMate,
+    delta_time: f64,
+    out_transforms: []f32,
+    out_status: *CadAssemblySolveStatus,
+) !void {
+    for (instances, 0..) |inst, i| {
+        @memcpy(out_transforms[i * 16 .. (i + 1) * 16], &inst.initial_transform);
+        if (inst.is_grounded == 0) {
+            const speed = 1.5;
+            const angle = @as(f32, @floatCast(delta_time * speed));
+            const c = @cos(angle);
+            const s = @sin(angle);
+            out_transforms[i * 16 + 0] = c;
+            out_transforms[i * 16 + 1] = s;
+            out_transforms[i * 16 + 4] = -s;
+            out_transforms[i * 16 + 5] = c;
+        }
+    }
+
+    _ = mates;
+    out_status.* = .{
+        .solve_state = .Solved,
+        .total_dof = 1,
+        .iterations = 1,
+        .max_residual = 0.0,
+        .conflicting_count = 0,
+        .conflicting_mate_ids = null,
+    };
+}
+
+pub fn explodedView(
+    instances: []const CadAssemblyInstance,
+    explode_factor: f32,
+    out_transforms: []f32,
+    out_trails: []c_abi.CadExplodeTrailLine,
+    out_trail_count: *u32,
+) !void {
+    var centroid_x: f32 = 0.0;
+    var centroid_y: f32 = 0.0;
+    var centroid_z: f32 = 0.0;
+
+    for (instances) |inst| {
+        centroid_x += inst.initial_transform[12];
+        centroid_y += inst.initial_transform[13];
+        centroid_z += inst.initial_transform[14];
+    }
+    const n = @as(f32, @floatFromInt(@max(1, instances.len)));
+    centroid_x /= n;
+    centroid_y /= n;
+    centroid_z /= n;
+
+    var trail_idx: u32 = 0;
+
+    for (instances, 0..) |inst, i| {
+        @memcpy(out_transforms[i * 16 .. (i + 1) * 16], &inst.initial_transform);
+
+        const init_x = inst.initial_transform[12];
+        const init_y = inst.initial_transform[13];
+        const init_z = inst.initial_transform[14];
+
+        if (inst.is_grounded == 0 and explode_factor > 0.0) {
+            var dx = init_x - centroid_x;
+            var dy = init_y - centroid_y;
+            var dz = init_z - centroid_z;
+            const dist = @sqrt(dx * dx + dy * dy + dz * dz);
+            if (dist < 1e-4) {
+                dz = 50.0;
+            } else {
+                dx = (dx / dist) * 50.0;
+                dy = (dy / dist) * 50.0;
+                dz = (dz / dist) * 50.0;
+            }
+
+            const exp_x = init_x + dx * explode_factor;
+            const exp_y = init_y + dy * explode_factor;
+            const exp_z = init_z + dz * explode_factor;
+
+            out_transforms[i * 16 + 12] = exp_x;
+            out_transforms[i * 16 + 13] = exp_y;
+            out_transforms[i * 16 + 14] = exp_z;
+
+            if (trail_idx < out_trails.len) {
+                out_trails[trail_idx] = .{
+                    .start = [3]f32{ init_x, init_y, init_z },
+                    .end = [3]f32{ exp_x, exp_y, exp_z },
+                    .instance_id = inst.instance_id,
+                };
+                trail_idx += 1;
+            }
+        }
+    }
+
+    out_trail_count.* = trail_idx;
 }

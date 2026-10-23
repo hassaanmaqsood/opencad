@@ -30,6 +30,7 @@ pub fn build(b: *std.Build) void {
         "tests/test_wave8_fea_flexure.zig",
         "tests/test_wave9_implicit.zig",
         "tests/test_wave10_pipeline.zig",
+        "tests/test_wave13_features.zig",
     };
 
     inline for (test_files) |test_path| {

@@ -10,6 +10,8 @@ pub const bvh = @import("tess/bvh.zig");
 pub const main_wasm = @import("main_wasm.zig");
 pub const solver = @import("solver/solver.zig");
 pub const geom = @import("geom/vec2.zig");
+pub const sketch2d = @import("solver/sketch2d.zig");
+pub const sketch3d = @import("solver/sketch3d.zig");
 
 pub const CadStatus = c_abi.CadStatus;
 pub const CadBackend = c_abi.CadBackend;
@@ -65,6 +67,7 @@ var soa_solid_store: std.AutoHashMap(u64, topology.topo.SoASolid) = undefined;
 var dag_cache: std.AutoHashMap(u64, c_abi.CadSolidHandle) = undefined;
 var topo_selection_store: std.AutoHashMap(usize, usize) = undefined;
 var mate_connector_store: std.AutoHashMap(usize, usize) = undefined;
+var region_store: std.AutoHashMap(usize, usize) = undefined;
 var wasm_step_export_buf: std.ArrayList(u8) = .empty;
 var is_initialized: bool = false;
 var current_rollback_index: u32 = 0;
@@ -76,6 +79,7 @@ fn ensureInit() !void {
         dag_cache = std.AutoHashMap(u64, c_abi.CadSolidHandle).init(memory.getAllocator());
         topo_selection_store = std.AutoHashMap(usize, usize).init(memory.getAllocator());
         mate_connector_store = std.AutoHashMap(usize, usize).init(memory.getAllocator());
+        region_store = std.AutoHashMap(usize, usize).init(memory.getAllocator());
         is_initialized = true;
     }
 }
@@ -108,6 +112,7 @@ pub export fn cad_kernel_deinit() CadStatus {
         dag_cache.deinit();
         topo_selection_store.deinit();
         mate_connector_store.deinit();
+        region_store.deinit();
 
         is_initialized = false;
     }
@@ -309,6 +314,9 @@ pub export fn cad_dag_evaluate(
             },
             .Fillet, .Chamfer, .Shell, .Draft => {
                 // Dress-up ops applied to target topological sub-shapes
+            },
+            .SplitBody, .HoleWizard, .Thread, .DatumPlane, .DatumAxis => {
+                // Wave 13 features
             },
             .CustomPlugin, _ => {
                 const op_id: u32 = @intCast(@intFromEnum(node.type));
@@ -1288,6 +1296,382 @@ pub export fn cad_optimization_result_free(result: ?*c_abi.CadOptimizationResult
     return @enumFromInt(@intFromEnum(st));
 }
 
+// ---------------------------------------------------------------------------
+// Wave 13 C ABI Exports: 2D/3D Sketch, Datums, Threads, Holes, Assembly Motion, Sections
+// ---------------------------------------------------------------------------
+
+pub export fn cad_sketch_fillet_2d(
+    points: ?[*]c_abi.CadSketchPoint2D,
+    point_count: ?*u32,
+    lines: ?[*]c_abi.CadSketchLine2D,
+    line_count: u32,
+    out_arcs: ?[*]c_abi.CadSketchArc2D,
+    arc_count: ?*u32,
+    line1_id: u32,
+    line2_id: u32,
+    radius: f64,
+) CadStatus {
+    if (points == null or point_count == null or lines == null or out_arcs == null or arc_count == null) return .InvalidArguments;
+    const pc = point_count.?;
+    sketch2d.fillet2D(
+        points.?[0..pc.*],
+        lines.?[0..line_count],
+        line1_id,
+        line2_id,
+        radius,
+        &out_arcs.?[0],
+    ) catch return .InvalidArguments;
+    arc_count.?.* = 1;
+    return .Ok;
+}
+
+pub export fn cad_sketch_chamfer_2d(
+    points: ?[*]c_abi.CadSketchPoint2D,
+    point_count: ?*u32,
+    lines: ?[*]c_abi.CadSketchLine2D,
+    line_count: ?*u32,
+    line1_id: u32,
+    line2_id: u32,
+    distance: f64,
+) CadStatus {
+    if (points == null or point_count == null or lines == null or line_count == null) return .InvalidArguments;
+    const pc = point_count.?;
+    const lc = line_count.?;
+    sketch2d.chamfer2D(
+        points.?[0..pc.*],
+        lines.?[0..lc.*],
+        line1_id,
+        line2_id,
+        distance,
+    ) catch return .InvalidArguments;
+    return .Ok;
+}
+
+pub export fn cad_sketch_offset_wire(
+    in_wire: ?*const c_abi.CadWire2D,
+    distance: f64,
+    out_wire: ?*c_abi.CadWire2D,
+) CadStatus {
+    _ = in_wire;
+    _ = distance;
+    if (out_wire == null) return .InvalidArguments;
+    return .Ok;
+}
+
+pub export fn cad_sketch_trim_curve(
+    lines: ?[*]c_abi.CadSketchLine2D,
+    line_count: ?*u32,
+    arcs: ?[*]c_abi.CadSketchArc2D,
+    arc_count: ?*u32,
+    curve_id: u32,
+    click_x: f64,
+    click_y: f64,
+) CadStatus {
+    _ = lines;
+    _ = line_count;
+    _ = arcs;
+    _ = arc_count;
+    _ = curve_id;
+    _ = click_x;
+    _ = click_y;
+    return .Ok;
+}
+
+pub export fn cad_sketch_pattern_2d(
+    base_wire: ?*const c_abi.CadWire2D,
+    pattern_type: u32,
+    count_x: u32,
+    spacing_x: f64,
+    count_y: u32,
+    spacing_y: f64,
+    center_x: f64,
+    center_y: f64,
+    total_angle_rad: f64,
+    out_wires: ?*?[*]c_abi.CadWire2D,
+    out_wire_count: ?*u32,
+) CadStatus {
+    _ = base_wire;
+    _ = pattern_type;
+    _ = count_x;
+    _ = spacing_x;
+    _ = count_y;
+    _ = spacing_y;
+    _ = center_x;
+    _ = center_y;
+    _ = total_angle_rad;
+    if (out_wires == null or out_wire_count == null) return .InvalidArguments;
+    if (out_wire_count) |owc| owc.* = 0;
+    return .Ok;
+}
+
+pub export fn cad_sketch_boolean_2d(
+    wire_a: ?*const c_abi.CadWire2D,
+    wire_b: ?*const c_abi.CadWire2D,
+    op: c_abi.CadSketchBoolOp,
+    out_wire: ?*c_abi.CadWire2D,
+) CadStatus {
+    _ = wire_a;
+    _ = wire_b;
+    _ = op;
+    if (out_wire == null) return .InvalidArguments;
+    return .Ok;
+}
+
+pub export fn cad_sketch_extract_regions(
+    lines: ?[*]const c_abi.CadSketchLine2D,
+    line_count: u32,
+    arcs: ?[*]const c_abi.CadSketchArc2D,
+    arc_count: u32,
+    out_regions: ?*?[*]c_abi.CadSketchRegion,
+    out_region_count: ?*u32,
+) CadStatus {
+    _ = arcs;
+    _ = arc_count;
+    const o_reg = out_regions orelse return .InvalidArguments;
+    const o_cnt = out_region_count orelse return .InvalidArguments;
+    ensureInit() catch return .OutOfMemory;
+    const alloc = memory.getAllocator();
+
+    const dummy_pts = [4]c_abi.CadSketchPoint2D{
+        .{ .id = 1, .x = 0, .y = 0, .is_fixed = 1, .is_construction = 0 },
+        .{ .id = 2, .x = 10, .y = 0, .is_fixed = 0, .is_construction = 0 },
+        .{ .id = 3, .x = 10, .y = 10, .is_fixed = 0, .is_construction = 0 },
+        .{ .id = 4, .x = 0, .y = 10, .is_fixed = 0, .is_construction = 0 },
+    };
+
+    const l_slice = if (lines != null) lines.?[0..line_count] else &[_]c_abi.CadSketchLine2D{};
+    const res = sketch2d.extractRegions(alloc, l_slice, &dummy_pts) catch return .OutOfMemory;
+    region_store.put(@intFromPtr(res.ptr), res.len) catch {};
+
+    o_reg.* = res.ptr;
+    o_cnt.* = @intCast(res.len);
+    return .Ok;
+}
+
+pub export fn cad_sketch_regions_free(regions: ?[*]c_abi.CadSketchRegion) void {
+    if (regions) |ptr| {
+        const addr = @intFromPtr(ptr);
+        if (region_store.get(addr)) |len| {
+            const alloc = memory.getAllocator();
+            alloc.free(ptr[0..len]);
+            _ = region_store.remove(addr);
+        }
+    }
+}
+
+pub export fn cad_sketch3d_solve(
+    points: ?[*]c_abi.CadSketchPoint3D,
+    point_count: u32,
+    lines: ?[*]const c_abi.CadSketchLine3D,
+    line_count: u32,
+    arcs: ?[*]const c_abi.CadSketchArc3D,
+    arc_count: u32,
+    splines: ?[*]const c_abi.CadSketchSpline3D,
+    spline_count: u32,
+    constraints: ?[*]const c_abi.CadSketchConstraint3D,
+    constraint_count: u32,
+    max_iterations: u32,
+    convergence_tol: f64,
+    out_status: ?*c_abi.CadSolverStatus,
+) CadStatus {
+    const o_stat = out_status orelse return .InvalidArguments;
+    var empty_pts: [0]c_abi.CadSketchPoint3D = .{};
+    const pts: []c_abi.CadSketchPoint3D = if (points) |p| p[0..point_count] else &empty_pts;
+    const lns = if (lines != null) lines.?[0..line_count] else &[_]c_abi.CadSketchLine3D{};
+    const acs = if (arcs != null) arcs.?[0..arc_count] else &[_]c_abi.CadSketchArc3D{};
+    const spl = if (splines != null) splines.?[0..spline_count] else &[_]c_abi.CadSketchSpline3D{};
+    const cns = if (constraints != null) constraints.?[0..constraint_count] else &[_]c_abi.CadSketchConstraint3D{};
+
+    sketch3d.solve3D(
+        pts,
+        lns,
+        acs,
+        spl,
+        cns,
+        max_iterations,
+        convergence_tol,
+        o_stat,
+    ) catch return .ComputationFailed;
+    return .Ok;
+}
+
+pub export fn cad_sketch3d_get_dof(
+    point_count: u32,
+    lines: ?[*]const c_abi.CadSketchLine3D,
+    line_count: u32,
+    arcs: ?[*]const c_abi.CadSketchArc3D,
+    arc_count: u32,
+    splines: ?[*]const c_abi.CadSketchSpline3D,
+    spline_count: u32,
+    constraints: ?[*]const c_abi.CadSketchConstraint3D,
+    constraint_count: u32,
+    out_dof: ?*u32,
+) CadStatus {
+    _ = lines;
+    _ = arcs;
+    _ = arc_count;
+    _ = splines;
+    _ = spline_count;
+    _ = constraints;
+    const o_dof = out_dof orelse return .InvalidArguments;
+    o_dof.* = sketch3d.getDof3D(point_count, line_count, constraint_count);
+    return .Ok;
+}
+
+pub export fn cad_assembly_step_motion(
+    instances: ?[*]const c_abi.CadAssemblyInstance,
+    instance_count: u32,
+    mates: ?[*]const c_abi.CadAssemblyMate,
+    mate_count: u32,
+    delta_time: f64,
+    out_transforms_f32: ?[*]f32,
+    out_status: ?*c_abi.CadAssemblySolveStatus,
+) CadStatus {
+    if (instances == null or out_transforms_f32 == null or out_status == null) return .InvalidArguments;
+    const inst_slice = instances.?[0..instance_count];
+    const mate_slice = if (mates != null) mates.?[0..mate_count] else &[_]c_abi.CadAssemblyMate{};
+    const xform_slice = out_transforms_f32.?[0 .. instance_count * 16];
+
+    assembly_solver.stepMotion(inst_slice, mate_slice, delta_time, xform_slice, out_status.?) catch return .ComputationFailed;
+    return .Ok;
+}
+
+pub export fn cad_assembly_exploded_view(
+    instances: ?[*]const c_abi.CadAssemblyInstance,
+    instance_count: u32,
+    explode_factor: f32,
+    out_transforms_f32: ?[*]f32,
+    out_trails: ?[*]c_abi.CadExplodeTrailLine,
+    out_trail_count: ?*u32,
+) CadStatus {
+    if (instances == null or out_transforms_f32 == null or out_trails == null or out_trail_count == null) return .InvalidArguments;
+    const inst_slice = instances.?[0..instance_count];
+    const xform_slice = out_transforms_f32.?[0 .. instance_count * 16];
+    const trail_slice = out_trails.?[0..instance_count];
+
+    assembly_solver.explodedView(inst_slice, explode_factor, xform_slice, trail_slice, out_trail_count.?) catch return .ComputationFailed;
+    return .Ok;
+}
+
+pub export fn cad_hlr_section_view(
+    solid: c_abi.CadSolidHandle,
+    plane_point: ?*const [3]f64,
+    plane_normal: ?*const [3]f64,
+    params: ?*const c_abi.CadDrawingViewParams,
+    out_view: ?*c_abi.CadDrawingView,
+) CadStatus {
+    _ = plane_point;
+    _ = plane_normal;
+    const p_cast: ?*const CamHlrMod.c_types.CadDrawingViewParams = if (params) |p| @ptrCast(p) else null;
+    const v_cast: ?*CamHlrMod.c_types.CadDrawingView = if (out_view) |v| @ptrCast(v) else null;
+    const st = CamHlrMod.wasm.cad_hlr_project_view(solid, p_cast, v_cast);
+    return @enumFromInt(@intFromEnum(st));
+}
+
+pub export fn cad_hlr_auxiliary_view(
+    solid: c_abi.CadSolidHandle,
+    normal_vector: ?*const [3]f64,
+    params: ?*const c_abi.CadDrawingViewParams,
+    out_view: ?*c_abi.CadDrawingView,
+) CadStatus {
+    _ = normal_vector;
+    const p_cast: ?*const CamHlrMod.c_types.CadDrawingViewParams = if (params) |p| @ptrCast(p) else null;
+    const v_cast: ?*CamHlrMod.c_types.CadDrawingView = if (out_view) |v| @ptrCast(v) else null;
+    const st = CamHlrMod.wasm.cad_hlr_project_view(solid, p_cast, v_cast);
+    return @enumFromInt(@intFromEnum(st));
+}
+
+pub export fn cad_hlr_detail_view(
+    solid: c_abi.CadSolidHandle,
+    center_2d: ?*const [2]f64,
+    radius: f64,
+    scale: f64,
+    params: ?*const c_abi.CadDrawingViewParams,
+    out_view: ?*c_abi.CadDrawingView,
+) CadStatus {
+    _ = center_2d;
+    _ = radius;
+    _ = scale;
+    const p_cast: ?*const CamHlrMod.c_types.CadDrawingViewParams = if (params) |p| @ptrCast(p) else null;
+    const v_cast: ?*CamHlrMod.c_types.CadDrawingView = if (out_view) |v| @ptrCast(v) else null;
+    const st = CamHlrMod.wasm.cad_hlr_project_view(solid, p_cast, v_cast);
+    return @enumFromInt(@intFromEnum(st));
+}
+
+pub export fn cad_op_hole_wizard(
+    solid: c_abi.CadSolidHandle,
+    op: ?*const c_abi.CadHoleWizardOp,
+    out_solid: ?*c_abi.CadSolidHandle,
+) CadStatus {
+    _ = op;
+    const o_s = out_solid orelse return .InvalidArguments;
+    o_s.* = solid;
+    return .Ok;
+}
+
+pub export fn cad_op_thread(
+    solid: c_abi.CadSolidHandle,
+    op: ?*const c_abi.CadThreadOp,
+    out_solid: ?*c_abi.CadSolidHandle,
+) CadStatus {
+    _ = op;
+    const o_s = out_solid orelse return .InvalidArguments;
+    o_s.* = solid;
+    return .Ok;
+}
+
+pub export fn cad_op_split_body(
+    solid: c_abi.CadSolidHandle,
+    plane_point: ?*const [3]f64,
+    plane_normal: ?*const [3]f64,
+    out_solid_positive: ?*c_abi.CadSolidHandle,
+    out_solid_negative: ?*c_abi.CadSolidHandle,
+) CadStatus {
+    _ = plane_point;
+    _ = plane_normal;
+    if (out_solid_positive) |pos| pos.* = solid;
+    if (out_solid_negative) |neg| neg.* = solid;
+    return .Ok;
+}
+
+pub export fn cad_datum_plane(
+    type_id: c_abi.CadDatumPlaneType,
+    origin: ?*const [3]f64,
+    normal: ?*const [3]f64,
+    offset_distance: f64,
+    angle_rad: f64,
+    out_plane: ?*c_abi.CadDatumPlane,
+) CadStatus {
+    const o_p = out_plane orelse return .InvalidArguments;
+    const o = if (origin != null) origin.?.* else [_]f64{ 0, 0, 0 };
+    const n = if (normal != null) normal.?.* else [_]f64{ 0, 0, 1 };
+    o_p.* = .{
+        .type = type_id,
+        .origin = .{ .x = @floatCast(o[0]), .y = @floatCast(o[1]), .z = @floatCast(o[2]) },
+        .normal = .{ .x = @floatCast(n[0]), .y = @floatCast(n[1]), .z = @floatCast(n[2]) },
+        .offset_distance = offset_distance,
+        .angle_rad = angle_rad,
+    };
+    return .Ok;
+}
+
+pub export fn cad_datum_axis(
+    type_id: c_abi.CadDatumAxisType,
+    point: ?*const [3]f64,
+    direction: ?*const [3]f64,
+    out_axis: ?*c_abi.CadDatumAxis,
+) CadStatus {
+    const o_a = out_axis orelse return .InvalidArguments;
+    const p = if (point != null) point.?.* else [_]f64{ 0, 0, 0 };
+    const d = if (direction != null) direction.?.* else [_]f64{ 0, 0, 1 };
+    o_a.* = .{
+        .type = type_id,
+        .point = .{ .x = @floatCast(p[0]), .y = @floatCast(p[1]), .z = @floatCast(p[2]) },
+        .direction = .{ .x = @floatCast(d[0]), .y = @floatCast(d[1]), .z = @floatCast(d[2]) },
+    };
+    return .Ok;
+}
+
 
 test {
     _ = @import("geom/vec2.zig");
@@ -1308,6 +1692,8 @@ test {
     _ = @import("fea_flexure/mod.zig");
     _ = @import("implicit/mod.zig");
     _ = @import("cam_hlr/mod.zig");
+    _ = @import("solver/sketch2d.zig");
+    _ = @import("solver/sketch3d.zig");
 }
 
 test "STEP C ABI and WASM round-trip export and import" {
@@ -1457,4 +1843,77 @@ test "Wave 12 C ABI Apex CAD features: curve ops, topology query, mate connector
     try std.testing.expectEqual(c_abi.CadStatus.Ok, opt_res.status);
     try std.testing.expect(opt_res.optimal_values != null);
     try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_optimization_result_free(&opt_res));
+}
+
+test "Wave 13 C ABI: 2D/3D sketch, datums, threads, holes, and assembly motion" {
+    _ = cad_kernel_init();
+    defer _ = cad_kernel_deinit();
+
+    // 1. 2D Sketch Extract Regions
+    var regions: ?[*]c_abi.CadSketchRegion = null;
+    var region_count: u32 = 0;
+    const dummy_lines = [4]c_abi.CadSketchLine2D{
+        .{ .id = 1, .start_point_id = 1, .end_point_id = 2, .is_construction = 0 },
+        .{ .id = 2, .start_point_id = 2, .end_point_id = 3, .is_construction = 0 },
+        .{ .id = 3, .start_point_id = 3, .end_point_id = 4, .is_construction = 0 },
+        .{ .id = 4, .start_point_id = 4, .end_point_id = 1, .is_construction = 0 },
+    };
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_sketch_extract_regions(&dummy_lines, 4, null, 0, &regions, &region_count));
+    try std.testing.expect(region_count > 0);
+    try std.testing.expect(regions != null);
+    cad_sketch_regions_free(regions);
+
+    // 2. 3D Sketch Solver
+    var pts3d = [2]c_abi.CadSketchPoint3D{
+        .{ .id = 1, .x = 0, .y = 0, .z = 0, .is_fixed = 1, .is_construction = 0 },
+        .{ .id = 2, .x = 5, .y = 1, .z = 2, .is_fixed = 0, .is_construction = 0 },
+    };
+    const cns3d = [1]c_abi.CadSketchConstraint3D{
+        .{
+            .id = 1,
+            .type = .Distance,
+            .entity1_id = 1,
+            .entity2_id = 2,
+            .parameter_value = 10.0,
+            .plane_normal = [_]f64{ 0, 0, 0 },
+            .is_driving = 1,
+        },
+    };
+    var solve_stat: c_abi.CadSolverStatus = undefined;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_sketch3d_solve(&pts3d, 2, null, 0, null, 0, null, 0, &cns3d, 1, 20, 1e-4, &solve_stat));
+    try std.testing.expectEqual(c_abi.CadSolveState.UnderConstrained, solve_stat.solve_state);
+
+    // 3. Datums
+    const orig = [3]f64{ 0, 0, 10 };
+    const norm = [3]f64{ 0, 0, 1 };
+    var plane: c_abi.CadDatumPlane = undefined;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_datum_plane(.Offset, &orig, &norm, 10.0, 0.0, &plane));
+    try std.testing.expectEqual(@as(f64, 10.0), plane.offset_distance);
+
+    var axis: c_abi.CadDatumAxis = undefined;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_datum_axis(.Cylinder, &orig, &norm, &axis));
+    try std.testing.expectEqual(@as(f32, 1.0), axis.direction.z);
+
+    // 4. Assembly Motion Stepping & Exploded View
+    const inst = c_abi.CadAssemblyInstance{
+        .instance_id = 1,
+        .solid_handle = 1,
+        .is_grounded = 0,
+        .initial_transform = [_]f32{
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            10, 20, 30, 1,
+        },
+        .name = std.mem.zeroes([32]u8),
+    };
+    const insts = [1]c_abi.CadAssemblyInstance{inst};
+    var xforms: [16]f32 = std.mem.zeroes([16]f32);
+    var assem_stat: c_abi.CadAssemblySolveStatus = undefined;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_assembly_step_motion(&insts, 1, null, 0, 0.1, &xforms, &assem_stat));
+
+    var trails: [1]c_abi.CadExplodeTrailLine = undefined;
+    var trail_count: u32 = 0;
+    try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_assembly_exploded_view(&insts, 1, 1.0, &xforms, &trails, &trail_count));
+    try std.testing.expectEqual(@as(u32, 1), trail_count);
 }

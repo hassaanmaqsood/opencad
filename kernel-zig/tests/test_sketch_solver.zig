@@ -6,32 +6,10 @@ const math = std.math;
 
 pub const CAD_SKETCH_INVALID_ID: u32 = 0xFFFFFFFF;
 
-pub const CadSketchPoint2D = extern struct {
-    id: u32,
-    x: f64,
-    y: f64,
-    is_fixed: u8,
-};
-
-pub const CadSketchLine2D = extern struct {
-    id: u32,
-    start_point_id: u32,
-    end_point_id: u32,
-};
-
-pub const CadSketchArc2D = extern struct {
-    id: u32,
-    center_point_id: u32,
-    start_point_id: u32,
-    end_point_id: u32,
-    radius: f64,
-};
-
-pub const CadSketchCircle2D = extern struct {
-    id: u32,
-    center_point_id: u32,
-    radius: f64,
-};
+pub const CadSketchPoint2D = cad.CadSketchPoint2D;
+pub const CadSketchLine2D = cad.CadSketchLine2D;
+pub const CadSketchArc2D = cad.CadSketchArc2D;
+pub const CadSketchCircle2D = cad.CadSketchCircle2D;
 
 pub const CadSketchConstraintType = enum(c_int) {
     Coincident = 0,
