@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OpenCadExtensionPlugin, PluginContext } from '../../core-shell/PluginTypes';
 import { createCrossSectionPlane, CrossSectionUniforms } from './CrossSectionShader';
 import { BlockStackUi, ImplicitBlockConfig } from './BlockStack';
+import { getAssetUrl } from '../../utils/assets';
 
 export class ImplicitPlugin implements OpenCadExtensionPlugin {
   public metadata = {
@@ -51,7 +52,7 @@ export class ImplicitPlugin implements OpenCadExtensionPlugin {
 
     // 1. Lazy load cad_implicit_ntop.wasm only when workbench is initialized
     try {
-      const resp = await fetch(this.metadata.wasmUrl);
+      const resp = await fetch(getAssetUrl('cad_implicit_ntop.wasm'));
       if (resp.ok) {
         const bytes = await resp.arrayBuffer();
         const wasmModule = await WebAssembly.instantiate(bytes, {

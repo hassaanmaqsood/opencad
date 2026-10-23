@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OpenCadExtensionPlugin, PluginContext } from '../../core-shell/PluginTypes';
+import { getAssetUrl } from '../../utils/assets';
 
 export interface BendNote {
   edgeIndex: number;
@@ -51,7 +52,7 @@ export class SheetMetalPlugin implements OpenCadExtensionPlugin {
   public async initialize(context: PluginContext): Promise<void> {
     this.context = context;
     try {
-      const resp = await fetch('/cad_sheetmetal.wasm');
+      const resp = await fetch(getAssetUrl('cad_sheetmetal.wasm'));
       if (resp.ok) {
         const bin = await resp.arrayBuffer();
         await context.bridge.loadPluginWasm('sheetmetal', bin);

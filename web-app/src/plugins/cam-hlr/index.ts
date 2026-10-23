@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OpenCadExtensionPlugin, PluginContext } from '../../core-shell/PluginTypes';
+import { getAssetUrl } from '../../utils/assets';
 
 export type CamStrategy = 'Contour2D' | 'Pocket2D' | 'Adaptive' | 'Drill';
 
@@ -48,7 +49,7 @@ export class CamHlrPlugin implements OpenCadExtensionPlugin {
   public async initialize(context: PluginContext): Promise<void> {
     this.context = context;
     try {
-      const resp = await fetch('/cad_mfg_cam.wasm');
+      const resp = await fetch(getAssetUrl('cad_mfg_cam.wasm'));
       if (resp.ok) {
         const bin = await resp.arrayBuffer();
         await context.bridge.loadPluginWasm('mfg_cam', bin);

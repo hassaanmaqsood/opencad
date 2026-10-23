@@ -1,4 +1,5 @@
 import { OpenCadExtensionPlugin, PluginContext } from '../../core-shell/PluginTypes';
+import { getAssetUrl } from '../../utils/assets';
 
 export type DrawingProjectionView = 'Front' | 'Top' | 'Right' | 'Isometric' | 'Section';
 
@@ -29,7 +30,7 @@ export class DrawingPlugin implements OpenCadExtensionPlugin {
       // Validated context
     }
     try {
-      const resp = await fetch('/cad_mfg_cam.wasm');
+      const resp = await fetch(getAssetUrl('cad_mfg_cam.wasm'));
       if (resp.ok) {
         const bin = await resp.arrayBuffer();
         await context.bridge.loadPluginWasm('mfg_cam', bin);

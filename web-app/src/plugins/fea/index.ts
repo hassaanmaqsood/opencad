@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OpenCadExtensionPlugin, PluginContext } from '../../core-shell/PluginTypes';
+import { getAssetUrl } from '../../utils/assets';
 
 export type FeaColormapMode = 'vonMises' | 'displacement' | 'safetyFactor';
 
@@ -62,7 +63,7 @@ export class FeaFlexurePlugin implements OpenCadExtensionPlugin {
 
     // Pre-fetch WASM binary
     try {
-      const resp = await fetch('/cad_fea_flexure.wasm');
+      const resp = await fetch(getAssetUrl('cad_fea_flexure.wasm'));
       if (resp.ok) {
         const bin = await resp.arrayBuffer();
         const wasmModule = await WebAssembly.instantiate(bin, {

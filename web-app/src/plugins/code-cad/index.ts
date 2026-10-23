@@ -1,5 +1,6 @@
 import { OpenCadExtensionPlugin, PluginContext } from '../../core-shell/PluginTypes';
 import { CadFeatureType, CadFeatureNode } from '../../types/cad';
+import { getAssetUrl } from '../../utils/assets';
 
 export class CodeCadPlugin implements OpenCadExtensionPlugin {
   public metadata = {
@@ -29,7 +30,7 @@ export class CodeCadPlugin implements OpenCadExtensionPlugin {
 
     // Load companion WASM in worker if not already loaded
     try {
-      const resp = await fetch('/cad_ast.wasm');
+      const resp = await fetch(getAssetUrl('cad_ast.wasm'));
       if (resp.ok) {
         const bin = await resp.arrayBuffer();
         await context.bridge.loadPluginWasm('ast', bin);

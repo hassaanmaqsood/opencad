@@ -1,5 +1,6 @@
 import { OpenCadExtensionPlugin, PluginContext, VisualDiffData } from '../../core-shell/PluginTypes';
 import { CadFeatureType, CadFeatureNode } from '../../types/cad';
+import { getAssetUrl } from '../../utils/assets';
 
 export interface CadCommit {
   id: string;
@@ -83,7 +84,7 @@ export class GitCadPlugin implements OpenCadExtensionPlugin {
     this.context = context;
 
     try {
-      const resp = await fetch('/cad_ast.wasm');
+      const resp = await fetch(getAssetUrl('cad_ast.wasm'));
       if (resp.ok) {
         const bin = await resp.arrayBuffer();
         await context.bridge.loadPluginWasm('ast', bin);

@@ -13,6 +13,7 @@ import { PluginContext } from './core-shell/PluginTypes';
 import { STARTER_TEMPLATES } from './templates/StarterTemplates';
 import { ParameterSlidersPanel } from './ui/parameter_sliders';
 import { ShareModal } from './ui/share_modal';
+import { getAssetUrl } from './utils/assets';
 import {
   SolidGenerationRequest,
   SubShapeSelection,
@@ -68,7 +69,7 @@ async function initApp() {
 
   // Load CAD Kernel WASM binary on startup
   try {
-    const wasmResponse = await fetch('/cad_kernel.wasm');
+    const wasmResponse = await fetch(getAssetUrl('cad_kernel.wasm'));
     if (wasmResponse.ok) {
       const wasmBinary = await wasmResponse.arrayBuffer();
       const loaded = await bridge.loadWasmBinary(wasmBinary);

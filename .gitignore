@@ -9,4 +9,4 @@ web-app/dist/
 web-app/test-results/
 dist-publish/
 *.zip
-
+tmp/
