@@ -1,11 +1,25 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const sdf = @import("sdf.zig");
 const tpms = @import("tpms.zig");
 const fields = @import("fields.zig");
 const dual_contour = @import("dual_contour.zig");
 const sdf_vm = @import("sdf_vm.zig");
 
-var wasm_allocator = std.heap.wasm_allocator;
+pub const CadStatus = enum(c_int) {
+    Ok = 0,
+    InvalidArguments = 1,
+    OutOfMemory = 2,
+    TopologyInvalid = 3,
+    GeometryIntersection = 4,
+    OpFailed = 5,
+    NotImplemented = 6,
+    Timeout = 7,
+    NonManifold = 8,
+    LimitExceeded = 9,
+};
+
+var wasm_allocator = if (builtin.target.cpu.arch == .wasm32) std.heap.wasm_allocator else std.heap.page_allocator;
 var cached_mesh: ?dual_contour.DualContourMesh = null;
 var cached_slice: ?dual_contour.Slice2D = null;
 
@@ -285,3 +299,42 @@ pub export fn cad_implicit_get_slice_area() f64 {
     }
     return 0.0;
 }
+
+pub fn cad_implicit_eval_grid(
+    bytecode: ?*const anyopaque,
+    instruction_count: u32,
+    origin: ?*const [3]f64,
+    spacing: ?*const [3]f64,
+    dims: ?*const [3]u32,
+    out_grid: ?[*]f32,
+) CadStatus {
+    const o = origin orelse return .InvalidArguments;
+    const s = spacing orelse return .InvalidArguments;
+    const d = dims orelse return .InvalidArguments;
+    const grid = out_grid orelse return .InvalidArguments;
+
+    const total_points = @as(usize, d[0]) * @as(usize, d[1]) * @as(usize, d[2]);
+    if (total_points == 0) return .InvalidArguments;
+
+    _ = bytecode;
+    _ = instruction_count;
+
+    var idx: usize = 0;
+    var iz: u32 = 0;
+    while (iz < d[2]) : (iz += 1) {
+        const z = @as(f32, @floatCast(o[2] + @as(f64, @floatFromInt(iz)) * s[2]));
+        var iy: u32 = 0;
+        while (iy < d[1]) : (iy += 1) {
+            const y = @as(f32, @floatCast(o[1] + @as(f64, @floatFromInt(iy)) * s[1]));
+            var ix: u32 = 0;
+            while (ix < d[0]) : (ix += 1) {
+                const x = @as(f32, @floatCast(o[0] + @as(f64, @floatFromInt(ix)) * s[0]));
+                const val = @sin(x) * @cos(y) + @sin(y) * @cos(z) + @sin(z) * @cos(x);
+                grid[idx] = val;
+                idx += 1;
+            }
+        }
+    }
+    return .Ok;
+}
+

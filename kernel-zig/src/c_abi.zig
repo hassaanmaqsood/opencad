@@ -698,5 +698,118 @@ pub const CadFlexureAnalysis = extern struct {
     fact_visual_line_count: u32,
 };
 
+// ===========================================================================
+// Wave 12: Apex CAD Upgrade — Precision Curves, Topo Query, Optimizer & Connectors
+// ===========================================================================
+
+pub const CAD_TOPO_FLAG_OVERFLOW: u16 = 0x8;
+
+pub const CadWireSegmentType = enum(c_int) {
+    Line = 0,
+    Arc = 1,
+    Circle = 2,
+    Nurbs = 3,
+};
+
+pub const CadWireSegment2D = extern struct {
+    type: CadWireSegmentType,
+    start: [2]f64,
+    end: [2]f64,
+    center: [2]f64,
+    radius: f64,
+    start_angle_rad: f64,
+    end_angle_rad: f64,
+    is_counter_clockwise: bool,
+    degree: u32,
+    control_point_count: u32,
+    control_points_xy: ?[*]const f64,
+    weights: ?[*]const f64,
+    knots: ?[*]const f64,
+};
+
+pub const CadWire2D = extern struct {
+    segments: ?[*]const CadWireSegment2D,
+    segment_count: u32,
+    is_closed: bool,
+};
+
+pub const CadWire3D = extern struct {
+    points_xyz: ?[*]const f64,
+    point_count: u32,
+    is_closed: bool,
+};
+
+pub const CadMateConnectorType = enum(c_int) {
+    FaceCenter = 0,
+    CylinderAxis = 1,
+    EdgeMidpoint = 2,
+    Vertex = 3,
+};
+
+pub const CadMateConnector = extern struct {
+    source_topo_id: CadTopoId,
+    type: CadMateConnectorType,
+    origin: [3]f64,
+    normal_z: [3]f64,
+    primary_axis_x: [3]f64,
+    secondary_axis_y: [3]f64,
+};
+
+pub const CadOptGoalType = enum(c_int) {
+    TargetStiffness = 0,
+    MinOffAxisRatio = 1,
+    MaxVonMisesMpa = 2,
+    MinimizeMass = 3,
+};
+
+pub const CadOptGoal = extern struct {
+    type: CadOptGoalType,
+    target_value: f64,
+    weight: f64,
+};
+
+pub const CadParamBound = extern struct {
+    feature_node_id: u32,
+    param_index: u32,
+    min_value: f64,
+    max_value: f64,
+    initial_value: f64,
+};
+
+pub const CadOptimizationResult = extern struct {
+    status: CadStatus,
+    iterations: u32,
+    final_objective: f64,
+    optimal_values: ?[*]f64,
+    param_count: u32,
+};
+
+pub const CadImplicitOpcode = enum(c_int) {
+    Push = 0,
+    Pop = 1,
+    Primitive = 2,
+    TpmsGyroid = 3,
+    TpmsSchwarzP = 4,
+    TpmsDiamond = 5,
+    StressModulate = 6,
+    SmoothUnion = 7,
+    SmoothIntersect = 8,
+    SmoothDifference = 9,
+    Shell = 10,
+    Offset = 11,
+    Warp = 12,
+};
+
+pub const CadImplicitOp = extern struct {
+    opcode: CadImplicitOpcode,
+    reg_dest: u32,
+    reg_src_a: u32,
+    reg_src_b: u32,
+    param_f64: f64,
+    param_vec3: [3]f64,
+};
+
+
+
 
 

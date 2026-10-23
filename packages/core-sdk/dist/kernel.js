@@ -3,6 +3,7 @@
  * Standalone OpenCAD Core Kernel Client for Web, Node.js, Bun, and CLI.
  */
 import { loadCoreWasm } from './loader.js';
+import { FluentPart } from './fluent.js';
 import { CadStatus, } from './types.js';
 export class OpenCadKernel {
     exports;
@@ -211,6 +212,10 @@ export class OpenCadKernel {
     readU64(ptr) {
         const view = new DataView(this.exports.memory.buffer);
         return view.getBigUint64(ptr, true);
+    }
+    part(name = 'Part') {
+        this.assertInitialized();
+        return new FluentPart(name, this);
     }
     assertInitialized() {
         if (!this.isInitialized) {

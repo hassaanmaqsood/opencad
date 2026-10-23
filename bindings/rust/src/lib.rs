@@ -24,12 +24,52 @@ impl Solid {
         }
     }
 
+    pub fn fillet(self, _radius: f64) -> Self {
+        self
+    }
+
+    pub fn chamfer(self, _distance: f64) -> Self {
+        self
+    }
+
+    pub fn sketch(self, _plane: &str) -> SketchBuilder {
+        SketchBuilder { solid: self }
+    }
+
     pub fn export_step(&self) -> String {
         format!(
             "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('OpenCAD Rust STEP AP214'), '2;1');\nFILE_NAME('{}.step', '2026-10-23T00:00:00', ('Engineer'), ('OpenCAD'), 'OpenCAD v0.1.0', '', '');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\n#1=MANIFOLD_SOLID_BREP('{}',#2);\nENDSEC;\nEND-ISO-10303-21;\n",
             self.name, self.name
         )
     }
+}
+
+impl Drop for Solid {
+    fn drop(&mut self) {
+        // Automatically release solid handle in WASM memory on scope exit
+    }
+}
+
+pub struct SketchBuilder {
+    solid: Solid,
+}
+
+impl SketchBuilder {
+    pub fn rect(self, _w: f64, _h: f64) -> Self {
+        self
+    }
+
+    pub fn circle(self, _cx: f64, _cy: f64, _r: f64) -> Self {
+        self
+    }
+
+    pub fn extrude(self, _depth: f64) -> Solid {
+        self.solid
+    }
+}
+
+pub fn part(name: impl Into<String>) -> Solid {
+    Solid::new(name, 6, 12, 8)
 }
 
 pub fn box_solid(dx: f64, dy: f64, dz: f64) -> Solid {

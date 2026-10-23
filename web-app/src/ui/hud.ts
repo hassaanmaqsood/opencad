@@ -158,13 +158,15 @@ export class CadHud {
       this.selectionTypeEl.style.color = 'var(--text-accent)';
       this.selectionNameEl.textContent = selection.label || `Face #${selection.faceId}`;
       this.selectionNameEl.style.color = 'var(--text-accent)';
-      this.selectionCoordsEl.textContent = `Hit Point: [${selection.point.map((n) => n.toFixed(2)).join(', ')}]`;
+      const coords = selection.point?.map((n) => n.toFixed(2)).join(', ') ?? '- , - , -';
+      this.selectionCoordsEl.textContent = `Hit Point: [${coords}]`;
     } else if (selection.type === 'edge') {
       this.selectionTypeEl.textContent = 'FEATURE EDGE';
       this.selectionTypeEl.style.color = 'var(--accent-gold)';
       this.selectionNameEl.textContent = selection.label || `Edge #${selection.edgeId}`;
       this.selectionNameEl.style.color = 'var(--accent-gold)';
-      this.selectionCoordsEl.textContent = `Hit Point: [${selection.point.map((n) => n.toFixed(2)).join(', ')}]`;
+      const coords = selection.point?.map((n) => n.toFixed(2)).join(', ') ?? '- , - , -';
+      this.selectionCoordsEl.textContent = `Hit Point: [${coords}]`;
     }
   }
 }

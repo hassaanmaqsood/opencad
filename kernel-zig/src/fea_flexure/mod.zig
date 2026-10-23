@@ -7,6 +7,7 @@ pub const solver = @import("solver.zig");
 pub const compliance = @import("compliance.zig");
 pub const flexure = @import("flexure.zig");
 pub const wasm = @import("wasm.zig");
+pub const optimizer = @import("optimizer.zig");
 
 // Backwards-compatible aliases
 pub const TetMesh = tet_mesher.TetMesh;

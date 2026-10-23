@@ -81,15 +81,37 @@ _BACKEND = WasmBackend()
 
 
 class Solid:
-    """Represents a 3D B-Rep solid body."""
+    """Represents a 3D B-Rep solid body with auto-disposing context manager."""
     def __init__(self, name: str = "Solid", handle: int = 1, metadata: Optional[Dict[str, Any]] = None):
         self.name = name
         self.handle = handle
         self.metadata = metadata or {"faces": 6, "edges": 12, "vertices": 8}
         self.history: List[str] = [name]
 
-    def fillet(self, radius: float, face_id: Optional[int] = None) -> Solid:
-        self.history.append(f"fillet(r={radius})")
+    def __enter__(self) -> Solid:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.dispose()
+
+    def __del__(self) -> None:
+        self.dispose()
+
+    def dispose(self) -> None:
+        if self.handle != 0:
+            _BACKEND.call("cad_solid_release", self.handle)
+            self.handle = 0
+
+    @property
+    def flexure(self) -> FluentFlexureBridge:
+        return FluentFlexureBridge(self)
+
+    @property
+    def implicit(self) -> FluentImplicitBridge:
+        return FluentImplicitBridge(self)
+
+    def fillet(self, radius: float, select: Optional[str] = None, face_id: Optional[int] = None) -> Solid:
+        self.history.append(f"fillet(r={radius}, select={select})")
         return self
 
     def chamfer(self, distance: float, face_id: Optional[int] = None) -> Solid:
@@ -99,6 +121,9 @@ class Solid:
     def shell(self, thickness: float) -> Solid:
         self.history.append(f"shell(t={thickness})")
         return self
+
+    def sketch(self, plane: str = XY) -> SketchBuilder:
+        return SketchBuilder(plane=plane, solid=self)
 
     def export_step(self, path: Optional[str] = None) -> str:
         step_content = export_step(self, path)
@@ -138,18 +163,47 @@ class Solid:
         return f"<OpenCad Solid: '{self.name}' (Faces: {self.metadata.get('faces', 6)}, Edges: {self.metadata.get('edges', 12)})>"
 
 
+class FluentFlexureBridge:
+    def __init__(self, solid: Solid):
+        self.solid = solid
+
+    def analyze(self, fixed: str = "<X", stage: str = ">X") -> Solid:
+        self.solid.metadata["flexure"] = {"fixed": fixed, "stage": stage}
+        return self.solid
+
+
+class FluentImplicitBridge:
+    def __init__(self, solid: Solid):
+        self.solid = solid
+
+    def gyroid_infill(self, preserve: Optional[List[str]] = None, cell_size: float = 6.0) -> Solid:
+        self.solid.metadata["implicit"] = {
+            "tpms": "gyroid",
+            "preserve": preserve or [],
+            "cell_size": cell_size,
+        }
+        return self.solid
+
+
 class SketchBuilder:
     """Parametric 2D Sketch builder with geometric constraint resolution."""
-    def __init__(self, plane: str = XY):
+    def __init__(self, plane: str = XY, solid: Optional[Solid] = None):
         self.plane = plane
+        self.solid = solid
         self.elements: List[Dict[str, Any]] = []
 
-    def circle(self, cx: float, cy: float, radius: float) -> SketchBuilder:
-        self.elements.append({"type": "circle", "cx": cx, "cy": cy, "radius": radius})
+    def circle(self, cx: float, cy: float, radius: float, cut: bool = False) -> SketchBuilder:
+        self.elements.append({"type": "circle", "cx": cx, "cy": cy, "radius": radius, "cut": cut})
         return self
 
-    def rect(self, x: float, y: float, width: float, height: float) -> SketchBuilder:
-        self.elements.append({"type": "rect", "x": x, "y": y, "w": width, "h": height})
+    def rect(self, x: float, y: float, width: Optional[float] = None, height: Optional[float] = None) -> SketchBuilder:
+        if width is None and height is None:
+            # Called as rect(w, h)
+            w_val, h_val = x, y
+            x_val, y_val = 0.0, 0.0
+        else:
+            x_val, y_val, w_val, h_val = x, y, width or 10.0, height or 10.0
+        self.elements.append({"type": "rect", "x": x_val, "y": y_val, "w": w_val, "h": h_val})
         return self
 
     def line_to(self, x: float, y: float) -> SketchBuilder:
@@ -158,6 +212,19 @@ class SketchBuilder:
 
     def extrude(self, height: float) -> Solid:
         meta = {
+            "faces": 2 + len(self.elements) * 4,
+            "edges": len(self.elements) * 8,
+            "vertices": len(self.elements) * 6,
+            "extrude_height": height,
+            "plane": self.plane,
+        }
+        name = self.solid.name if self.solid else f"Extrude_{self.plane}_{height}mm"
+        return Solid(name, handle=2, metadata=meta)
+
+
+def part(name: str = "Part") -> Solid:
+    """Create a new fluent parametric Part with auto-disposing context manager."""
+    return Solid(name=name)
             "faces": 2 + len(self.elements) * 4,
             "edges": len(self.elements) * 8,
             "vertices": len(self.elements) * 6,
@@ -292,6 +359,7 @@ def show(solid: Solid) -> None:
 
 class OpenCad:
     """High-level OpenCAD Kernel controller."""
+    part = staticmethod(part)
     box = staticmethod(box)
     cylinder = staticmethod(cylinder)
     sphere = staticmethod(sphere)
