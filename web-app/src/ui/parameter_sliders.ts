@@ -16,7 +16,7 @@ export interface ModelParam {
 export class ParameterSlidersPanel {
   private container: HTMLElement;
   private params: Map<string, ModelParam> = new Map();
-  private onParamChange: (name: string, value: number) => void;
+  public onParamChange: (name: string, value: number) => void;
   private onDownloadStep?: () => void;
   private onDownload3mf?: () => void;
   private onDownloadDxf?: () => void;
@@ -113,6 +113,33 @@ export class ParameterSlidersPanel {
     }
   }
 
+  public setParam(name: string, value: number) {
+    let p = this.params.get(name);
+    if (!p) {
+      p = { name, value, min: Math.min(0.5, Math.floor(value)), max: Math.max(10, Math.ceil(value * 2)), step: value % 1 !== 0 ? 0.1 : 1 };
+      this.params.set(name, p);
+    } else {
+      p.value = value;
+      if (value < p.min) p.min = Math.min(p.min, Math.floor(value));
+      if (value > p.max) p.max = Math.max(p.max, Math.ceil(value * 1.5));
+      if (value % 1 !== 0) p.step = 0.1;
+    }
+    const slider = document.getElementById(`param-slider-${name}`) as HTMLInputElement | null;
+    if (slider) {
+      slider.min = p.min.toString();
+      slider.max = p.max.toString();
+      slider.step = (p.step ?? 0.1).toString();
+      slider.value = value.toString();
+    }
+    const input = document.getElementById(`param-input-${name}`) as HTMLInputElement | null;
+    if (input) input.value = value.toString();
+
+    const valEl = document.getElementById(`param-val-${name}`);
+    if (valEl) valEl.textContent = value.toString();
+
+    this.onParamChange(name, value);
+  }
+
   public getParam(name: string): number | undefined {
     return this.params.get(name)?.value;
   }
@@ -154,8 +181,20 @@ export class ParameterSlidersPanel {
       row.className = 'control-row';
       row.innerHTML = `
         <label for="param-slider-${name}" style="text-transform: capitalize;">${name.replace(/_/g, ' ')}:</label>
-        <span class="stat-value" id="param-val-${name}">${p.value}</span>
+        <div class="recipe-param-input-wrap">
+          <input 
+            type="text" 
+            class="recipe-param-input" 
+            id="param-input-${name}" 
+            data-testid="param-input-${name}" 
+            value="${p.value}" 
+            title="Type exact number or formula (e.g. 120 / 2)" 
+          />
+          <span class="stat-value" id="param-val-${name}" style="display:none;">${p.value}</span>
+        </div>
       `;
+
+      const numInput = row.querySelector(`#param-input-${name}`) as HTMLInputElement;
 
       const slider = document.createElement('input');
       slider.type = 'range';
@@ -169,9 +208,33 @@ export class ParameterSlidersPanel {
       slider.addEventListener('input', (e) => {
         const val = parseFloat((e.target as HTMLInputElement).value);
         p.value = val;
+        if (numInput) numInput.value = val.toString();
         const valEl = document.getElementById(`param-val-${name}`);
         if (valEl) valEl.textContent = val.toString();
         this.onParamChange(name, val);
+      });
+
+      numInput.addEventListener('change', () => {
+        let val = parseFloat(numInput.value);
+        if (isNaN(val)) {
+          try {
+            // Support simple arithmetic formulas like "100 / 2"
+            val = Function(`'use strict'; return (${numInput.value})`)();
+          } catch {}
+        }
+        if (!isNaN(val)) {
+          if (val < p.min) p.min = Math.min(p.min, Math.floor(val));
+          if (val > p.max) p.max = Math.max(p.max, Math.ceil(val * 1.5));
+          if (val % 1 !== 0) p.step = 0.1;
+          slider.min = p.min.toString();
+          slider.max = p.max.toString();
+          slider.step = p.step.toString();
+          p.value = val;
+          slider.value = val.toString();
+          const valEl = document.getElementById(`param-val-${name}`);
+          if (valEl) valEl.textContent = val.toString();
+          this.onParamChange(name, val);
+        }
       });
 
       group.appendChild(row);

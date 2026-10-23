@@ -1,4 +1,5 @@
 import { PluginManager } from './PluginManager';
+import { UniversalOmniBar } from '../ui/omni_bar';
 
 export interface TopRibbonOptions {
   container: HTMLElement;
@@ -14,6 +15,17 @@ export interface TopRibbonOptions {
   onSelectTemplate?: (templateId: string) => void;
   onToggleDock?: (panelId: 'code-cad' | 'git-cad') => void;
   onShareEmbed?: () => void;
+  onSelectPersona?: (persona: string) => void;
+  onDatumPlane?: () => void;
+  onDatumAxis?: () => void;
+  onHoleWizard?: () => void;
+  onThread?: () => void;
+  onSplitBody?: () => void;
+  onToggleSectionPlane?: (enabled: boolean) => void;
+  onScrubAssemblyMotion?: (factor: number) => void;
+  onOmniCommand?: (cmdId: string, arg?: string) => Promise<void> | void;
+  onOmniSetParameter?: (paramName: string, value: number) => void;
+  onOmniAiPrompt?: (prompt: string) => Promise<void> | void;
 }
 
 export class TopRibbon {
@@ -24,6 +36,7 @@ export class TopRibbon {
   private tabButtons = new Map<string, HTMLButtonElement>();
   private actionContainer: HTMLElement;
   private currentWorkbench: string = 'design';
+  private omniBar: UniversalOmniBar;
 
   constructor(options: TopRibbonOptions) {
     this.container = options.container;
@@ -45,6 +58,14 @@ export class TopRibbon {
       <span class="ribbon-pill">Shell v2.0</span>
     `;
     headerBar.appendChild(brand);
+
+    // Wave 14: Top-Center Universal Omni-Bar
+    this.omniBar = new UniversalOmniBar({
+      onExecuteCommand: (cmdId, arg) => this.options.onOmniCommand?.(cmdId, arg),
+      onSetParameter: (paramName, val) => this.options.onOmniSetParameter?.(paramName, val),
+      onAiPrompt: (prompt) => this.options.onOmniAiPrompt?.(prompt),
+    });
+    headerBar.appendChild(this.omniBar.getElement());
 
     const tabsContainer = document.createElement('div');
     tabsContainer.className = 'ribbon-tabs';
@@ -78,9 +99,29 @@ export class TopRibbon {
 
     headerBar.appendChild(tabsContainer);
 
-    // Right-side actions (Starter Templates, Dockable Sidebars, FPS Badge)
+    // Right-side actions (Persona Switcher, Starter Templates, Dockable Sidebars, FPS Badge)
     const rightControls = document.createElement('div');
     rightControls.className = 'ribbon-right-controls';
+
+    // Wave 13: 4-Persona Adaptive UI Switcher
+    const personaGroup = document.createElement('div');
+    personaGroup.className = 'ribbon-persona-group';
+    const personaSelect = document.createElement('select');
+    personaSelect.className = 'ribbon-persona-select';
+    personaSelect.id = 'persona-selector';
+    personaSelect.setAttribute('data-testid', 'persona-selector');
+    personaSelect.innerHTML = `
+      <option value="engineer" selected>🧑‍🔬 Engineer</option>
+      <option value="maker">🛠️ Maker</option>
+      <option value="developer">💻 Developer</option>
+      <option value="ai-agent">🤖 AI-Agent</option>
+    `;
+    personaSelect.addEventListener('change', () => {
+      const p = personaSelect.value;
+      this.options.onSelectPersona?.(p);
+    });
+    personaGroup.appendChild(personaSelect);
+    rightControls.appendChild(personaGroup);
 
     // 4 Starter Templates Selector
     const templateContainer = document.createElement('div');
@@ -188,6 +229,10 @@ export class TopRibbon {
 
   public getActionContainer(): HTMLElement {
     return this.actionContainer;
+  }
+
+  public getOmniBar(): UniversalOmniBar {
+    return this.omniBar;
   }
 
   public async switchWorkbench(workbenchId: string): Promise<void> {
@@ -322,6 +367,74 @@ export class TopRibbon {
     assemblyGroup.appendChild(solveBtn);
     assemblyGroup.appendChild(benchBtn);
     this.actionContainer.appendChild(assemblyGroup);
+
+    // Wave 13: Group 6: Datums & Advanced Features (Engineer Mode)
+    const datumGroup = this.createActionGroup('Datums & Features');
+    datumGroup.classList.add('engineer-feature-group');
+    const dPlaneBtn = this.createActionButton('📍 Datum Plane', 'btn-datum-plane', () => {
+      this.options.onDatumPlane?.();
+    });
+    const dAxisBtn = this.createActionButton('🧭 Datum Axis', 'btn-datum-axis', () => {
+      this.options.onDatumAxis?.();
+    });
+    const holeBtn = this.createActionButton('🕳️ Hole Wizard', 'btn-hole-wizard', () => {
+      this.options.onHoleWizard?.();
+    });
+    const threadBtn = this.createActionButton('🔩 Thread', 'btn-thread', () => {
+      this.options.onThread?.();
+    });
+    const splitBtn = this.createActionButton('✂️ Split Body', 'btn-split-body', () => {
+      this.options.onSplitBody?.();
+    });
+    datumGroup.appendChild(dPlaneBtn);
+    datumGroup.appendChild(dAxisBtn);
+    datumGroup.appendChild(holeBtn);
+    datumGroup.appendChild(threadBtn);
+    datumGroup.appendChild(splitBtn);
+    this.actionContainer.appendChild(datumGroup);
+
+    // Wave 13: Group 7: Section View & Scrubber
+    const inspectGroup = this.createActionGroup('Inspection & Motion');
+    let sectionActive = false;
+    const sectionBtn = this.createActionButton('🔍 Section View', 'btn-section-plane', () => {
+      sectionActive = !sectionActive;
+      sectionBtn.classList.toggle('active', sectionActive);
+      this.options.onToggleSectionPlane?.(sectionActive);
+    });
+    inspectGroup.appendChild(sectionBtn);
+
+    const scrubberWrap = document.createElement('div');
+    scrubberWrap.className = 'motion-scrubber-wrap';
+    scrubberWrap.innerHTML = `
+      <label class="scrubber-label">Explode: </label>
+      <input type="range" id="ribbon-explode-scrubber" data-testid="ribbon-explode-scrubber" min="0" max="100" value="0" />
+    `;
+    const scrubberInput = scrubberWrap.querySelector('input') as HTMLInputElement;
+    scrubberInput.addEventListener('input', () => {
+      const factor = parseFloat(scrubberInput.value) / 100.0;
+      this.options.onScrubAssemblyMotion?.(factor);
+    });
+    inspectGroup.appendChild(scrubberWrap);
+    this.actionContainer.appendChild(inspectGroup);
+
+    // Wave 13: Group 8: Maker 1-Click Downloads (Maker Mode)
+    const makerGroup = this.createActionGroup('Maker Downloads');
+    makerGroup.classList.add('maker-feature-group');
+    const mStepBtn = this.createActionButton('📥 STEP', 'btn-maker-export-step', () => {
+      this.options.onExportStep?.();
+    });
+    const m3mfBtn = this.createActionButton('📥 3MF', 'btn-maker-export-3mf', () => {
+      const export3mf = (window as any).__export3mf;
+      if (export3mf) export3mf();
+    });
+    const mDxfBtn = this.createActionButton('📥 DXF', 'btn-maker-export-dxf', () => {
+      const exportDxf = (window as any).__exportDxf;
+      if (exportDxf) exportDxf();
+    });
+    makerGroup.appendChild(mStepBtn);
+    makerGroup.appendChild(m3mfBtn);
+    makerGroup.appendChild(mDxfBtn);
+    this.actionContainer.appendChild(makerGroup);
   }
 
   public renderAssemblyActions(): void {

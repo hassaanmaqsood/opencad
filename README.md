@@ -58,6 +58,18 @@ Download [**`opencad-portable.html`**](https://hassaanmaqsood.github.io/opencad/
 
 ---
 
+## 📐 The LCM Unified Interface
+
+OpenCAD features a mode-less, friction-free CAD workspace serving Makers, Engineers, Developers, and AI Agents simultaneously without mode switching:
+
+1. **Top-Center Universal Omni-Bar (<kbd>⌘K</kbd> / <kbd>/</kbd> / <kbd>S</kbd>):** Instant CAD tool searches (`extrude`, `fillet`, `thread`, `flange`, `gyroid`), math formula assignments (`width = 120`), slash commands (`/export step`, `/git diff`), and AI agent prompts.
+2. **Left "Living Recipe" Dock:** Interactive parameter sliders (slider + formula input), Feature DAG tree with inline scrubbable dimension badges, and synchronized `{ } Code` / `🌿 Git` split dock.
+3. **Center 3D/2D Viewport with On-Object HUD:** Floating HUD pill near clicked face/edge with exact editable measurement, Semantic Selector Badge (`>Z`, `@cylindrical`), quick actions, and 3D direct manipulation push/pull gizmo.
+4. **Bottom "Lenses & Timeline" Bar:** Composable viewport overlays for `[✂️ Section A-A]`, `[🔥 FEA & Flexure]`, `[📐 Unfold Sheet]`, `[📝 2D Blueprint]`, `[🛠️ 3MF & CAM]`, `[🦓 Zebra]`, plus a continuous `0° - 360°` kinematic motion scrubber and exploded view slider.
+5. **Live Telemetry & Global API:** Bottom-right live Code-CAD telemetry echo with 1-click clipboard copy, backed by the unified programmatic `window.opencad` API.
+
+---
+
 ## 🛠️ Unified Workbenches
 
 OpenCAD features 6 unified workbenches, with **Bidirectional Code-CAD** and **Git-for-CAD Semantic Versioning** dockable in every mode:

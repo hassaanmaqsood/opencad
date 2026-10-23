@@ -7,6 +7,7 @@ pub const nest = @import("nest.zig");
 pub const gcode = @import("gcode.zig");
 pub const cnc_cam = @import("cnc_cam.zig");
 pub const wasm = @import("wasm.zig");
+pub const c_types = @import("c_types.zig");
 
 pub const LineVisibility = hlr.LineVisibility;
 pub const ProjectedCurve2D = hlr.ProjectedCurve2D;

@@ -283,6 +283,7 @@ typedef struct cad_sketch_point2d_s {
     double x;            /**< X coordinate (f64 precision) */
     double y;            /**< Y coordinate (f64 precision) */
     uint8_t is_fixed;    /**< 1 if point is grounded/fixed, 0 otherwise */
+    uint8_t is_construction; /**< Wave 13: 1 if construction reference geometry */
 } cad_sketch_point2d_t;
 typedef cad_sketch_point2d_t CadSketchPoint2D;
 
@@ -293,6 +294,7 @@ typedef struct cad_sketch_line2d_s {
     uint32_t id;             /**< Unique line ID within sketch */
     uint32_t start_point_id; /**< ID of start CadSketchPoint2D */
     uint32_t end_point_id;   /**< ID of end CadSketchPoint2D */
+    uint8_t is_construction; /**< Wave 13: 1 if construction geometry */
 } cad_sketch_line2d_t;
 typedef cad_sketch_line2d_t CadSketchLine2D;
 
@@ -305,6 +307,7 @@ typedef struct cad_sketch_arc2d_s {
     uint32_t start_point_id;  /**< ID of start CadSketchPoint2D */
     uint32_t end_point_id;    /**< ID of end CadSketchPoint2D */
     double radius;            /**< Arc radius */
+    uint8_t is_construction;  /**< Wave 13: 1 if construction geometry */
 } cad_sketch_arc2d_t;
 typedef cad_sketch_arc2d_t CadSketchArc2D;
 
@@ -315,8 +318,171 @@ typedef struct cad_sketch_circle2d_s {
     uint32_t id;              /**< Unique circle ID within sketch */
     uint32_t center_point_id; /**< ID of center CadSketchPoint2D */
     double radius;            /**< Circle radius */
+    uint8_t is_construction;  /**< Wave 13: 1 if construction geometry */
 } cad_sketch_circle2d_t;
 typedef cad_sketch_circle2d_t CadSketchCircle2D;
+
+/**
+ * @brief Wave 13: 2D Cubic / NURBS Spline entity.
+ */
+typedef struct cad_sketch_spline2d_s {
+    uint32_t id;              /**< Unique spline ID within sketch */
+    uint32_t degree;          /**< Spline degree (typically 3 for cubic) */
+    uint32_t point_count;     /**< Number of control/fit points (max 16) */
+    uint32_t point_ids[16];   /**< Point IDs in sequence */
+    uint8_t is_periodic;      /**< 1 if closed/periodic spline loop */
+    uint8_t is_construction;  /**< 1 if construction reference geometry */
+} cad_sketch_spline2d_t;
+typedef cad_sketch_spline2d_t CadSketchSpline2D;
+
+/**
+ * @brief Wave 13: 2D Ellipse entity.
+ */
+typedef struct cad_sketch_ellipse2d_s {
+    uint32_t id;              /**< Unique ellipse ID within sketch */
+    uint32_t center_point_id; /**< Center point ID */
+    double major_radius;      /**< Semi-major axis radius */
+    double minor_radius;      /**< Semi-minor axis radius */
+    double rotation_angle_rad;/**< Counter-clockwise rotation angle */
+    uint8_t is_construction;  /**< 1 if construction reference geometry */
+} cad_sketch_ellipse2d_t;
+typedef cad_sketch_ellipse2d_t CadSketchEllipse2D;
+
+/**
+ * @brief Wave 13: 2D Slot entity (stadium / pill geometry).
+ */
+typedef struct cad_sketch_slot2d_s {
+    uint32_t id;              /**< Unique slot ID within sketch */
+    uint32_t center1_point_id;/**< First arc center point ID */
+    uint32_t center2_point_id;/**< Second arc center point ID */
+    double radius;            /**< Half-width radius */
+    uint8_t is_construction;  /**< 1 if construction reference geometry */
+} cad_sketch_slot2d_t;
+typedef cad_sketch_slot2d_t CadSketchSlot2D;
+
+/**
+ * @brief Wave 13: 2D Regular Inscribed/Circumscribed Polygon.
+ */
+typedef struct cad_sketch_polygon2d_s {
+    uint32_t id;              /**< Unique polygon ID within sketch */
+    uint32_t center_point_id; /**< Center point ID */
+    double radius;            /**< Inscribed/circumscribed radius */
+    uint32_t side_count;      /**< Number of sides (>= 3) */
+    double rotation_angle_rad;/**< Orientation angle */
+    uint8_t is_construction;  /**< 1 if construction reference geometry */
+} cad_sketch_polygon2d_t;
+typedef cad_sketch_polygon2d_t CadSketchPolygon2D;
+
+/**
+ * @brief Wave 13: 2D Vector Text Outline.
+ */
+typedef struct cad_sketch_text2d_s {
+    uint32_t id;              /**< Unique text ID within sketch */
+    uint32_t origin_point_id; /**< Baseline origin point ID */
+    char text[64];            /**< Text string */
+    double font_size;         /**< Font height (mm) */
+    double rotation_angle_rad;/**< Text baseline angle (radians) */
+    uint8_t is_construction;  /**< 1 if construction reference geometry */
+} cad_sketch_text2d_t;
+typedef cad_sketch_text2d_t CadSketchText2D;
+
+/**
+ * @brief Wave 13: 2D Sketch Boolean Operation Types.
+ */
+typedef enum cad_sketch_bool_op_e {
+    CAD_SKETCH_BOOL_UNION = 0,
+    CAD_SKETCH_BOOL_SUBTRACT = 1,
+    CAD_SKETCH_BOOL_INTERSECT = 2
+} cad_sketch_bool_op_t;
+
+/**
+ * @brief Wave 13: 2D Closed Planar Region descriptor.
+ */
+typedef struct cad_sketch_region_s {
+    uint32_t region_id;       /**< Unique region identifier */
+    double area;              /**< Enclosed area (mm^2) */
+    double perimeter;         /**< Boundary perimeter (mm) */
+    uint32_t loop_count;      /**< Outer loop + internal islands */
+    uint8_t is_outer;         /**< 1 if outer boundary region */
+} cad_sketch_region_t;
+typedef cad_sketch_region_t CadSketchRegion;
+
+/**
+ * @brief Wave 13: 3D Sketch Point Primitive.
+ */
+typedef struct cad_sketch_point3d_s {
+    uint32_t id;
+    double x;
+    double y;
+    double z;
+    uint8_t is_fixed;
+    uint8_t is_construction;
+} cad_sketch_point3d_t;
+typedef cad_sketch_point3d_t CadSketchPoint3D;
+
+/**
+ * @brief Wave 13: 3D Sketch Line Segment.
+ */
+typedef struct cad_sketch_line3d_s {
+    uint32_t id;
+    uint32_t start_point_id;
+    uint32_t end_point_id;
+    uint8_t is_construction;
+} cad_sketch_line3d_t;
+typedef cad_sketch_line3d_t CadSketchLine3D;
+
+/**
+ * @brief Wave 13: 3D Sketch Circular Arc.
+ */
+typedef struct cad_sketch_arc3d_s {
+    uint32_t id;
+    uint32_t center_point_id;
+    uint32_t start_point_id;
+    uint32_t end_point_id;
+    double normal[3];
+    double radius;
+    uint8_t is_construction;
+} cad_sketch_arc3d_t;
+typedef cad_sketch_arc3d_t CadSketchArc3D;
+
+/**
+ * @brief Wave 13: 3D Sketch Spline.
+ */
+typedef struct cad_sketch_spline3d_s {
+    uint32_t id;
+    uint32_t degree;
+    uint32_t point_count;
+    uint32_t point_ids[16];
+    uint8_t is_construction;
+} cad_sketch_spline3d_t;
+typedef cad_sketch_spline3d_t CadSketchSpline3D;
+
+/**
+ * @brief Wave 13: 3D Sketch Geometric Constraint Types.
+ */
+typedef enum cad_sketch3d_constraint_type_e {
+    CAD_3D_ALONG_X = 0,
+    CAD_3D_ALONG_Y = 1,
+    CAD_3D_ALONG_Z = 2,
+    CAD_3D_ON_PLANE = 3,
+    CAD_3D_TANGENT = 4,
+    CAD_3D_PERPENDICULAR = 5,
+    CAD_3D_DISTANCE = 6
+} cad_sketch3d_constraint_type_t;
+
+/**
+ * @brief Wave 13: 3D Sketch Constraint.
+ */
+typedef struct cad_sketch_constraint3d_s {
+    uint32_t id;
+    cad_sketch3d_constraint_type_t type;
+    uint32_t entity1_id;
+    uint32_t entity2_id;
+    double parameter_value;
+    double plane_normal[3];
+    uint8_t is_driving;
+} cad_sketch_constraint3d_t;
+typedef cad_sketch_constraint3d_t CadSketchConstraint3D;
 
 /**
  * @brief Geometric constraint types supported by the 2D solver.
@@ -438,6 +604,80 @@ cad_status_t cad_sketch_get_dof(
     uint32_t* out_dof
 );
 
+/**
+ * @brief Wave 13: 2D Sketch Modifiers & Boolean Operations.
+ */
+cad_status_t cad_sketch_fillet_2d(
+    cad_sketch_point2d_t* points, uint32_t* point_count,
+    cad_sketch_line2d_t* lines, uint32_t line_count,
+    cad_sketch_arc2d_t* out_arcs, uint32_t* arc_count,
+    uint32_t line1_id, uint32_t line2_id, double radius
+);
+
+cad_status_t cad_sketch_chamfer_2d(
+    cad_sketch_point2d_t* points, uint32_t* point_count,
+    cad_sketch_line2d_t* lines, uint32_t* line_count,
+    uint32_t line1_id, uint32_t line2_id, double distance
+);
+
+cad_status_t cad_sketch_offset_wire(
+    const cad_wire_2d_t* in_wire,
+    double distance,
+    cad_wire_2d_t* out_wire
+);
+
+cad_status_t cad_sketch_trim_curve(
+    cad_sketch_line2d_t* lines, uint32_t* line_count,
+    cad_sketch_arc2d_t* arcs, uint32_t* arc_count,
+    uint32_t curve_id, double click_x, double click_y
+);
+
+cad_status_t cad_sketch_pattern_2d(
+    const cad_wire_2d_t* base_wire,
+    uint32_t pattern_type, /* 0 = Linear, 1 = Circular */
+    uint32_t count_x, double spacing_x,
+    uint32_t count_y, double spacing_y,
+    double center_x, double center_y, double total_angle_rad,
+    cad_wire_2d_t** out_wires, uint32_t* out_wire_count
+);
+
+cad_status_t cad_sketch_boolean_2d(
+    const cad_wire_2d_t* wire_a,
+    const cad_wire_2d_t* wire_b,
+    cad_sketch_bool_op_t op,
+    cad_wire_2d_t* out_wire
+);
+
+cad_status_t cad_sketch_extract_regions(
+    const cad_sketch_line2d_t* lines, uint32_t line_count,
+    const cad_sketch_arc2d_t* arcs, uint32_t arc_count,
+    cad_sketch_region_t** out_regions, uint32_t* out_region_count
+);
+
+void cad_sketch_regions_free(cad_sketch_region_t* regions);
+
+/**
+ * @brief Wave 13: 3D Sketch Solver & Degrees-of-Freedom Analysis.
+ */
+cad_status_t cad_sketch3d_solve(
+    cad_sketch_point3d_t* points, uint32_t point_count,
+    const cad_sketch_line3d_t* lines, uint32_t line_count,
+    const cad_sketch_arc3d_t* arcs, uint32_t arc_count,
+    const cad_sketch_spline3d_t* splines, uint32_t spline_count,
+    const cad_sketch_constraint3d_t* constraints, uint32_t constraint_count,
+    uint32_t max_iterations, double convergence_tol,
+    cad_solver_status_t* out_status
+);
+
+cad_status_t cad_sketch3d_get_dof(
+    uint32_t point_count,
+    const cad_sketch_line3d_t* lines, uint32_t line_count,
+    const cad_sketch_arc3d_t* arcs, uint32_t arc_count,
+    const cad_sketch_spline3d_t* splines, uint32_t spline_count,
+    const cad_sketch_constraint3d_t* constraints, uint32_t constraint_count,
+    uint32_t* out_dof
+);
+
 /* ------------------------------------------------------------------------- */
 /* Wave 3: Parametric Feature DAG, Persistent Naming & Sub-Shape Slices       */
 /* ------------------------------------------------------------------------- */
@@ -488,7 +728,12 @@ typedef enum cad_feature_type_e {
     CAD_FEATURE_FILLET = 6,
     CAD_FEATURE_CHAMFER = 7,
     CAD_FEATURE_SHELL = 8,
-    CAD_FEATURE_DRAFT = 9
+    CAD_FEATURE_DRAFT = 9,
+    CAD_FEATURE_SPLIT_BODY = 10,
+    CAD_FEATURE_HOLE_WIZARD = 11,
+    CAD_FEATURE_THREAD = 12,
+    CAD_FEATURE_DATUM_PLANE = 13,
+    CAD_FEATURE_DATUM_AXIS = 14
 } cad_feature_type_t;
 typedef cad_feature_type_t CadFeatureType;
 
@@ -563,12 +808,108 @@ typedef struct cad_draft_op_s {
 typedef cad_draft_op_t CadDraftOp;
 
 /**
+ * @brief Wave 13: Feature Boolean Combining Modes.
+ */
+typedef enum cad_bool_mode_e {
+    CAD_BOOL_NEW_BODY = 0,   /**< Creates new independent solid body */
+    CAD_BOOL_ADD = 1,        /**< Inline boolean union with target solid */
+    CAD_BOOL_CUT = 2,        /**< Inline boolean subtract from target solid */
+    CAD_BOOL_INTERSECT = 3   /**< Inline boolean intersection with target solid */
+} cad_bool_mode_t;
+typedef cad_bool_mode_t CadBoolMode;
+
+/**
+ * @brief Wave 13: Datum Plane creation modes and payload.
+ */
+typedef enum cad_datum_plane_type_e {
+    CAD_DATUM_PLANE_OFFSET = 0,
+    CAD_DATUM_PLANE_ANGLE = 1,
+    CAD_DATUM_PLANE_3POINT = 2,
+    CAD_DATUM_PLANE_MIDPLANE = 3,
+    CAD_DATUM_PLANE_TANGENT = 4
+} cad_datum_plane_type_t;
+
+typedef struct cad_datum_plane_s {
+    cad_datum_plane_type_t type;
+    cad_vec3_t origin;
+    cad_vec3_t normal;
+    double offset_distance;
+    double angle_rad;
+} cad_datum_plane_t;
+typedef cad_datum_plane_t CadDatumPlane;
+
+/**
+ * @brief Wave 13: Datum Axis creation modes and payload.
+ */
+typedef enum cad_datum_axis_type_e {
+    CAD_DATUM_AXIS_CYLINDER = 0,
+    CAD_DATUM_AXIS_TWO_PLANES = 1,
+    CAD_DATUM_AXIS_TWO_POINTS = 2
+} cad_datum_axis_type_t;
+
+typedef struct cad_datum_axis_s {
+    cad_datum_axis_type_t type;
+    cad_vec3_t point;
+    cad_vec3_t direction;
+} cad_datum_axis_t;
+typedef cad_datum_axis_t CadDatumAxis;
+
+/**
+ * @brief Wave 13: Hole Wizard Hole Types and parameters.
+ */
+typedef enum cad_hole_type_e {
+    CAD_HOLE_SIMPLE = 0,
+    CAD_HOLE_COUNTERBORE = 1,
+    CAD_HOLE_COUNTERSINK = 2,
+    CAD_HOLE_TAPPED = 3
+} cad_hole_type_t;
+
+typedef struct cad_hole_wizard_op_s {
+    cad_hole_type_t hole_type;
+    double diameter;
+    double depth;
+    double cbore_diameter;
+    double cbore_depth;
+    double csink_diameter;
+    double csink_angle_deg;
+    double thread_pitch;
+    uint8_t is_through;
+    cad_vec3_t position;
+    cad_vec3_t normal;
+} cad_hole_wizard_op_t;
+typedef cad_hole_wizard_op_t CadHoleWizardOp;
+
+/**
+ * @brief Wave 13: Standard Thread Parameters.
+ */
+typedef enum cad_thread_standard_e {
+    CAD_THREAD_METRIC_COARSE = 0,
+    CAD_THREAD_METRIC_FINE = 1,
+    CAD_THREAD_UNC = 2,
+    CAD_THREAD_UNF = 3,
+    CAD_THREAD_TRAPEZOIDAL = 4
+} cad_thread_standard_t;
+
+typedef struct cad_thread_op_s {
+    cad_thread_standard_t standard;
+    double nominal_diameter;
+    double pitch;
+    double length;
+    uint8_t is_modeled;      /**< 0 = Cosmetic texture/metadata, 1 = Exact 3D helical B-Rep sweep */
+    uint8_t is_internal;     /**< 0 = External bolt thread, 1 = Internal tapped thread */
+    cad_vec3_t axis_origin;
+    cad_vec3_t axis_direction;
+} cad_thread_op_t;
+typedef cad_thread_op_t CadThreadOp;
+
+/**
  * @brief Parametric feature node within the directed acyclic graph (DAG).
  */
 typedef struct cad_feature_node_s {
     uint32_t feature_id;                 /**< Unique feature ID in DAG */
     cad_feature_type_t type;             /**< Feature operation type */
     uint8_t is_suppressed;               /**< 1 if feature is suppressed/disabled, 0 if active */
+    cad_bool_mode_t bool_mode;           /**< Wave 13: Inline Boolean combining mode */
 
     /* Parent dependency tracking */
     uint32_t parent_count;               /**< Number of direct parent dependencies */
@@ -604,6 +945,14 @@ typedef struct cad_feature_node_s {
         struct {
             uint32_t tool_feature_id;    /**< Feature ID providing tool solid */
         } boolean_op;
+        cad_hole_wizard_op_t hole_wizard;/**< Wave 13: Hole Wizard */
+        cad_thread_op_t thread;          /**< Wave 13: Cosmetic or modeled thread */
+        cad_datum_plane_t datum_plane;   /**< Wave 13: Construction Datum Plane */
+        cad_datum_axis_t datum_axis;     /**< Wave 13: Construction Datum Axis */
+        struct {
+            cad_vec3_t plane_origin;
+            cad_vec3_t plane_normal;
+        } split_body;                    /**< Wave 13: Split body tool */
     } params;
 } cad_feature_node_t;
 typedef cad_feature_node_t CadFeatureNode;
@@ -774,7 +1123,10 @@ typedef enum cad_assembly_mate_type_e {
     CAD_MATE_PARALLEL = 2,      /**< MATE_PARALLEL: Parallel planar normals or axes */
     CAD_MATE_DISTANCE = 3,      /**< MATE_DISTANCE: Fixed Euclidean offset distance */
     CAD_MATE_ANGLE = 4,         /**< MATE_ANGLE: Fixed dihedral angle between planar entities */
-    CAD_MATE_GEAR = 5           /**< MATE_GEAR: Coupled rotational gear/pitch ratio */
+    CAD_MATE_GEAR = 5,          /**< MATE_GEAR: Coupled rotational gear/pitch ratio */
+    CAD_MATE_RACK_PINION = 6,   /**< Wave 13: Rack and pinion rotational-to-linear coupling */
+    CAD_MATE_SCREW = 7,         /**< Wave 13: Lead screw pitch helical coupling */
+    CAD_MATE_CAM = 8            /**< Wave 13: Cam and follower tangential profile coupling */
 } cad_assembly_mate_type_t;
 typedef cad_assembly_mate_type_t CadAssemblyMateType;
 
@@ -846,6 +1198,41 @@ cad_status_t cad_assembly_solve_transforms(
     double convergence_tol,
     float* out_transforms_f32,
     cad_assembly_solve_status_t* out_status
+);
+
+/**
+ * @brief Wave 13: 3D Exploded View Trail Polyline.
+ */
+typedef struct cad_explode_trail_line_s {
+    float start[3];
+    float end[3];
+    uint32_t instance_id;
+} cad_explode_trail_line_t;
+typedef cad_explode_trail_line_t CadExplodeTrailLine;
+
+/**
+ * @brief Wave 13: Step assembly motion for kinematic simulation and animation.
+ */
+cad_status_t cad_assembly_step_motion(
+    const cad_assembly_instance_t* instances,
+    uint32_t instance_count,
+    const cad_assembly_mate_t* mates,
+    uint32_t mate_count,
+    double delta_time,
+    float* out_transforms_f32,
+    cad_assembly_solve_status_t* out_status
+);
+
+/**
+ * @brief Wave 13: Generate exploded assembly transforms and 3D guide trail lines.
+ */
+cad_status_t cad_assembly_exploded_view(
+    const cad_assembly_instance_t* instances,
+    uint32_t instance_count,
+    float explode_factor,
+    float* out_transforms_f32,
+    cad_explode_trail_line_t* out_trails,
+    uint32_t* out_trail_count
 );
 
 /* ------------------------------------------------------------------------- */
@@ -1210,6 +1597,39 @@ typedef cad_drawing_view_t CadDrawingView;
  */
 cad_status_t cad_hlr_project_view(
     cad_solid_handle_t solid,
+    const cad_drawing_view_params_t* params,
+    cad_drawing_view_t* out_view
+);
+
+/**
+ * @brief Wave 13: Project a 2D section view slicing the solid with automatic 45-degree cross-hatching.
+ */
+cad_status_t cad_hlr_section_view(
+    cad_solid_handle_t solid,
+    const double plane_point[3],
+    const double plane_normal[3],
+    const cad_drawing_view_params_t* params,
+    cad_drawing_view_t* out_view
+);
+
+/**
+ * @brief Wave 13: Project an auxiliary drawing view along an arbitrary normal vector.
+ */
+cad_status_t cad_hlr_auxiliary_view(
+    cad_solid_handle_t solid,
+    const double normal_vector[3],
+    const cad_drawing_view_params_t* params,
+    cad_drawing_view_t* out_view
+);
+
+/**
+ * @brief Wave 13: Project a circular detail callout view scaled up with circular boundary clipping.
+ */
+cad_status_t cad_hlr_detail_view(
+    cad_solid_handle_t solid,
+    const double center_2d[2],
+    double radius,
+    double scale,
     const cad_drawing_view_params_t* params,
     cad_drawing_view_t* out_view
 );
@@ -2167,6 +2587,45 @@ cad_status_t cad_implicit_eval_grid(
     const double spacing[3],
     const uint32_t dims[3],
     float* out_grid
+);
+
+/**
+ * @brief Wave 13: Direct Datum, Hole Wizard, Thread, and Split Body operations.
+ */
+cad_status_t cad_op_hole_wizard(
+    cad_solid_handle_t solid,
+    const cad_hole_wizard_op_t* op,
+    cad_solid_handle_t* out_solid
+);
+
+cad_status_t cad_op_thread(
+    cad_solid_handle_t solid,
+    const cad_thread_op_t* op,
+    cad_solid_handle_t* out_solid
+);
+
+cad_status_t cad_op_split_body(
+    cad_solid_handle_t solid,
+    const double plane_point[3],
+    const double plane_normal[3],
+    cad_solid_handle_t* out_solid_positive,
+    cad_solid_handle_t* out_solid_negative
+);
+
+cad_status_t cad_datum_plane(
+    cad_datum_plane_type_t type,
+    const double origin[3],
+    const double normal[3],
+    double offset_distance,
+    double angle_rad,
+    cad_datum_plane_t* out_plane
+);
+
+cad_status_t cad_datum_axis(
+    cad_datum_axis_type_t type,
+    const double point[3],
+    const double direction[3],
+    cad_datum_axis_t* out_axis
 );
 
 #ifdef __cplusplus

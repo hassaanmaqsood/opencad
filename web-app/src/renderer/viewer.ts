@@ -237,6 +237,74 @@ export class CadViewer {
     this.meshManager.setInspectionMode(mode);
   }
 
+  public clippingPlane: THREE.Plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+  public isSectionPlaneEnabled: boolean = false;
+  public explodeFactor: number = 0.0;
+
+  public enableSectionPlane(enabled: boolean, normal = new THREE.Vector3(0, 0, 1), constant = 0): void {
+    this.isSectionPlaneEnabled = enabled;
+    this.renderer.localClippingEnabled = enabled;
+    this.clippingPlane.normal.copy(normal).normalize();
+    this.clippingPlane.constant = constant;
+    this.renderer.clippingPlanes = enabled ? [this.clippingPlane] : [];
+  }
+
+  public setSectionPlaneConstant(constant: number): void {
+    this.clippingPlane.constant = constant;
+  }
+
+  public setExplodeFactor(factor: number): void {
+    this.explodeFactor = factor;
+    // Displace root mesh objects if assembly instances are present
+    const solidMesh = this.meshManager.solidMesh;
+    if (solidMesh) {
+      solidMesh.position.set(0, 0, factor * 2.0);
+    }
+  }
+
+  public setAssemblyMotionAngle(angleDeg: number): void {
+    const rad = (angleDeg * Math.PI) / 180;
+    if (this.meshManager.solidMesh) {
+      this.meshManager.solidMesh.rotation.y = rad;
+    }
+  }
+
+  public getFps(): number {
+    return this.fpsCounter.getFps();
+  }
+
+  public getTriangleCount(): number {
+    return this.meshManager.getTriangleCount();
+  }
+
+  public captureScreenshot(viewAngle: 'current' | 'front' | 'top' | 'isometric' = 'current'): string {
+    const originalPos = this.camera.position.clone();
+    const originalTarget = this.controls.target.clone();
+
+    if (viewAngle === 'front') {
+      this.camera.position.set(0, 0, 10);
+      this.camera.lookAt(0, 0, 0);
+    } else if (viewAngle === 'top') {
+      this.camera.position.set(0, 10, 0);
+      this.camera.lookAt(0, 0, 0);
+    } else if (viewAngle === 'isometric') {
+      this.camera.position.set(6, 6, 8);
+      this.camera.lookAt(0, 0, 0);
+    }
+    this.camera.updateProjectionMatrix();
+    this.renderer.render(this.scene, this.camera);
+    const dataUrl = this.canvas.toDataURL('image/png');
+
+    if (viewAngle !== 'current') {
+      this.camera.position.copy(originalPos);
+      this.controls.target.copy(originalTarget);
+      this.camera.lookAt(originalTarget);
+      this.camera.updateProjectionMatrix();
+      this.renderer.render(this.scene, this.camera);
+    }
+    return dataUrl;
+  }
+
   public enterSketchMode(plane: DatumPlane = 'XY'): void {
     this.setSelection({ type: 'none' });
     this.sketchManager.enterSketchMode(plane);

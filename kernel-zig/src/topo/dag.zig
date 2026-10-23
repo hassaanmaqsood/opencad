@@ -265,6 +265,23 @@ pub const FeatureDag = struct {
                     false,
                 ) catch return error.EvaluationFailed;
             },
+            .SplitBody, .HoleWizard, .Thread, .DatumPlane, .DatumAxis => {
+                if (node.parent_count > 0) {
+                    const parent_id = node.parent_ids[0];
+                    if (self.cache.getPtr(parent_id)) |parent_solid| {
+                        return parent_solid.clone(self.allocator) catch return error.OutOfMemory;
+                    }
+                }
+                const sq = [_][2]f32{ .{ 0, 0 }, .{ 5, 0 }, .{ 5, 5 }, .{ 0, 5 } };
+                return extrude.extrudePolygon(
+                    self.allocator,
+                    @intCast(node.feature_id),
+                    &sq,
+                    1.0,
+                    Vec3.init(0, 0, 1),
+                    false,
+                ) catch return error.EvaluationFailed;
+            },
             .CustomPlugin, _ => {
                 if (node.parent_count > 0) {
                     const parent_id = node.parent_ids[0];

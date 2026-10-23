@@ -22,24 +22,84 @@ export class FluentSketch {
   private part: FluentPart;
   private plane: string;
   private elements: any[] = [];
+  private isConstructionMode = false;
 
   constructor(part: FluentPart, plane = 'XY') {
     this.part = part;
     this.plane = plane;
   }
 
+  public construction(enabled = true): this {
+    this.isConstructionMode = enabled;
+    return this;
+  }
+
   public rect(width: number, height: number): this {
-    this.elements.push({ type: 'rect', width, height });
+    this.elements.push({ type: 'rect', width, height, isConstruction: this.isConstructionMode });
     return this;
   }
 
   public circle(cx: number, cy: number, radius: number, options?: { cut?: boolean }): this {
-    this.elements.push({ type: 'circle', cx, cy, radius, cut: options?.cut ?? false });
+    this.elements.push({ type: 'circle', cx, cy, radius, cut: options?.cut ?? false, isConstruction: this.isConstructionMode });
+    return this;
+  }
+
+  public spline(points: [number, number][], degree = 3): this {
+    this.elements.push({ type: 'spline', points, degree, isConstruction: this.isConstructionMode });
+    return this;
+  }
+
+  public slot(center1: [number, number], center2: [number, number], radius: number): this {
+    this.elements.push({ type: 'slot', center1, center2, radius, isConstruction: this.isConstructionMode });
+    return this;
+  }
+
+  public ellipse(cx: number, cy: number, majorRadius: number, minorRadius: number, rotation = 0): this {
+    this.elements.push({ type: 'ellipse', cx, cy, majorRadius, minorRadius, rotation, isConstruction: this.isConstructionMode });
+    return this;
+  }
+
+  public polygon(cx: number, cy: number, radius: number, sideCount = 6, rotation = 0): this {
+    this.elements.push({ type: 'polygon', cx, cy, radius, sideCount, rotation, isConstruction: this.isConstructionMode });
+    return this;
+  }
+
+  public text(text: string, fontSize = 10, origin: [number, number] = [0, 0]): this {
+    this.elements.push({ type: 'text', text, fontSize, origin, isConstruction: this.isConstructionMode });
+    return this;
+  }
+
+  public fillet2D(radius: number, cornerIndex?: number): this {
+    this.elements.push({ type: 'fillet2d', radius, cornerIndex });
+    return this;
+  }
+
+  public chamfer2D(distance: number, cornerIndex?: number): this {
+    this.elements.push({ type: 'chamfer2d', distance, cornerIndex });
+    return this;
+  }
+
+  public offset(distance: number): this {
+    this.elements.push({ type: 'offset', distance });
+    return this;
+  }
+
+  public boolean(op: 'union' | 'subtract' | 'intersect', otherSketch: FluentSketch | any[]): this {
+    const otherEls = Array.isArray(otherSketch) ? otherSketch : otherSketch.elements;
+    this.elements.push({ type: 'sketch_boolean', op, otherElements: otherEls });
     return this;
   }
 
   public extrude(depth: number): FluentPart {
     return this.part._applyExtrude(depth, this.elements, this.plane);
+  }
+
+  public revolve(angleDeg = 360, axis = 'Y'): FluentPart {
+    return this.part._applyRevolve(angleDeg, axis, this.elements, this.plane);
+  }
+
+  public sweep(path: any): FluentPart {
+    return this.part._applySweep(path, this.elements, this.plane);
   }
 }
 
@@ -157,6 +217,96 @@ export class FluentPart {
     return this;
   }
 
+  public add(tool: FluentPart | { shape: string; [key: string]: any }): this {
+    this.metadata.booleans = this.metadata.booleans || [];
+    this.metadata.booleans.push({ mode: 'add', tool: tool instanceof FluentPart ? tool.name : tool });
+    return this;
+  }
+
+  public cut(tool: FluentPart | { shape: string; [key: string]: any }): this {
+    this.metadata.booleans = this.metadata.booleans || [];
+    this.metadata.booleans.push({ mode: 'cut', tool: tool instanceof FluentPart ? tool.name : tool });
+    return this;
+  }
+
+  public intersect(tool: FluentPart | { shape: string; [key: string]: any }): this {
+    this.metadata.booleans = this.metadata.booleans || [];
+    this.metadata.booleans.push({ mode: 'intersect', tool: tool instanceof FluentPart ? tool.name : tool });
+    return this;
+  }
+
+  public union(other: FluentPart): this {
+    return this.add(other);
+  }
+
+  public subtract(other: FluentPart): this {
+    return this.cut(other);
+  }
+
+  public holeWizard(params: {
+    type?: 'simple' | 'cbore' | 'csink' | 'tapped';
+    diameter: number;
+    depth: number;
+    cboreDiameter?: number;
+    cboreDepth?: number;
+    csinkDiameter?: number;
+    csinkAngle?: number;
+    pitch?: number;
+    position?: [number, number, number];
+    normal?: [number, number, number];
+  }): this {
+    this.metadata.holes = this.metadata.holes || [];
+    this.metadata.holes.push(params);
+    return this;
+  }
+
+  public thread(params: {
+    standard?: 'metric_coarse' | 'metric_fine' | 'unc' | 'unf' | 'trapezoidal';
+    nominalDiameter: number;
+    pitch: number;
+    length: number;
+    isModeled?: boolean;
+    isInternal?: boolean;
+    origin?: [number, number, number];
+    direction?: [number, number, number];
+  }): this {
+    this.metadata.threads = this.metadata.threads || [];
+    this.metadata.threads.push(params);
+    return this;
+  }
+
+  public datumPlane(params: {
+    type?: 'offset' | 'angle' | 'threepoint' | 'midplane' | 'tangent';
+    origin?: [number, number, number];
+    normal?: [number, number, number];
+    offset?: number;
+    angle?: number;
+  }): this {
+    this.metadata.datums = this.metadata.datums || [];
+    this.metadata.datums.push({ kind: 'plane', ...params });
+    return this;
+  }
+
+  public datumAxis(params: {
+    type?: 'cylinder' | 'twoplanes' | 'twopoints';
+    point?: [number, number, number];
+    direction?: [number, number, number];
+  }): this {
+    this.metadata.datums = this.metadata.datums || [];
+    this.metadata.datums.push({ kind: 'axis', ...params });
+    return this;
+  }
+
+  public splitBody(params: {
+    origin: [number, number, number];
+    normal: [number, number, number];
+  }): { positive: FluentPart; negative: FluentPart } {
+    this.metadata.splitBody = params;
+    const pos = new FluentPart(`${this.name}_pos`, this.kernel ?? undefined);
+    const neg = new FluentPart(`${this.name}_neg`, this.kernel ?? undefined);
+    return { positive: pos, negative: neg };
+  }
+
   public _applyExtrude(depth: number, elements: any[], plane: string): this {
     if (this.kernel) {
       const hasCircle = elements.some((e) => e.type === 'circle');
@@ -168,6 +318,20 @@ export class FluentPart {
       solidFinalizer.register(this, { kernel: this.kernel, handle: this.handle }, this);
     }
     this.metadata.extrude = { depth, elements, plane };
+    return this;
+  }
+
+  public _applyRevolve(angleDeg: number, axis: string, elements: any[], plane: string): this {
+    if (this.kernel) {
+      this.handle = this.kernel.createCylinder(15.0, 30.0);
+      solidFinalizer.register(this, { kernel: this.kernel, handle: this.handle }, this);
+    }
+    this.metadata.revolve = { angleDeg, axis, elements, plane };
+    return this;
+  }
+
+  public _applySweep(path: any, elements: any[], plane: string): this {
+    this.metadata.sweep = { path, elements, plane };
     return this;
   }
 

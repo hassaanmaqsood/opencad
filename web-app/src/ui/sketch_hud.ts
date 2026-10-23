@@ -81,6 +81,34 @@ export class SketchHud {
         </div>
       </div>
 
+      <!-- Wave 13: Advanced 2D Entities & Modifiers -->
+      <div class="sketch-row">
+        <label class="sketch-label">Entities:</label>
+        <div class="sketch-btn-group">
+          <button id="tool-spline" class="btn-toggle" title="NURBS Spline" data-testid="tool-spline">Spline</button>
+          <button id="tool-slot" class="btn-toggle" title="Slot / Stadium" data-testid="tool-slot">Slot</button>
+          <button id="tool-text" class="btn-toggle" title="Vector Text" data-testid="tool-text">Text</button>
+        </div>
+      </div>
+
+      <div class="sketch-row">
+        <label class="sketch-label">Modify:</label>
+        <div class="sketch-btn-group">
+          <button id="tool-fillet-2d" class="btn-toggle" title="2D Fillet" data-testid="tool-fillet-2d">Fillet</button>
+          <button id="tool-chamfer-2d" class="btn-toggle" title="2D Chamfer" data-testid="tool-chamfer-2d">Chamfer</button>
+          <button id="tool-offset" class="btn-toggle" title="Offset Wire" data-testid="tool-offset">Offset</button>
+          <button id="tool-trim" class="btn-toggle" title="Trim Curve" data-testid="tool-trim">Trim</button>
+        </div>
+      </div>
+
+      <div class="sketch-row">
+        <label class="sketch-label">Mode:</label>
+        <div class="sketch-btn-group">
+          <button id="btn-toggle-construction" class="btn-toggle" title="Toggle Construction Geometry (Q)" data-testid="btn-toggle-construction">Const (Q)</button>
+          <button id="btn-pick-regions" class="btn-toggle" title="Pick Closed Planar Regions" data-testid="btn-pick-regions">Regions</button>
+        </div>
+      </div>
+
       <!-- Constraints -->
       <div class="sketch-section-title">Geometric Constraints</div>
       <div class="sketch-constraints-grid">
@@ -155,15 +183,46 @@ export class SketchHud {
       { id: 'tool-rect', type: 'rectangle' },
       { id: 'tool-circle', type: 'circle' },
       { id: 'tool-arc', type: 'arc' },
+      { id: 'tool-spline', type: 'spline' },
+      { id: 'tool-slot', type: 'slot' },
+      { id: 'tool-text', type: 'text' },
+      { id: 'tool-fillet-2d', type: 'fillet' },
+      { id: 'tool-chamfer-2d', type: 'chamfer' },
+      { id: 'tool-offset', type: 'offset' },
+      { id: 'tool-trim', type: 'trim' },
     ];
 
     for (const t of tools) {
       document.getElementById(t.id)?.addEventListener('click', () => {
         tools.forEach((item) => document.getElementById(item.id)?.classList.remove('active'));
         document.getElementById(t.id)?.classList.add('active');
-        this.manager.tools.setTool(t.type);
+        this.manager.setTool(t.type);
       });
     }
+
+    // Construction Mode Toggle (Button & 'Q' shortcut)
+    const constBtn = document.getElementById('btn-toggle-construction');
+    const toggleConst = () => {
+      const active = this.manager.toggleConstruction();
+      constBtn?.classList.toggle('active', active);
+    };
+    constBtn?.addEventListener('click', toggleConst);
+
+    window.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (this.manager.inSketchMode && (e.key === 'q' || e.key === 'Q')) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          toggleConst();
+        }
+      }
+    });
+
+    // Planar Regions Picking
+    const regionsBtn = document.getElementById('btn-pick-regions');
+    regionsBtn?.addEventListener('click', () => {
+      regionsBtn.classList.toggle('active');
+    });
 
     // Constraint buttons
     document.getElementById('c-horizontal')?.addEventListener('click', () => {

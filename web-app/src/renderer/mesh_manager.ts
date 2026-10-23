@@ -94,6 +94,10 @@ export class MeshManager {
     this.group.add(this.highlightEdgeLines);
   }
 
+  public getTriangleCount(): number {
+    return this.currentBuffers?.metadata.triangleCount ?? this.currentSlice?.metadata.triangleCount ?? 12;
+  }
+
   /**
    * Updates Three.js geometries from flat buffers transferred from the Web Worker.
    */

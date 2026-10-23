@@ -122,6 +122,44 @@ class Solid:
         self.history.append(f"shell(t={thickness})")
         return self
 
+    def add(self, other: Union[Solid, str]) -> Solid:
+        self.history.append(f"add({other})")
+        return self
+
+    def cut(self, other: Union[Solid, str]) -> Solid:
+        self.history.append(f"cut({other})")
+        return self
+
+    def intersect(self, other: Union[Solid, str]) -> Solid:
+        self.history.append(f"intersect({other})")
+        return self
+
+    def union(self, other: Solid) -> Solid:
+        return self.add(other)
+
+    def subtract(self, other: Solid) -> Solid:
+        return self.cut(other)
+
+    def hole_wizard(self, diameter: float, depth: float, hole_type: str = "simple", **kwargs) -> Solid:
+        self.history.append(f"hole_wizard(type={hole_type}, d={diameter}, depth={depth})")
+        return self
+
+    def thread(self, nominal_diameter: float, pitch: float, length: float, standard: str = "metric_coarse", is_modeled: bool = True, **kwargs) -> Solid:
+        self.history.append(f"thread(std={standard}, d={nominal_diameter}, p={pitch}, l={length})")
+        return self
+
+    def datum_plane(self, offset: float = 0.0, normal: Tuple[float, float, float] = (0, 0, 1), **kwargs) -> Solid:
+        self.history.append(f"datum_plane(offset={offset}, n={normal})")
+        return self
+
+    def datum_axis(self, direction: Tuple[float, float, float] = (0, 1, 0), **kwargs) -> Solid:
+        self.history.append(f"datum_axis(dir={direction})")
+        return self
+
+    def split_body(self, origin: Tuple[float, float, float] = (0, 0, 0), normal: Tuple[float, float, float] = (0, 0, 1)) -> Tuple[Solid, Solid]:
+        self.history.append(f"split_body(orig={origin}, n={normal})")
+        return (Solid(f"{self.name}_pos"), Solid(f"{self.name}_neg"))
+
     def sketch(self, plane: str = XY) -> SketchBuilder:
         return SketchBuilder(plane=plane, solid=self)
 
@@ -210,6 +248,42 @@ class SketchBuilder:
         self.elements.append({"type": "line", "x": x, "y": y})
         return self
 
+    def spline(self, points: List[Tuple[float, float]], degree: int = 3) -> SketchBuilder:
+        self.elements.append({"type": "spline", "points": points, "degree": degree})
+        return self
+
+    def slot(self, c1: Tuple[float, float], c2: Tuple[float, float], radius: float) -> SketchBuilder:
+        self.elements.append({"type": "slot", "c1": c1, "c2": c2, "radius": radius})
+        return self
+
+    def ellipse(self, cx: float, cy: float, major_radius: float, minor_radius: float, rotation: float = 0.0) -> SketchBuilder:
+        self.elements.append({"type": "ellipse", "cx": cx, "cy": cy, "major_radius": major_radius, "minor_radius": minor_radius, "rotation": rotation})
+        return self
+
+    def polygon(self, cx: float, cy: float, radius: float, sides: int = 6, rotation: float = 0.0) -> SketchBuilder:
+        self.elements.append({"type": "polygon", "cx": cx, "cy": cy, "radius": radius, "sides": sides, "rotation": rotation})
+        return self
+
+    def text(self, text: str, font_size: float = 10.0, origin: Tuple[float, float] = (0, 0)) -> SketchBuilder:
+        self.elements.append({"type": "text", "text": text, "font_size": font_size, "origin": origin})
+        return self
+
+    def fillet(self, radius: float) -> SketchBuilder:
+        self.elements.append({"type": "fillet2d", "radius": radius})
+        return self
+
+    def chamfer(self, distance: float) -> SketchBuilder:
+        self.elements.append({"type": "chamfer2d", "distance": distance})
+        return self
+
+    def offset(self, distance: float) -> SketchBuilder:
+        self.elements.append({"type": "offset", "distance": distance})
+        return self
+
+    def boolean(self, op: str, other: Any) -> SketchBuilder:
+        self.elements.append({"type": "sketch_boolean", "op": op, "other": other})
+        return self
+
     def extrude(self, height: float) -> Solid:
         meta = {
             "faces": 2 + len(self.elements) * 4,
@@ -221,17 +295,22 @@ class SketchBuilder:
         name = self.solid.name if self.solid else f"Extrude_{self.plane}_{height}mm"
         return Solid(name, handle=2, metadata=meta)
 
+    def revolve(self, angle_deg: float = 360.0, axis: str = "Y") -> Solid:
+        meta = {
+            "faces": 4,
+            "edges": 4,
+            "vertices": 0,
+            "revolve_angle": angle_deg,
+            "axis": axis,
+            "plane": self.plane,
+        }
+        name = self.solid.name if self.solid else f"Revolve_{axis}_{angle_deg}deg"
+        return Solid(name, handle=2, metadata=meta)
+
 
 def part(name: str = "Part") -> Solid:
     """Create a new fluent parametric Part with auto-disposing context manager."""
     return Solid(name=name)
-            "faces": 2 + len(self.elements) * 4,
-            "edges": len(self.elements) * 8,
-            "vertices": len(self.elements) * 6,
-            "extrude_height": height,
-            "plane": self.plane,
-        }
-        return Solid(f"Extrude_{self.plane}_{height}mm", handle=2, metadata=meta)
 
 
 def sketch(plane: str = XY) -> SketchBuilder:

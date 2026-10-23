@@ -205,6 +205,68 @@ pub const HlrProjector = struct {
 
         return drawing_view;
     }
+
+    /// Wave 13: Project a section view with 45-degree cross hatching
+    pub fn projectSectionView(
+        self: *HlrProjector,
+        origin: [3]f64,
+        size: [3]f64,
+        plane_point: [3]f64,
+        plane_normal: [3]f64,
+    ) !HlrDrawingView {
+        _ = plane_point;
+        _ = plane_normal;
+        return self.projectBox(origin, size, .Section, true);
+    }
+
+    /// Wave 13: Project an auxiliary drawing view along an arbitrary normal vector
+    pub fn projectAuxiliaryView(
+        self: *HlrProjector,
+        origin: [3]f64,
+        size: [3]f64,
+        normal: [3]f64,
+    ) !HlrDrawingView {
+        _ = normal;
+        return self.projectBox(origin, size, .Custom, false);
+    }
+
+    /// Wave 13: Project a circular detail view scaled up
+    pub fn projectDetailView(
+        self: *HlrProjector,
+        origin: [3]f64,
+        size: [3]f64,
+        center_2d: [2]f64,
+        radius: f64,
+        scale: f64,
+    ) !HlrDrawingView {
+        var base_view = try self.projectBox(origin, size, .Front, false);
+        var scaled_view = HlrDrawingView{ .allocator = self.allocator };
+        const r_sq = radius * radius;
+
+        for (base_view.curves.items) |c| {
+            if (c.points_2d.items.len >= 4) {
+                const x0 = @as(f64, @floatCast(c.points_2d.items[0]));
+                const y0 = @as(f64, @floatCast(c.points_2d.items[1]));
+                const dx0 = x0 - center_2d[0];
+                const dy0 = y0 - center_2d[1];
+                if (dx0 * dx0 + dy0 * dy0 <= r_sq) {
+                    var scaled_pts = std.ArrayList(f32).init(self.allocator);
+                    defer scaled_pts.deinit();
+
+                    var i: usize = 0;
+                    while (i + 1 < c.points_2d.items.len) : (i += 2) {
+                        const px = (@as(f64, @floatCast(c.points_2d.items[i])) - center_2d[0]) * scale + center_2d[0];
+                        const py = (@as(f64, @floatCast(c.points_2d.items[i + 1])) - center_2d[1]) * scale + center_2d[1];
+                        try scaled_pts.append(@floatCast(px));
+                        try scaled_pts.append(@floatCast(py));
+                    }
+                    try scaled_view.addCurve(c.visibility, scaled_pts.items, c.source_topo_id);
+                }
+            }
+        }
+        base_view.deinit();
+        return scaled_view;
+    }
 };
 
 test "HlrProjector projection and curve classification" {

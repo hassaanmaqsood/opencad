@@ -1,6 +1,18 @@
 import { CadSketchPoint2D } from '../types/cad';
 
-export type SketchToolType = 'select' | 'line' | 'rectangle' | 'circle' | 'arc';
+export type SketchToolType =
+  | 'select'
+  | 'line'
+  | 'rectangle'
+  | 'circle'
+  | 'arc'
+  | 'spline'
+  | 'slot'
+  | 'text'
+  | 'fillet'
+  | 'chamfer'
+  | 'offset'
+  | 'trim';
 
 export interface SnapTarget {
   type: 'point' | 'origin' | 'grid';
@@ -18,6 +30,7 @@ export interface InferenceState {
 
 export class SketchTools {
   public activeTool: SketchToolType = 'select';
+  public isConstruction: boolean = false;
   private step: number = 0;
   private startPoint: { u: number; v: number; pointId?: number } | null = null;
   private intermediatePoint: { u: number; v: number; pointId?: number } | null = null;
@@ -30,6 +43,11 @@ export class SketchTools {
   public setTool(tool: SketchToolType): void {
     this.activeTool = tool;
     this.reset();
+  }
+
+  public toggleConstruction(): boolean {
+    this.isConstruction = !this.isConstruction;
+    return this.isConstruction;
   }
 
   public reset(): void {
