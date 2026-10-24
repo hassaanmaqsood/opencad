@@ -27,10 +27,18 @@
 Every OpenCAD distribution channel works directly from GitHub without needing npm, PyPI, or Crates.io tokens.
 
 ### 1. HTML `<opencad-viewer>` Web Component (2 Lines)
-Embed interactive 3D parametric models with real-time sliders in any HTML page, Notion, or Markdown doc:
+Embed interactive 3D parametric models with real-time sliders and 1-click STL export in any HTML page, Notion, or Markdown doc:
 ```html
 <script type="module" src="https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad-element.mjs"></script>
+<!-- Full Interactive Studio with Sliders -->
 <opencad-viewer template="template-cnc-bracket" sliders="true" height="500px"></opencad-viewer>
+
+<!-- Minimal Embed Mode with Declarative Actions -->
+<opencad-viewer 
+  template="template-cnc-bracket" 
+  config='{"sliders":false,"share":[],"actions":["exportSTL"]}' 
+  height="400px">
+</opencad-viewer>
 ```
 
 ### 2. Universal ESM CDN Import (1 Line)
@@ -39,6 +47,9 @@ import { OpenCadCore } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@
 
 const cad = await OpenCadCore.create();
 const box = cad.createBox(50, 30, 10);
+
+// Native Watertight Binary or ASCII STL Export
+const stlBytes = cad.exportStl(box, { binary: true, deflection: 0.02 });
 ```
 
 ### 3. Git-Based Package Installs (Zero External Accounts)
@@ -87,19 +98,31 @@ OpenCAD features 6 unified workbenches, with **Bidirectional Code-CAD** and **Gi
 
 ## 📦 Standalone Headless SDK & CLI
 
-### CLI Headless Build Tool (`.ocad.ts -> .step / .3mf / .dxf / .gcode`)
+### CLI Headless Build Tool (`.ocad.ts -> .stl / .step / .3mf / .dxf / .gcode`)
 ```bash
 # Build and export all manufacturing outputs in headless CI/CD
-npx opencad build bracket.ocad.ts --step --3mf --dxf --gcode --out-dir ./dist
+npx opencad build bracket.ocad.ts --stl --step --3mf --dxf --gcode --out-dir ./dist
 ```
 
-### Headless Programmatic Pipeline
+### Headless Programmatic Pipeline (CAD + CAE + CAM)
 ```typescript
 import { OpenCadCore } from 'opencad';
 
 // 1. Initialize core WASM kernel
 const core = await OpenCadCore.create();
-const box = core.createBox(50, 40, 20);
+
+// 2. CAD: Solid B-Rep Modeling
+const part = core.part("bracket")
+  .box(80, 50, 20)
+  .filletAll(3.0);
+
+// 3. CAE: Finite Element Analysis & Telemetry
+const compliance = core.solveCompliance(part.handle);
+const maxStress = core.computePeakVonMises(part.handle);
+
+// 4. CAM & Production Exports
+const stlBytes = part.exportStl({ binary: true, deflection: 0.02 });
+const stepString = part.exportStep();
 ```
 
 ---

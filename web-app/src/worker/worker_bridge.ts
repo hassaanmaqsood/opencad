@@ -14,6 +14,7 @@ import {
   SetRollbackIndexWorkerRequest,
   ImportStepWorkerRequest,
   ExportStepWorkerRequest,
+  ExportStlWorkerRequest,
   SolveAssemblyWorkerRequest,
   AssemblySolvedTransferPayload,
   CadAssemblySolveStatus,
@@ -49,6 +50,13 @@ export class CadWorkerBridge {
     number,
     {
       resolve: (value: string) => void;
+      reject: (reason?: any) => void;
+    }
+  >();
+  private pendingExportStlRequests = new Map<
+    number,
+    {
+      resolve: (value: Uint8Array | string) => void;
       reject: (reason?: any) => void;
     }
   >();
@@ -158,6 +166,14 @@ export class CadWorkerBridge {
         this.pendingExportStepRequests.delete(requestId);
         pending.resolve(payload.stepText);
       }
+    } else if (data.type === 'STL_EXPORTED') {
+      const payload = data as { requestId?: number; stlData: Uint8Array | string; isBinary: boolean };
+      const requestId = payload.requestId ?? 0;
+      const pending = this.pendingExportStlRequests.get(requestId);
+      if (pending) {
+        this.pendingExportStlRequests.delete(requestId);
+        pending.resolve(payload.stlData);
+      }
     } else if (data.type === 'ASSEMBLY_SOLVED') {
       const payload = data as AssemblySolvedTransferPayload;
       const requestId = payload.requestId ?? 0;
@@ -230,6 +246,11 @@ export class CadWorkerBridge {
         this.pendingExportStepRequests.delete(requestId);
         pendingExport.reject(new Error(data.error || 'Worker STEP export error'));
       }
+      const pendingExportStl = this.pendingExportStlRequests.get(requestId);
+      if (pendingExportStl) {
+        this.pendingExportStlRequests.delete(requestId);
+        pendingExportStl.reject(new Error(data.error || 'Worker STL export error'));
+      }
       const pendingAssembly = this.pendingAssemblyRequests.get(requestId);
       if (pendingAssembly) {
         this.pendingAssemblyRequests.delete(requestId);
@@ -255,6 +276,10 @@ export class CadWorkerBridge {
     for (const [id, req] of this.pendingExportStepRequests.entries()) {
       req.reject(new Error(`Worker encountered error: ${e.message}`));
       this.pendingExportStepRequests.delete(id);
+    }
+    for (const [id, req] of this.pendingExportStlRequests.entries()) {
+      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      this.pendingExportStlRequests.delete(id);
     }
     for (const [id, req] of this.pendingAssemblyRequests.entries()) {
       req.reject(new Error(`Worker encountered error: ${e.message}`));
@@ -332,6 +357,24 @@ export class CadWorkerBridge {
       const req: ExportStepWorkerRequest = {
         type: 'EXPORT_STEP',
         requestId,
+      };
+      this.worker.postMessage(req);
+    });
+  }
+
+  public async exportStl(options?: {
+    binary?: boolean;
+    deflection?: number;
+    solidName?: string;
+  }): Promise<Uint8Array | string> {
+    const requestId = this.nextRequestId++;
+
+    return new Promise<Uint8Array | string>((resolve, reject) => {
+      this.pendingExportStlRequests.set(requestId, { resolve, reject });
+      const req: ExportStlWorkerRequest = {
+        type: 'EXPORT_STL',
+        requestId,
+        options,
       };
       this.worker.postMessage(req);
     });
@@ -498,6 +541,7 @@ export class CadWorkerBridge {
     this.pendingSketchRequests.clear();
     this.pendingDagRequests.clear();
     this.pendingExportStepRequests.clear();
+    this.pendingExportStlRequests.clear();
     this.pendingAssemblyRequests.clear();
     this.pendingAstCountRequests.clear();
     this.pendingAstFormatRequests.clear();

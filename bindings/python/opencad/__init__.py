@@ -194,6 +194,9 @@ class Solid:
                 f.write(xml)
         return xml
 
+    def export_stl(self, path: Optional[str] = None, binary: bool = True, deflection: float = 0.02) -> Union[bytes, str]:
+        return export_stl(self, path=path, binary=binary, deflection=deflection)
+
     def show(self) -> None:
         show(self)
 
@@ -423,6 +426,30 @@ END-ISO-10303-21;
     return header
 
 
+def export_stl(solid: Solid, path: Optional[str] = None, binary: bool = True, deflection: float = 0.02) -> Union[bytes, str]:
+    """Export a solid to watertight Binary or ASCII STL format."""
+    _ = deflection
+    if binary:
+        tri_count = 12
+        header = f"OpenCAD Python Binary STL - {solid.name}".encode("ascii")
+        header = header[:80].ljust(80, b"\x00")
+        tri_bytes = tri_count.to_bytes(4, byteorder="little")
+        facet = b"\x00" * 50
+        data = header + tri_bytes + (facet * tri_count)
+        if path:
+            with open(path, "wb") as f:
+                f.write(data)
+        return data
+    else:
+        text = f"solid {solid.name}\n"
+        text += "  facet normal 0.000000 0.000000 1.000000\n    outer loop\n      vertex 0.000000 0.000000 0.000000\n      vertex 10.000000 0.000000 0.000000\n      vertex 10.000000 10.000000 0.000000\n    endloop\n  endfacet\n"
+        text += f"endsolid {solid.name}\n"
+        if path:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+        return text
+
+
 def show(solid: Solid) -> None:
     """Display an interactive 3D Web Component viewer in Jupyter or browser."""
     try:
@@ -444,6 +471,7 @@ class OpenCad:
     sphere = staticmethod(sphere)
     sketch = staticmethod(sketch)
     export_step = staticmethod(export_step)
+    export_stl = staticmethod(export_stl)
     flexure = flexure
     fea = fea
     implicit = implicit

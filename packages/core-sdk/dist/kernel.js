@@ -127,6 +127,84 @@ export class OpenCadKernel {
         const bytes = new Uint8Array(this.exports.memory.buffer, ptr, len);
         return new TextDecoder().decode(bytes);
     }
+    exportStl(handle, options) {
+        this.assertInitialized();
+        const binary = options?.binary !== false;
+        const deflection = options?.deflection ?? 0.02;
+        if (this.exports.cad_wasm_stl_export && this.exports.cad_wasm_stl_export_len) {
+            const ptr = this.exports.cad_wasm_stl_export(handle, deflection, 0.5, binary);
+            const len = this.exports.cad_wasm_stl_export_len();
+            if (ptr && len > 0) {
+                const raw = new Uint8Array(this.exports.memory.buffer, ptr, len).slice();
+                return binary ? raw : new TextDecoder().decode(raw);
+            }
+        }
+        const mesh = this.tessellate(handle, deflection, 0.5);
+        if (!mesh) {
+            throw new Error('Failed to tessellate solid for STL export');
+        }
+        const triCount = Math.floor(mesh.indices.length / 3);
+        if (binary) {
+            const buf = new Uint8Array(84 + triCount * 50);
+            new TextEncoder().encodeInto('OpenCAD Binary STL Export', buf);
+            const view = new DataView(buf.buffer);
+            view.setUint32(80, triCount, true);
+            let offset = 84;
+            for (let t = 0; t < triCount; t++) {
+                const i0 = mesh.indices[t * 3];
+                const i1 = mesh.indices[t * 3 + 1];
+                const i2 = mesh.indices[t * 3 + 2];
+                const v1 = [mesh.positions[i0 * 3], mesh.positions[i0 * 3 + 1], mesh.positions[i0 * 3 + 2]];
+                const v2 = [mesh.positions[i1 * 3], mesh.positions[i1 * 3 + 1], mesh.positions[i1 * 3 + 2]];
+                const v3 = [mesh.positions[i2 * 3], mesh.positions[i2 * 3 + 1], mesh.positions[i2 * 3 + 2]];
+                const ax = v2[0] - v1[0], ay = v2[1] - v1[1], az = v2[2] - v1[2];
+                const bx = v3[0] - v1[0], by = v3[1] - v1[1], bz = v3[2] - v1[2];
+                let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+                const l = Math.hypot(nx, ny, nz) || 1.0;
+                view.setFloat32(offset, nx / l, true);
+                offset += 4;
+                view.setFloat32(offset, ny / l, true);
+                offset += 4;
+                view.setFloat32(offset, nz / l, true);
+                offset += 4;
+                for (const v of [v1, v2, v3]) {
+                    view.setFloat32(offset, v[0], true);
+                    offset += 4;
+                    view.setFloat32(offset, v[1], true);
+                    offset += 4;
+                    view.setFloat32(offset, v[2], true);
+                    offset += 4;
+                }
+                view.setUint16(offset, 0, true);
+                offset += 2;
+            }
+            return buf;
+        }
+        else {
+            let out = 'solid opencad_model\n';
+            for (let t = 0; t < triCount; t++) {
+                const i0 = mesh.indices[t * 3];
+                const i1 = mesh.indices[t * 3 + 1];
+                const i2 = mesh.indices[t * 3 + 2];
+                const v1 = [mesh.positions[i0 * 3], mesh.positions[i0 * 3 + 1], mesh.positions[i0 * 3 + 2]];
+                const v2 = [mesh.positions[i1 * 3], mesh.positions[i1 * 3 + 1], mesh.positions[i1 * 3 + 2]];
+                const v3 = [mesh.positions[i2 * 3], mesh.positions[i2 * 3 + 1], mesh.positions[i2 * 3 + 2]];
+                const ax = v2[0] - v1[0], ay = v2[1] - v1[1], az = v2[2] - v1[2];
+                const bx = v3[0] - v1[0], by = v3[1] - v1[1], bz = v3[2] - v1[2];
+                let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+                const l = Math.hypot(nx, ny, nz) || 1.0;
+                out += `  facet normal ${(nx / l).toFixed(6)} ${(ny / l).toFixed(6)} ${(nz / l).toFixed(6)}\n`;
+                out += `    outer loop\n`;
+                out += `      vertex ${v1[0].toFixed(6)} ${v1[1].toFixed(6)} ${v1[2].toFixed(6)}\n`;
+                out += `      vertex ${v2[0].toFixed(6)} ${v2[1].toFixed(6)} ${v2[2].toFixed(6)}\n`;
+                out += `      vertex ${v3[0].toFixed(6)} ${v3[1].toFixed(6)} ${v3[2].toFixed(6)}\n`;
+                out += `    endloop\n`;
+                out += `  endfacet\n`;
+            }
+            out += 'endsolid opencad_model\n';
+            return out;
+        }
+    }
     importStep(stepText) {
         this.assertInitialized();
         if (!this.exports.cad_wasm_step_import) {

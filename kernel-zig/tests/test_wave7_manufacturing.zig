@@ -269,3 +269,34 @@ test "Wave 7: CNC CAM toolpath non-gouging invariant and G-code formatting" {
     try std.testing.expectApproxEqAbs(-expected_offset, pts[0], 1e-3);
     try std.testing.expectApproxEqAbs(-expected_offset, pts[1], 1e-3);
 }
+
+test "Wave 15: Watertight Binary & ASCII STL export from B-Rep solid" {
+    _ = cad.cad_kernel_init();
+    defer _ = cad.cad_kernel_deinit();
+
+    var box_h: cad.c_abi.CadSolidHandle = 0;
+    try std.testing.expectEqual(cad.c_abi.CadStatus.Ok, cad.cad_primitive_box(20.0, 30.0, 40.0, &box_h));
+
+    // 1. Binary STL Export
+    var bin_ptr: [*]u8 = undefined;
+    var bin_len: usize = 0;
+    try std.testing.expectEqual(cad.c_abi.CadStatus.Ok, cad.cad_export_stl(box_h, 0.02, 0.5, true, &bin_ptr, &bin_len));
+    defer _ = cad.cad_stl_free(bin_ptr, bin_len);
+
+    try std.testing.expect(bin_len >= 84);
+    const tri_count = std.mem.readInt(u32, bin_ptr[80..][0..4], .little);
+    try std.testing.expectEqual(@as(u32, 12), tri_count); // 6 box faces * 2 triangles = 12
+    try std.testing.expectEqual(@as(usize, 80 + 4 + 12 * 50), bin_len);
+
+    // 2. ASCII STL Export
+    var ascii_ptr: [*]u8 = undefined;
+    var ascii_len: usize = 0;
+    try std.testing.expectEqual(cad.c_abi.CadStatus.Ok, cad.cad_export_stl(box_h, 0.02, 0.5, false, &ascii_ptr, &ascii_len));
+    defer _ = cad.cad_stl_free(ascii_ptr, ascii_len);
+
+    const ascii_slice = ascii_ptr[0..ascii_len];
+    try std.testing.expect(std.mem.startsWith(u8, ascii_slice, "solid OpenCAD_Part\n"));
+    try std.testing.expect(std.mem.indexOf(u8, ascii_slice, "facet normal") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ascii_slice, "vertex") != null);
+    try std.testing.expect(std.mem.endsWith(u8, ascii_slice, "endsolid OpenCAD_Part\n"));
+}

@@ -62,6 +62,10 @@ export class TelemetryBar {
     this.container.setAttribute('data-ocad-telemetry', commandStr);
   }
 
+  public setCode(code: string): void {
+    this.setCommand(code);
+  }
+
   public getCommand(): string {
     return this.currentCommand;
   }

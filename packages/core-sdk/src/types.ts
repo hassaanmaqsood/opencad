@@ -269,6 +269,8 @@ export interface CadCoreWasmExports {
   cad_wasm_step_export?: (handle: number | bigint) => number;
   cad_wasm_step_export_len?: () => number;
   cad_wasm_step_import?: (ptr: number, len: number) => number;
+  cad_wasm_stl_export?: (handle: number | bigint, chordal: number, angular: number, binary: boolean) => number;
+  cad_wasm_stl_export_len?: () => number;
   cad_assembly_solve_transforms?: (
     instancesPtr: number,
     instanceCount: number,
