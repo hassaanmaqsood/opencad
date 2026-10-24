@@ -8,6 +8,7 @@ const threemf = @import("threemf.zig");
 const nest = @import("nest.zig");
 const gcode = @import("gcode.zig");
 const cnc_cam = @import("cnc_cam.zig");
+const stl_io = @import("stl_io.zig");
 const c_abi = @import("c_types.zig");
 
 var wasm_allocator = if (builtin.cpu.arch == .wasm32) std.heap.wasm_allocator else std.heap.page_allocator;

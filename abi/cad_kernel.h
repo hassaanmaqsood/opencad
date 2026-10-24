@@ -1708,6 +1708,35 @@ cad_status_t cad_export_3mf_production(
 );
 
 /**
+ * @brief Export a B-Rep solid to watertight Binary or ASCII STL format.
+ *
+ * @param solid Solid handle to export
+ * @param chordal_deflection Maximum allowed distance between surface and mesh triangles (mm)
+ * @param angular_deflection Maximum allowed normal variation angle between adjacent triangles (rad)
+ * @param binary True for compact 50-byte facet binary format, false for ASCII format
+ * @param out_stl_bytes Output pointer to allocated STL byte buffer (caller must free with cad_stl_free)
+ * @param out_stl_len Output byte length of the generated STL buffer
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_export_stl(
+    cad_solid_handle_t solid,
+    float chordal_deflection,
+    float angular_deflection,
+    bool binary,
+    uint8_t** out_stl_bytes,
+    size_t* out_stl_len
+);
+
+/**
+ * @brief Free an STL buffer allocated by cad_export_stl.
+ *
+ * @param ptr Pointer to the allocated buffer
+ * @param len Byte length of the buffer
+ * @return CAD_STATUS_OK on success
+ */
+cad_status_t cad_stl_free(uint8_t* ptr, size_t len);
+
+/**
  * @brief Nesting solver optimization strategy.
  */
 typedef enum cad_nesting_mode_e {

@@ -52,12 +52,14 @@ console.log('[dist-publish] Generating opencad.d.ts...');
 const dtsTypes = fs.readFileSync(path.resolve(rootDir, 'packages/core-sdk/dist/types.d.ts'), 'utf8');
 const dtsLoader = fs.readFileSync(path.resolve(rootDir, 'packages/core-sdk/dist/loader.d.ts'), 'utf8');
 const dtsKernel = fs.readFileSync(path.resolve(rootDir, 'packages/core-sdk/dist/kernel.d.ts'), 'utf8');
+const dtsFluent = fs.readFileSync(path.resolve(rootDir, 'packages/core-sdk/dist/fluent.d.ts'), 'utf8');
 const dtsElement = fs.readFileSync(path.resolve(rootDir, 'packages/core-sdk/dist/element.d.ts'), 'utf8');
 
-const combinedDts = `// OpenCAD TypeScript Definitions Bundle (Wave 11)
+const combinedDts = `// OpenCAD TypeScript Definitions Bundle (Wave 15)
 ${dtsTypes.replace(/import\s+.*?;/g, '').replace(/export\s+\*.*?;/g, '')}
 ${dtsLoader.replace(/import\s+.*?;/g, '').replace(/export\s+\*.*?;/g, '')}
 ${dtsKernel.replace(/import\s+.*?;/g, '').replace(/export\s+\*.*?;/g, '')}
+${dtsFluent.replace(/import\s+.*?;/g, '').replace(/export\s+\*.*?;/g, '')}
 ${dtsElement.replace(/import\s+.*?;/g, '').replace(/export\s+\*.*?;/g, '')}
 `;
 fs.writeFileSync(path.resolve(distPublishDir, 'opencad.d.ts'), combinedDts, 'utf8');
@@ -207,6 +209,7 @@ const portableHtml = `<!DOCTYPE html>
       <input type="range" id="slider-depth" class="slider-input" min="0.5" max="5.0" step="0.1" value="2.0">
     </div>
     <button class="btn-export" id="btn-export-step">📥 Export STEP (.step)</button>
+    <button class="btn-export" id="btn-export-stl" style="background: #2563eb; margin-top: 6px;">📥 Export STL (.stl)</button>
   </div>
 
   <div class="instructions">
@@ -256,6 +259,34 @@ const portableHtml = `<!DOCTYPE html>
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = "box_" + w + "x" + h + "x" + d + ".step";
+        a.click();
+      });
+
+      document.getElementById('btn-export-stl').addEventListener('click', () => {
+        const w = parseFloat(sWidth.value), h = parseFloat(sHeight.value), d = parseFloat(sDepth.value);
+        let stl = "solid box\\n";
+        const facets = [
+          [0,0,-1, [0,0,0], [w,0,0], [w,h,0]],
+          [0,0,-1, [0,0,0], [w,h,0], [0,h,0]],
+          [0,0,1, [0,0,d], [w,h,d], [w,0,d]],
+          [0,0,1, [0,0,d], [0,h,d], [w,h,d]],
+          [0,-1,0, [0,0,0], [w,0,d], [w,0,0]],
+          [0,-1,0, [0,0,0], [0,0,d], [w,0,d]],
+          [0,1,0, [0,h,0], [w,h,0], [w,h,d]],
+          [0,1,0, [0,h,0], [w,h,d], [0,h,d]],
+          [-1,0,0, [0,0,0], [0,h,0], [0,h,d]],
+          [-1,0,0, [0,0,0], [0,h,d], [0,0,d]],
+          [1,0,0, [w,0,0], [w,h,d], [w,h,0]],
+          [1,0,0, [w,0,0], [w,0,d], [w,h,d]]
+        ];
+        for (const [nx, ny, nz, v1, v2, v3] of facets) {
+          stl += \`  facet normal \${nx} \${ny} \${nz}\\n    outer loop\\n      vertex \${v1[0]} \${v1[1]} \${v1[2]}\\n      vertex \${v2[0]} \${v2[1]} \${v2[2]}\\n      vertex \${v3[0]} \${v3[1]} \${v3[2]}\\n    endloop\\n  endfacet\\n\`;
+        }
+        stl += "endsolid box\\n";
+        const blob = new Blob([stl], { type: 'model/stl' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = \`box_\${w}x\${h}x\${d}.stl\`;
         a.click();
       });
     }

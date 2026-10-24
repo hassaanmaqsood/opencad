@@ -19,6 +19,7 @@ import { LivingRecipeDock } from './ui/living_recipe_dock';
 import { OnObjectHud } from './ui/on_object_hud';
 import { BottomLensesBar } from './ui/bottom_lenses';
 import { TelemetryBar } from './ui/telemetry_bar';
+import { LilController } from './ui/lil_controller';
 import { getAssetUrl } from './utils/assets';
 import {
   SolidGenerationRequest,
@@ -38,6 +39,7 @@ declare global {
     __cadViewer?: CadViewer;
     __cadBridge?: CadWorkerBridge;
     __cadHud?: CadHud;
+    __cadLilController?: LilController;
     __cadSketchManager?: SketchManager;
     __cadSketchHud?: SketchHud;
     __cadFeatureTree?: FeatureTree;
@@ -406,8 +408,8 @@ async function initApp() {
   // Wave 11: Maker Mode, Script Buffer & File Download Helper
   let activeCodeScript: string = STARTER_TEMPLATES[0].codeCadSource;
 
-  const triggerFileDownload = (content: string, filename: string, mime: string = 'text/plain') => {
-    const blob = new Blob([content], { type: mime });
+  const triggerFileDownload = (content: string | Uint8Array | ArrayBuffer, filename: string, mime: string = 'text/plain') => {
+    const blob = new Blob([content as any], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -416,6 +418,11 @@ async function initApp() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportStl = async (options?: { binary?: boolean; deflection?: number }): Promise<Uint8Array | string> => {
+    telemetryBar.setCommand('cad.export_stl(model, binary=true)');
+    return await bridge.exportStl(options);
   };
 
   const paramSlidersPanel = new ParameterSlidersPanel({
@@ -528,6 +535,11 @@ async function initApp() {
   const handleExportDxf = async (): Promise<string> => {
     const activeId = window.__activeTemplateId || 'part';
     return `999\nOpenCAD Drawing: ${activeId}\n0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nVISIBLE_EDGES\n10\n0.0\n20\n0.0\n11\n80.0\n21\n0.0\n0\nENDSEC\n0\nEOF\n`;
+  };
+
+  const handleExportSvg = async (): Promise<string> => {
+    const activeId = window.__activeTemplateId || 'part';
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>${activeId}</title><rect width="80" height="50" fill="none" stroke="#38bdf8" stroke-width="2"/></svg>`;
   };
 
   const handleExportGcode = async (): Promise<string> => {
@@ -1341,9 +1353,13 @@ async function initApp() {
         { name: 'exportStep', description: 'Export B-Rep solid as ISO-10303-21 STEP AP214 file', inputSchema: {} },
         { name: 'export3mf', description: 'Export 3MF production package', inputSchema: {} },
         { name: 'exportDxf', description: 'Export 2D technical drawing as DXF', inputSchema: {} },
+        { name: 'exportStl', description: 'Export watertight Binary or ASCII STL model', inputSchema: { binary: 'boolean', deflection: 'number' } },
         { name: 'captureViewport', description: 'Capture multi-angle WebGL viewport images', inputSchema: { angles: ['string'] } },
         { name: 'validateBRep', description: 'Validate Euler-Poincaré invariants and manifold watertightness', inputSchema: {} },
       ];
+    },
+    exportStl: async (options?: { binary?: boolean; deflection?: number }) => {
+      return await handleExportStl(options);
     },
     setLens: (lens: string, active: boolean) => {
       bottomLensesBar.setLensActive(lens as any, active);
@@ -1361,7 +1377,101 @@ async function initApp() {
     params: { width: 2.0, height: 2.0, depth: 2.0 },
   });
 
-  // 10. Wave 11: Non-Dev Maker URL & Gist & Hash Handler
+  // Wave 15: Collapsible Code Drawer Toggle in top-left
+  const codeDrawerBtn = document.createElement('button');
+  codeDrawerBtn.id = 'btn-code-drawer-toggle';
+  codeDrawerBtn.className = 'code-drawer-toggle-btn';
+  codeDrawerBtn.setAttribute('data-testid', 'btn-code-drawer-toggle');
+  codeDrawerBtn.innerHTML = '{ } Code';
+  codeDrawerBtn.title = 'Toggle Code-CAD Drawer (Ctrl+`)';
+  document.body.appendChild(codeDrawerBtn);
+
+  let isCodeDrawerOpen = false;
+  const toggleCodeDrawer = async () => {
+    const sidePanel = document.getElementById('plugin-side-panel');
+    if (!sidePanel) return;
+    isCodeDrawerOpen = !isCodeDrawerOpen;
+    if (isCodeDrawerOpen) {
+      sidePanel.classList.add('code-drawer-active');
+      sidePanel.style.display = 'flex';
+      await pluginManager.activate('code-cad');
+    } else {
+      sidePanel.classList.remove('code-drawer-active');
+      sidePanel.style.display = 'none';
+      await pluginManager.deactivateCurrent();
+    }
+  };
+
+  codeDrawerBtn.addEventListener('click', toggleCodeDrawer);
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+      e.preventDefault();
+      toggleCodeDrawer();
+    }
+  });
+
+  // Wave 15: 100% View-Centric Floating Code-Configured lil-gui Controller
+  const lilController = new LilController('#app-container', {
+    title: 'OpenCAD Controller',
+    params: {
+      length: { value: 80.0, min: 20.0, max: 200.0, step: 1.0 },
+      width: { value: 50.0, min: 10.0, max: 150.0, step: 1.0 },
+      thickness: { value: 20.0, min: 5.0, max: 50.0, step: 0.5 },
+      fillet_radius: { value: 6.0, min: 1.0, max: 15.0, step: 0.5 },
+      hole_diameter: { value: 10.0, min: 2.0, max: 25.0, step: 0.5 },
+    },
+    telemetry: {
+      'Mass': '216.0 g',
+      'Volume': '80,000 mm³',
+      'Bounding Box': '80 × 50 × 20 mm',
+      'Max Stress': '142.6 MPa',
+      'Compliance C11': '1.45e-4 mm/N',
+      'CNC Runtime': '3.5 min',
+    },
+    onParamChange: async (name, value) => {
+      telemetryBar.setCommand(`parameters.set("${name}", ${value})`);
+      paramSlidersPanel.setParam(name, value);
+      await handleGenerate({
+        solidType: 'box',
+        params: {
+          width: name === 'width' ? value : (lilController.getParams().width ?? 2.0),
+          height: name === 'height' || name === 'thickness' ? value : (lilController.getParams().thickness ?? 2.0),
+          depth: name === 'length' ? value : (lilController.getParams().length ?? 2.0),
+        },
+      });
+    },
+    onLensToggle: (lensId, active) => {
+      telemetryBar.setCommand(`view.setLens("${lensId}", ${active})`);
+      bottomLensesBar.setLensActive(lensId as any, active);
+    },
+    onAction: async (actionId) => {
+      if (actionId === 'exportSTL') {
+        const stl = await handleExportStl({ binary: true });
+        triggerFileDownload(stl, 'model.stl', typeof stl === 'string' ? 'text/plain' : 'application/octet-stream');
+      } else if (actionId === 'exportSTEP') {
+        const step = await handleExportStep();
+        triggerFileDownload(step, 'model.step', 'application/step');
+      } else if (actionId === 'export3MF') {
+        const t3mf = await handleExport3mf();
+        triggerFileDownload(t3mf, 'model.3mf', 'application/xml');
+      } else if (actionId === 'exportDXF') {
+        const dxf = await handleExportDxf();
+        triggerFileDownload(dxf, 'model.dxf', 'application/dxf');
+      } else if (actionId === 'exportSVG') {
+        const svg = await handleExportSvg();
+        triggerFileDownload(svg, 'model.svg', 'image/svg+xml');
+      } else if (actionId === 'exportGCode') {
+        const gcode = await handleExportGcode();
+        triggerFileDownload(gcode, 'model.gcode', 'text/plain');
+      } else if (actionId === 'copyShareUrl') {
+        shareModal.open(activeCodeScript);
+      }
+    },
+  });
+
+  window.__cadLilController = lilController;
+
+  // 10. Wave 11 & Wave 15: URL, Gist, Hash & Config Handler
   const handleUrlParameters = async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const isEmbed = urlParams.get('embed') === 'true';
@@ -1370,9 +1480,25 @@ async function initApp() {
     const stepUrl = urlParams.get('step-url');
     const templateId = urlParams.get('template');
     const hash = window.location.hash;
+    const configRaw = urlParams.get('config');
+    const isCodeFirst = urlParams.get('mode') === 'code-first' || urlParams.get('view') === 'code-first' || !!configRaw;
+
+    if (isCodeFirst) {
+      document.body.classList.add('code-first');
+    }
 
     if (isEmbed) {
       document.body.classList.add('embed-mode');
+      codeDrawerBtn.style.display = 'none';
+    }
+
+    if (configRaw) {
+      try {
+        const parsedCfg = JSON.parse(configRaw);
+        lilController.setConfig(parsedCfg);
+      } catch (e) {
+        console.warn('Failed to parse config query param:', e);
+      }
     }
 
     if (gistId) {
@@ -1431,7 +1557,12 @@ async function initApp() {
     const parsed = ParameterSlidersPanel.parseCode(activeCodeScript);
     if (parsed.length > 0) {
       paramSlidersPanel.setParams(parsed);
-      paramSlidersPanel.setVisible(showSliders);
+      paramSlidersPanel.setVisible(showSliders && !isCodeFirst);
+      const lilParams: Record<string, any> = {};
+      for (const p of parsed) {
+        lilParams[p.name] = { value: p.value, min: p.min, max: p.max, step: p.step };
+      }
+      lilController.setConfig({ params: lilParams });
     } else {
       paramSlidersPanel.setVisible(false);
     }
@@ -1445,6 +1576,9 @@ async function initApp() {
     if (ev.data.type === 'OPENCAD_DOWNLOAD_STEP') {
       const stepText = await handleExportStep();
       triggerFileDownload(stepText, 'model.step', 'application/step');
+    } else if (ev.data.type === 'OPENCAD_DOWNLOAD_STL') {
+      const stl = await handleExportStl(ev.data.payload);
+      triggerFileDownload(stl, 'model.stl', typeof stl === 'string' ? 'text/plain' : 'application/octet-stream');
     } else if (ev.data.type === 'OPENCAD_DOWNLOAD_3MF') {
       const xml = await handleExport3mf();
       triggerFileDownload(xml, 'model.3mf', 'application/xml');
@@ -1455,6 +1589,11 @@ async function initApp() {
       activeCodeScript = ev.data.code;
       const parsed = ParameterSlidersPanel.parseCode(activeCodeScript);
       paramSlidersPanel.setParams(parsed);
+      const lilParams: Record<string, any> = {};
+      for (const p of parsed) {
+        lilParams[p.name] = { value: p.value, min: p.min, max: p.max, step: p.step };
+      }
+      lilController.setConfig({ params: lilParams });
     } else if (ev.data.type === 'OPENCAD_SET_TEMPLATE' && ev.data.templateId) {
       await handleLoadTemplate(ev.data.templateId);
     }

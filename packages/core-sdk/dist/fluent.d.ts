@@ -127,6 +127,10 @@ export declare class FluentPart {
     _applySweep(path: any, elements: any[], plane: string): this;
     tessellate(chordalTol?: number, angularTol?: number): CadMesh | null;
     exportStep(): string;
+    exportStl(options?: {
+        binary?: boolean;
+        deflection?: number;
+    }): Uint8Array | string;
 }
 export { FluentPart as Part };
 //# sourceMappingURL=fluent.d.ts.map

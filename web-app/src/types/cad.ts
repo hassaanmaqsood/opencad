@@ -452,6 +452,23 @@ export interface ExportStepTransferPayload {
   stepText: string;
 }
 
+export interface ExportStlWorkerRequest {
+  type: 'EXPORT_STL';
+  requestId?: number;
+  options?: {
+    binary?: boolean;
+    deflection?: number;
+    solidName?: string;
+  };
+}
+
+export interface ExportStlTransferPayload {
+  type: 'STL_EXPORTED';
+  requestId?: number;
+  stlData: Uint8Array | string;
+  isBinary: boolean;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Wave 5: Dress-Up Ops, 3D Assembly Kinematics & Multi-LOD Types            */
 /* ------------------------------------------------------------------------- */

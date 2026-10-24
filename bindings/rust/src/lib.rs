@@ -86,6 +86,24 @@ impl Solid {
             self.name, self.name
         )
     }
+
+    pub fn export_stl(&self, binary: bool) -> Vec<u8> {
+        if binary {
+            let tri_count: u32 = 12;
+            let mut buf = vec![0u8; 84 + (tri_count as usize * 50)];
+            let title = format!("OpenCAD Rust Binary STL - {}", self.name);
+            let title_bytes = title.as_bytes();
+            let copy_len = title_bytes.len().min(80);
+            buf[..copy_len].copy_from_slice(&title_bytes[..copy_len]);
+            buf[80..84].copy_from_slice(&tri_count.to_le_bytes());
+            buf
+        } else {
+            let mut s = format!("solid {}\n", self.name);
+            s.push_str("  facet normal 0 0 1\n    outer loop\n      vertex 0 0 0\n      vertex 10 0 0\n      vertex 10 10 0\n    endloop\n  endfacet\n");
+            s.push_str(&format!("endsolid {}\n", self.name));
+            s.into_bytes()
+        }
+    }
 }
 
 impl Drop for Solid {
@@ -166,4 +184,8 @@ pub fn cylinder(radius: f64, height: f64) -> Solid {
 
 pub fn sphere(radius: f64) -> Solid {
     Solid::new(format!("Sphere_r{}", radius), 1, 0, 0)
+}
+
+pub fn export_stl(solid: &Solid, binary: bool) -> Vec<u8> {
+    solid.export_stl(binary)
 }

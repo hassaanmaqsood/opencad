@@ -268,6 +268,18 @@ export class FluentPart {
         }
         return `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('OpenCAD Fluent AP214 B-Rep Solid'),'2;1');\nFILE_NAME('${this.name}.step','${new Date().toISOString()}',('OpenCAD'),('OpenCAD'),'OpenCAD Kernel 1.0','OpenCAD','');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));\nENDSEC;\nDATA;\n#1=MANIFOLD_SOLID_BREP('${this.name}',#2);\nENDSEC;\nEND-ISO-10303-21;\n`;
     }
+    exportStl(options) {
+        if (this.kernel && this.handle !== 0) {
+            return this.kernel.exportStl(this.handle, options);
+        }
+        const binary = options?.binary !== false;
+        if (binary) {
+            const buf = new Uint8Array(84);
+            new TextEncoder().encodeInto('OpenCAD STL', buf);
+            return buf;
+        }
+        return `solid ${this.name}\nendsolid ${this.name}\n`;
+    }
 }
 export { FluentPart as Part };
 //# sourceMappingURL=fluent.js.map

@@ -6,6 +6,7 @@ pub const threemf = @import("threemf.zig");
 pub const nest = @import("nest.zig");
 pub const gcode = @import("gcode.zig");
 pub const cnc_cam = @import("cnc_cam.zig");
+pub const stl_io = @import("stl_io.zig");
 pub const wasm = @import("wasm.zig");
 pub const c_types = @import("c_types.zig");
 
@@ -45,5 +46,6 @@ test {
     _ = nest;
     _ = gcode;
     _ = cnc_cam;
+    _ = stl_io;
     _ = wasm;
 }

@@ -18,6 +18,10 @@ export declare class OpenCadKernel {
     releaseSolid(handle: CadSolidHandle): void;
     tessellate(handle: CadSolidHandle, chordalTol?: number, angularTol?: number): CadMesh;
     exportStep(handle: CadSolidHandle): string;
+    exportStl(handle: CadSolidHandle, options?: {
+        binary?: boolean;
+        deflection?: number;
+    }): Uint8Array | string;
     importStep(stepText: string): CadSolidHandle;
     setLimits(limits: Partial<CadKernelLimits>): void;
     getLimits(): CadKernelLimits;

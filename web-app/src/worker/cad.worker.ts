@@ -13,6 +13,8 @@ import {
   ImportStepWorkerRequest,
   ExportStepWorkerRequest,
   ExportStepTransferPayload,
+  ExportStlWorkerRequest,
+  ExportStlTransferPayload,
   SolveAssemblyWorkerRequest,
   AssemblySolvedTransferPayload,
   TessellateLodWorkerRequest,
@@ -24,6 +26,7 @@ import { generateBoxBuffers, generateCylinderBuffers } from './geometry_generato
 import { solveSketch } from './sketch_solver';
 import { evaluateFeatureDag, getDefaultDemoFeatureDag } from './dag_evaluator';
 import { parseStep, exportStep } from './step_io';
+import { exportStl } from './stl_io';
 import { solveAssemblyClient } from './assembly_solver';
 import { WorkerPluginBridge } from './WorkerPluginBridge';
 
@@ -35,6 +38,8 @@ interface WasmExports {
   cad_wasm_alloc?: (size: number) => number;
   cad_wasm_free?: (ptr: number) => void;
   cad_wasm_step_import?: (strPtr: number, strLen: number, outSolidPtr: number) => number;
+  cad_wasm_stl_export?: (solid: number, chordal: number, angular: number, binary: boolean) => number;
+  cad_wasm_stl_export_len?: () => number;
   cad_dag_evaluate?: (nodesPtr: number, nodeCount: number, rollbackIndex: number, outSolidPtr: number) => number;
   cad_dag_set_rollback_index?: (rollbackIndex: number) => number;
   cad_solid_tessellate_slice?: (solidHandle: number | bigint, chordalTol: number, angularTol: number, outSlicePtr: number) => number;
@@ -510,6 +515,63 @@ self.onmessage = async (e: MessageEvent) => {
     };
 
     self.postMessage(payload);
+    return;
+  }
+
+  if (data.type === 'EXPORT_STL') {
+    const req = data as ExportStlWorkerRequest;
+    const requestId = req.requestId ?? 0;
+    const binary = req.options?.binary !== false;
+    const deflection = req.options?.deflection ?? 0.02;
+
+    try {
+      if (!activeSlice) {
+        activeSlice = evaluateFeatureDag(cachedDagNodes, cachedRollbackIndex);
+      }
+
+      let stlData: Uint8Array | string | null = null;
+
+      if (
+        wasmExports?.cad_wasm_stl_export &&
+        wasmExports?.cad_wasm_stl_export_len &&
+        wasmExports?.memory
+      ) {
+        try {
+          const ptr = wasmExports.cad_wasm_stl_export(BigInt(1) as any, deflection, 0.5, binary);
+          if (ptr && ptr !== 0) {
+            const len = wasmExports.cad_wasm_stl_export_len();
+            const raw = new Uint8Array(wasmExports.memory.buffer, ptr, len).slice();
+            stlData = binary ? raw : new TextDecoder().decode(raw);
+          }
+        } catch {
+          // Fallback to activeSlice
+        }
+      }
+
+      if (!stlData) {
+        stlData = exportStl(activeSlice, { binary, deflection, solidName: req.options?.solidName });
+      }
+
+      const payload: ExportStlTransferPayload = {
+        type: 'STL_EXPORTED',
+        requestId,
+        stlData,
+        isBinary: binary,
+      };
+
+      if (binary && stlData instanceof Uint8Array) {
+        self.postMessage(payload, [stlData.buffer]);
+      } else {
+        self.postMessage(payload);
+      }
+    } catch (err: any) {
+      console.error('EXPORT_STL error:', err);
+      self.postMessage({
+        type: 'ERROR',
+        requestId,
+        error: err?.message || 'Failed to export STL',
+      });
+    }
     return;
   }
 

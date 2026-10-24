@@ -22,6 +22,10 @@ export declare class OpenCadViewerElement extends BaseElement {
     protected updateIframeSrc(): void;
     postMessage(message: any): void;
     downloadStep(): void;
+    downloadStl(options?: {
+        binary?: boolean;
+        deflection?: number;
+    }): void;
     download3mf(): void;
     downloadDxf(): void;
     setCode(code: string): void;

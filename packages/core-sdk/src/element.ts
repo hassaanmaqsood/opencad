@@ -13,7 +13,7 @@ export class OpenCadViewerElement extends BaseElement {
   protected canvas: HTMLCanvasElement | null = null;
 
   static get observedAttributes() {
-    return ['code', 'gist', 'step-url', 'template', 'sliders', 'src', 'theme', 'width', 'height', 'mount'];
+    return ['code', 'gist', 'step-url', 'template', 'sliders', 'src', 'theme', 'width', 'height', 'mount', 'config'];
   }
 
   connectedCallback() {
@@ -90,6 +90,11 @@ export class OpenCadViewerElement extends BaseElement {
       url.searchParams.set('theme', theme);
     }
 
+    const config = this.getAttribute('config');
+    if (config) {
+      url.searchParams.set('config', config);
+    }
+
     const code = this.getAttribute('code');
     if (code) {
       try {
@@ -117,6 +122,10 @@ export class OpenCadViewerElement extends BaseElement {
 
   public downloadStep() {
     this.postMessage({ type: 'OPENCAD_DOWNLOAD_STEP' });
+  }
+
+  public downloadStl(options?: { binary?: boolean; deflection?: number }) {
+    this.postMessage({ type: 'OPENCAD_DOWNLOAD_STL', payload: options });
   }
 
   public download3mf() {

@@ -10,7 +10,7 @@ export class OpenCadViewerElement extends BaseElement {
     iframe = null;
     canvas = null;
     static get observedAttributes() {
-        return ['code', 'gist', 'step-url', 'template', 'sliders', 'src', 'theme', 'width', 'height', 'mount'];
+        return ['code', 'gist', 'step-url', 'template', 'sliders', 'src', 'theme', 'width', 'height', 'mount', 'config'];
     }
     connectedCallback() {
         this.render();
@@ -72,6 +72,10 @@ export class OpenCadViewerElement extends BaseElement {
         if (theme) {
             url.searchParams.set('theme', theme);
         }
+        const config = this.getAttribute('config');
+        if (config) {
+            url.searchParams.set('config', config);
+        }
         const code = this.getAttribute('code');
         if (code) {
             try {
@@ -96,6 +100,9 @@ export class OpenCadViewerElement extends BaseElement {
     }
     downloadStep() {
         this.postMessage({ type: 'OPENCAD_DOWNLOAD_STEP' });
+    }
+    downloadStl(options) {
+        this.postMessage({ type: 'OPENCAD_DOWNLOAD_STL', payload: options });
     }
     download3mf() {
         this.postMessage({ type: 'OPENCAD_DOWNLOAD_3MF' });

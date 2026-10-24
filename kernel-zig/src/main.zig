@@ -69,6 +69,7 @@ var topo_selection_store: std.AutoHashMap(usize, usize) = undefined;
 var mate_connector_store: std.AutoHashMap(usize, usize) = undefined;
 var region_store: std.AutoHashMap(usize, usize) = undefined;
 var wasm_step_export_buf: std.ArrayList(u8) = .empty;
+var wasm_stl_export_buf: std.ArrayList(u8) = .empty;
 var is_initialized: bool = false;
 var current_rollback_index: u32 = 0;
 
@@ -125,6 +126,8 @@ pub export fn cad_kernel_deinit() CadStatus {
     const alloc = memory.getAllocator();
     wasm_step_export_buf.deinit(alloc);
     wasm_step_export_buf = .empty;
+    wasm_stl_export_buf.deinit(alloc);
+    wasm_stl_export_buf = .empty;
 
     main_wasm.deinitWasmBuffers();
     return .Ok;
@@ -685,6 +688,68 @@ pub export fn cad_wasm_step_export(solid: CadSolidHandle) ?[*]const u8 {
 
 pub export fn cad_wasm_step_export_len() usize {
     return wasm_step_export_buf.items.len;
+}
+
+pub export fn cad_export_stl(
+    solid: CadSolidHandle,
+    chordal_deflection: f32,
+    angular_deflection: f32,
+    binary: bool,
+    out_stl_bytes: ?*[*]u8,
+    out_stl_len: ?*usize,
+) callconv(.c) CadStatus {
+    ensureInit() catch return .OutOfMemory;
+    const out_bytes = out_stl_bytes orelse return .InvalidArguments;
+    const out_len = out_stl_len orelse return .InvalidArguments;
+    const alloc = memory.getAllocator();
+
+    var slice: c_abi.CadTessellatedSolidSlice = undefined;
+    const status = cad_solid_tessellate_slice(solid, chordal_deflection, angular_deflection, &slice);
+    if (status != .Ok) return status;
+    defer _ = cad_slice_free(&slice);
+
+    const positions = if (slice.positions) |p| p[0 .. slice.vertex_count * 3] else return .InvalidArguments;
+    const indices = if (slice.indices) |i| i[0 .. slice.triangle_count * 3] else return .InvalidArguments;
+
+    const stl_bytes = if (binary)
+        CamHlrMod.stl_io.exportStlBinary(alloc, positions, indices, "OpenCAD Watertight STL Model") catch return .OutOfMemory
+    else
+        CamHlrMod.stl_io.exportStlAscii(alloc, positions, indices, "OpenCAD_Part") catch return .OutOfMemory;
+
+    out_bytes.* = stl_bytes.ptr;
+    out_len.* = stl_bytes.len;
+    return .Ok;
+}
+
+pub export fn cad_stl_free(ptr: ?[*]u8, len: usize) callconv(.c) CadStatus {
+    const p = ptr orelse return .InvalidArguments;
+    const alloc = memory.getAllocator();
+    alloc.free(p[0..len]);
+    return .Ok;
+}
+
+pub export fn cad_wasm_stl_export(
+    solid: CadSolidHandle,
+    chordal_deflection: f32,
+    angular_deflection: f32,
+    binary: bool,
+) ?[*]const u8 {
+    _ = cad_kernel_init();
+    const alloc = memory.getAllocator();
+    wasm_stl_export_buf.clearRetainingCapacity();
+
+    var out_ptr: [*]u8 = undefined;
+    var out_len: usize = 0;
+    const status = cad_export_stl(solid, chordal_deflection, angular_deflection, binary, &out_ptr, &out_len);
+    if (status != .Ok) return null;
+    defer _ = cad_stl_free(out_ptr, out_len);
+
+    wasm_stl_export_buf.appendSlice(alloc, out_ptr[0..out_len]) catch return null;
+    return wasm_stl_export_buf.items.ptr;
+}
+
+pub export fn cad_wasm_stl_export_len() usize {
+    return wasm_stl_export_buf.items.len;
 }
 
 // ---------------------------------------------------------------------------

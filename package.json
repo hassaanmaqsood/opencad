@@ -2,6 +2,7 @@
   "name": "open-parametric-cad",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Browser-based parametric B-Rep CAD application using a Zig WebAssembly kernel, C++ Differential Oracle Harness, and Three.js Web Worker frontend",
   "workspaces": [
     "web-app",

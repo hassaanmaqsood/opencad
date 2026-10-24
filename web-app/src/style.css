@@ -2502,6 +2502,308 @@ body.persona-engineer .engineer-feature-group {
   color: #fff;
 }
 
+/* ========================================================================== */
+/* Wave 15: 100% View-Centric Floating Code-Configured lil-gui Controller      */
+/* ========================================================================== */
+
+.lil-controller {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 260px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif;
+  font-size: 11px;
+  color: #cbd5e1;
+  z-index: 1000;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.lil-controller.lil-collapsed .lil-folder {
+  display: none;
+}
+
+.lil-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+  font-size: 12px;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.lil-title {
+  display: flex;
+  align-items: center;
+}
+
+.lil-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+  margin-right: 6px;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+.lil-close {
+  cursor: pointer;
+  opacity: 0.6;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.lil-close:hover {
+  opacity: 1;
+}
+
+.lil-folder {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lil-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  font-weight: 600;
+  font-size: 11px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.lil-folder-header:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+}
+
+.lil-chevron {
+  font-size: 9px;
+  opacity: 0.7;
+  width: 10px;
+}
+
+.lil-folder-children {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  gap: 4px;
+}
+
+.lil-param-row,
+.lil-lens-row,
+.lil-telemetry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  min-height: 22px;
+}
+
+.lil-param-label,
+.lil-lens-label {
+  color: #94a3b8;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+}
+
+.lil-number-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 140px;
+}
+
+.lil-slider {
+  flex: 1;
+  height: 4px;
+  accent-color: #38bdf8;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.lil-number-input {
+  width: 48px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  color: #38bdf8;
+  font-family: monospace;
+  font-size: 11px;
+  text-align: right;
+  padding: 2px 4px;
+}
+
+.lil-number-input:focus,
+.lil-text-input:focus {
+  outline: none;
+  border-color: #38bdf8;
+}
+
+.lil-text-input {
+  width: 130px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  color: #e2e8f0;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.lil-checkbox {
+  accent-color: #38bdf8;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+.lil-telemetry-key {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.lil-telemetry-val {
+  color: #38bdf8;
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.lil-action-btn {
+  width: 100%;
+  padding: 6px 10px;
+  margin: 2px 0;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 4px;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.lil-action-btn:hover {
+  background: rgba(56, 189, 248, 0.22);
+  color: #fff;
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.lil-action-btn.lil-btn-clicked {
+  background: #38bdf8;
+  color: #0f172a;
+}
+
+/* Collapsible Code Drawer Toggle in top-left */
+.code-drawer-toggle-btn {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.code-drawer-toggle-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+/* Code drawer slide-out styling for #plugin-side-panel */
+.plugin-side-panel.code-drawer-active {
+  display: flex !important;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 480px;
+  max-width: 80vw;
+  z-index: 999;
+  box-shadow: 10px 0 40px rgba(0, 0, 0, 0.7);
+  animation: slideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Zero horizontal scrollbar rule */
+html, body, #app-container {
+  overflow-x: hidden !important;
+  max-width: 100vw;
+}
+
+/* Hide legacy authoring chrome in code-first view-centric mode */
+body.code-first .opencad-top-ribbon,
+body.code-first #top-ribbon-container,
+body.code-first .ribbon-actions,
+body.code-first #timeline-container,
+body.code-first #hud-top-right,
+body.code-first .living-recipe-dock,
+body.code-first #omni-bar,
+body.code-first .bottom-lenses-bar,
+body.code-first .telemetry-bar,
+body.code-first .parameter-sliders-panel {
+  display: none !important;
+}
+
+body.embed-mode .opencad-top-ribbon,
+body.embed-mode #top-ribbon-container,
+body.embed-mode .ribbon-actions,
+body.embed-mode #timeline-container,
+body.embed-mode #hud-top-right,
+body.embed-mode .living-recipe-dock,
+body.embed-mode #omni-bar,
+body.embed-mode .bottom-lenses-bar,
+body.embed-mode .telemetry-bar,
+body.embed-mode #btn-code-drawer-toggle {
+  display: none !important;
+}
+
+
 
 
 
