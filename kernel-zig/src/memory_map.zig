@@ -28,8 +28,8 @@ comptime {
     }
 }
 
-// Simulated memory buffer for native test mode
-var simulated_native_mem: [0x400000]u8 = std.mem.zeroes([0x400000]u8);
+// Simulated memory buffer for native test mode (128 pages = 8 MB matching WASM)
+var simulated_native_mem: [0x800000]u8 = std.mem.zeroes([0x800000]u8);
 
 pub fn initControlBlock() void {
     const cb = ControlBlock{

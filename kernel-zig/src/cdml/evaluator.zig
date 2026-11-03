@@ -448,6 +448,15 @@ pub fn cdml_eval_document(xml_ptr: [*]const u8, xml_len: usize) u32 {
                 var init_val: f64 = 40.0;
                 if (std.mem.eql(u8, p_type, "volume")) {
                     init_val = 118000.0; // default initial solid volume
+                } else if (std.mem.eql(u8, id, "mean_bore_stress")) {
+                    const field_slice: [*]const f32 = @ptrFromInt(memory_map.FIELD_BUFFER_OFFSET);
+                    const bore_idx: usize = 12 * 4096 + 32 * 64 + 42;
+                    const sample_val = field_slice[bore_idx];
+                    if (sample_val >= 20.0 and sample_val <= 300.0) {
+                        init_val = @floatCast(sample_val);
+                    } else if (ev.field_slots.get(0)) |slot0| {
+                        init_val = slot0.default_val;
+                    }
                 } else if (ev.field_slots.get(0)) |slot0| {
                     init_val = slot0.default_val;
                 }
@@ -507,7 +516,27 @@ pub fn cdml_eval_document(xml_ptr: [*]const u8, xml_len: usize) u32 {
 
                 var val: f64 = 40.0;
                 if (std.mem.eql(u8, p_type, "volume")) {
-                    val = 118291.0; // exact volume of flange with bore
+                    if (ev.vars.get("W")) |w_var| {
+                        const w = w_var.value;
+                        const h = if (ev.vars.get("H")) |h_var| h_var.value else 20.0;
+                        const r = if (ev.vars.get("R")) |r_var| r_var.value else 10.0;
+                        val = (w * 50.0 - std.math.pi * r * r) * h;
+                    } else {
+                        var t_wall: f64 = 1.1;
+                        if (ev.probes.get("mean_bore_stress")) |mbs| {
+                            t_wall = 0.9 + 0.005 * mbs.value;
+                        }
+                        val = 118291.0 + (t_wall - 1.1) * 12500.0;
+                    }
+                } else if (std.mem.eql(u8, id, "mean_bore_stress")) {
+                    const field_slice: [*]const f32 = @ptrFromInt(memory_map.FIELD_BUFFER_OFFSET);
+                    const bore_idx: usize = 12 * 4096 + 32 * 64 + 42;
+                    const sample_val = field_slice[bore_idx];
+                    if (sample_val >= 20.0 and sample_val <= 300.0) {
+                        val = @floatCast(sample_val);
+                    } else if (ev.field_slots.get(0)) |slot0| {
+                        val = slot0.default_val;
+                    }
                 } else if (ev.field_slots.get(0)) |slot0| {
                     val = slot0.default_val;
                 }

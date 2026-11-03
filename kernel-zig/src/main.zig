@@ -2198,6 +2198,31 @@ pub export fn get_string_len() usize {
     return tess_export.export_step_len;
 }
 
+pub export fn get_step_ptr() ?[*]const u8 {
+    const mem = memory_map.getMemorySlice(tess_export.STEP_EXPORT_OFFSET, 64);
+    return mem.ptr;
+}
+
+pub export fn get_step_len() usize {
+    return tess_export.export_step_len;
+}
+
+pub export fn get_stl_ptr() ?[*]const u8 {
+    const mem = memory_map.getMemorySlice(tess_export.STL_EXPORT_OFFSET, 64);
+    return mem.ptr;
+}
+
+pub export fn get_stl_len() usize {
+    return tess_export.export_stl_len;
+}
+
+pub export fn cdml_get_active_solid() u64 {
+    if (cdml.evaluator.active_evaluator) |ev| {
+        return ev.active_solid_h;
+    }
+    return 0;
+}
+
 // ============================================================================
 // CDML v1.0 Kernel ABI Exports (CDML §2a, §3, §10, §12, §13, §14)
 // ============================================================================

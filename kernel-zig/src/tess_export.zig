@@ -11,6 +11,8 @@ pub const BRepSolid = surface_brep.BRepSolid;
 // Shared memory scratch export storage
 pub var export_step_len: usize = 0;
 pub var export_stl_len: usize = 0;
+pub const STEP_EXPORT_OFFSET: usize = 0x3F0000;
+pub const STL_EXPORT_OFFSET: usize = 0x4F0000;
 
 pub fn getSolidMesh(solid_h: u64) ?*const BRepSolid {
     const tag = solid_h >> 62;
@@ -186,8 +188,8 @@ pub fn solid_export_step(solid_h: u64, out_buf: *std.ArrayList(u8)) u32 {
     const len = out_buf.items.len;
     export_step_len = len;
 
-    // Copy to scratch memory at 0x3F0000
-    const scratch = memory_map.getMemorySlice(memory_map.SCRATCH_OFFSET, len);
+    // Copy to scratch memory at STEP_EXPORT_OFFSET (0x3F0000)
+    const scratch = memory_map.getMemorySlice(STEP_EXPORT_OFFSET, len);
     @memcpy(scratch, out_buf.items);
 
     return @intCast(len);
@@ -288,8 +290,8 @@ pub fn solid_export_stl(solid_h: u64, binary: bool, out_buf: *std.ArrayList(u8))
     const len = out_buf.items.len;
     export_stl_len = len;
 
-    // Copy to scratch memory at 0x3F0000
-    const scratch = memory_map.getMemorySlice(memory_map.SCRATCH_OFFSET, len);
+    // Copy to scratch memory at STL_EXPORT_OFFSET (0x4F0000)
+    const scratch = memory_map.getMemorySlice(STL_EXPORT_OFFSET, len);
     @memcpy(scratch, out_buf.items);
 
     return @intCast(len);
