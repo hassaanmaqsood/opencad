@@ -503,7 +503,7 @@ export class MeshManager {
 
     let geom = baseGeometry || this.solidMesh.geometry;
     if (!geom.getAttribute('position') || geom.getAttribute('position').count === 0) {
-      geom = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+      return;
     }
 
     const material = (this.solidMesh.material as THREE.Material).clone();

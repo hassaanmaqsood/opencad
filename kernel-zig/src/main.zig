@@ -1,7 +1,6 @@
 const std = @import("std");
 const memory = @import("memory.zig");
 pub const c_abi = @import("c_abi.zig");
-const router = @import("router.zig");
 const topology = @import("brep/topology.zig");
 const box = @import("primitives/box.zig");
 const cylinder = @import("primitives/cylinder.zig");
@@ -50,7 +49,6 @@ pub const BoxMod = box;
 pub const CylinderMod = cylinder;
 pub const TessellatorMod = tessellator;
 pub const BvhMod = bvh;
-pub const RouterMod = router;
 pub const NurbsMod = @import("geom/nurbs.zig");
 pub const SsiMod = @import("geom/ssi.zig");
 pub const assembly_solver = @import("solver/assembly_solver.zig");
@@ -59,6 +57,13 @@ pub const SheetMetalMod = @import("sheetmetal/mod.zig");
 pub const CamHlrMod = @import("cam_hlr/mod.zig");
 pub const FeaFlexureMod = @import("fea_flexure/mod.zig");
 pub const ImplicitMod = @import("implicit/mod.zig");
+pub const memory_map = @import("memory_map.zig");
+pub const autodiff = @import("autodiff.zig");
+pub const constraint_sys = @import("constraint_sys.zig");
+pub const curve_wire = @import("curve_wire.zig");
+pub const surface_brep = @import("surface_brep.zig");
+pub const implicit_field = @import("implicit_field.zig");
+pub const tess_export = @import("tess_export.zig");
 
 // Global handle registry
 var next_handle: u64 = 1;
@@ -133,15 +138,7 @@ pub export fn cad_kernel_deinit() CadStatus {
     return .Ok;
 }
 
-pub export fn cad_router_set_backend(op: CadOpType, backend: CadBackend) CadStatus {
-    return router.global_router.setBackend(op, backend);
-}
-
-pub export fn cad_router_get_backend(op: CadOpType) CadBackend {
-    return router.global_router.getBackend(op);
-}
-
-pub export fn cad_primitive_box(
+pub fn cad_primitive_box(
     dx: f32, dy: f32, dz: f32,
     out_solid: *CadSolidHandle,
 ) CadStatus {
@@ -163,7 +160,7 @@ pub export fn cad_primitive_box(
     return .Ok;
 }
 
-pub export fn cad_primitive_cylinder(
+pub fn cad_primitive_cylinder(
     radius: f32, height: f32,
     out_solid: *CadSolidHandle,
 ) CadStatus {
@@ -419,7 +416,7 @@ pub export fn cad_wasm_free(ptr: [*]u8, size: usize) void {
 var global_mesh: CadMesh = std.mem.zeroes(CadMesh);
 var global_slice: c_abi.CadTessellatedSolidSlice = std.mem.zeroes(c_abi.CadTessellatedSolidSlice);
 
-pub export fn cad_wasm_generate_box(dx: f32, dy: f32, dz: f32) *const CadMesh {
+pub fn cad_wasm_generate_box(dx: f32, dy: f32, dz: f32) *const CadMesh {
     _ = cad_kernel_init();
     if (global_mesh.vertex_count > 0) {
         _ = cad_mesh_free(&global_mesh);
@@ -431,7 +428,7 @@ pub export fn cad_wasm_generate_box(dx: f32, dy: f32, dz: f32) *const CadMesh {
     return &global_mesh;
 }
 
-pub export fn cad_wasm_generate_cylinder(radius: f32, height: f32) *const CadMesh {
+pub fn cad_wasm_generate_cylinder(radius: f32, height: f32) *const CadMesh {
     _ = cad_kernel_init();
     if (global_mesh.vertex_count > 0) {
         _ = cad_mesh_free(&global_mesh);
@@ -489,7 +486,7 @@ pub export fn cad_wasm_get_edge_ids_len() u32 {
 // Wave 3 Zero-Copy WASM Slice Accessors (BigUint64 Topo IDs & Sharp Polylines)
 // ---------------------------------------------------------------------------
 
-pub export fn cad_wasm_generate_box_slice(dx: f32, dy: f32, dz: f32) *const c_abi.CadTessellatedSolidSlice {
+pub fn cad_wasm_generate_box_slice(dx: f32, dy: f32, dz: f32) *const c_abi.CadTessellatedSolidSlice {
     _ = cad_kernel_init();
     if (global_slice.vertex_count > 0 or global_slice.triangle_count > 0) {
         _ = cad_slice_free(&global_slice);
@@ -501,7 +498,7 @@ pub export fn cad_wasm_generate_box_slice(dx: f32, dy: f32, dz: f32) *const c_ab
     return &global_slice;
 }
 
-pub export fn cad_wasm_generate_cylinder_slice(radius: f32, height: f32) *const c_abi.CadTessellatedSolidSlice {
+pub fn cad_wasm_generate_cylinder_slice(radius: f32, height: f32) *const c_abi.CadTessellatedSolidSlice {
     _ = cad_kernel_init();
     if (global_slice.vertex_count > 0 or global_slice.triangle_count > 0) {
         _ = cad_slice_free(&global_slice);
@@ -573,10 +570,10 @@ pub export fn cad_wasm_get_slice_edge_ids_len() u32 {
     return global_slice.edge_segment_count;
 }
 
-pub export fn cad_wasm_get_slice_bbox_min_ptr() ?[*]const f32 {
+pub export fn cad_wasm_get_slice_bounds_min_ptr() ?[*]const f32 {
     return @ptrCast(&global_slice.bbox_min);
 }
-pub export fn cad_wasm_get_slice_bbox_max_ptr() ?[*]const f32 {
+pub export fn cad_wasm_get_slice_bounds_max_ptr() ?[*]const f32 {
     return @ptrCast(&global_slice.bbox_max);
 }
 
@@ -1062,7 +1059,7 @@ pub export fn cad_shared_free(ptr: ?[*]u8, size: usize) void {
 // Wave 12: Apex CAD Upgrade — Precision Curves, Topo Query, Optimizer & Connectors
 // ===========================================================================
 
-pub export fn cad_op_extrude_wire(
+pub fn cad_op_extrude_wire(
     wire: ?*const c_abi.CadWire2D,
     dir: ?*const [3]f64,
     depth: f64,
@@ -1103,7 +1100,7 @@ pub export fn cad_op_extrude_wire(
     return .Ok;
 }
 
-pub export fn cad_op_revolve_wire(
+pub fn cad_op_revolve_wire(
     wire: ?*const c_abi.CadWire2D,
     axis_origin: ?*const [3]f64,
     axis_dir: ?*const [3]f64,
@@ -1981,4 +1978,205 @@ test "Wave 13 C ABI: 2D/3D sketch, datums, threads, holes, and assembly motion" 
     var trail_count: u32 = 0;
     try std.testing.expectEqual(c_abi.CadStatus.Ok, cad_assembly_exploded_view(&insts, 1, 1.0, &xforms, &trails, &trail_count));
     try std.testing.expectEqual(@as(u32, 1), trail_count);
+}
+
+// ============================================================================
+// Canonical 18-Function Mathematical WASM ABI (Rule 5 & Blackbox Verification)
+// ============================================================================
+
+pub export fn kernel_init() void {
+    _ = cad_kernel_init();
+    memory_map.initControlBlock();
+}
+
+pub export fn handle_free(h: u64) void {
+    const tag = h >> 62;
+    if (tag == 0b11) {
+        autodiff.expr_free(h);
+        constraint_sys.sys_free(h);
+        curve_wire.curve_free(h);
+        curve_wire.wire_free(h);
+    } else if (tag == 0b00 or tag == 0b01) {
+        surface_brep.solid_free(h);
+        _ = cad_solid_release(@intCast(h & 0x3FFFFFFFFFFFFFFF));
+    } else if (tag == 0b10) {
+        _ = implicit_field.implicit_store.remove(h);
+    }
+}
+
+pub export fn expr_compile(ptr: [*]const u8, len: usize) u64 {
+    return autodiff.expr_compile(ptr, len);
+}
+pub export fn expr_eval(expr_h: u64, vars_ptr: [*]const f64, var_count: u32, out_grad_ptr: ?[*]f64) f64 {
+    return autodiff.expr_eval(expr_h, vars_ptr, var_count, out_grad_ptr);
+}
+pub export fn sys_create() u64 {
+    return constraint_sys.sys_create();
+}
+pub export fn sys_alloc_params(sys_h: u64, init_ptr: [*]const f64, count: u32) u32 {
+    return constraint_sys.sys_alloc_params(sys_h, init_ptr, count);
+}
+pub export fn sys_add_residual(sys_h: u64, expr_h: u64, param_idx_ptr: [*]const u32, count: u32) u32 {
+    return constraint_sys.sys_add_residual(sys_h, expr_h, param_idx_ptr, count);
+}
+pub export fn sys_solve(sys_h: u64, tol: f64, max_iter: u32) u32 {
+    return constraint_sys.sys_solve(sys_h, tol, max_iter);
+}
+pub export fn sys_get_dof(sys_h: u64) i32 {
+    return constraint_sys.sys_get_dof(sys_h);
+}
+pub export fn sys_read_params(sys_h: u64, out_ptr: [*]f64, count: u32) void {
+    constraint_sys.sys_read_params(sys_h, out_ptr, count);
+}
+
+pub export fn curve_define_nurbs(
+    sys_h: u64,
+    dim: u32,
+    degree: u32,
+    ctrl_ids_ptr: [*]const u32,
+    ctrl_count: u32,
+    knots_ptr: [*]const f64,
+    knot_count: u32,
+) u64 {
+    return curve_wire.curve_define_nurbs(sys_h, dim, degree, ctrl_ids_ptr, ctrl_count, knots_ptr, knot_count);
+}
+
+pub export fn wire_assemble(
+    sys_h: u64,
+    frame_origin_u_v_ptr: [*]const f64,
+    curve_handles_ptr: [*]const u64,
+    curve_count: u32,
+) u64 {
+    return curve_wire.wire_assemble(sys_h, frame_origin_u_v_ptr, curve_handles_ptr, curve_count);
+}
+
+pub export fn solid_kinematic_sweep(
+    wire_h: u64,
+    se3_expr_h: u64,
+    cap_ends: bool,
+) u64 {
+    return surface_brep.solid_kinematic_sweep(wire_h, se3_expr_h, cap_ends);
+}
+
+pub export fn solid_tensor_loft(
+    wire_handles_ptr: [*]const u64,
+    count: u32,
+    degree_v: u32,
+) u64 {
+    return surface_brep.solid_tensor_loft(wire_handles_ptr, count, degree_v);
+}
+
+pub export fn solid_envelope_fillet(
+    solid_h: u64,
+    edge_pred_expr_h: u64,
+    radius_expr_h: u64,
+) u64 {
+    return surface_brep.solid_envelope_fillet(solid_h, edge_pred_expr_h, radius_expr_h);
+}
+
+pub export fn solid_offset_shell(
+    solid_h: u64,
+    face_pred_expr_h: u64,
+    offset_dist: f64,
+) u64 {
+    return surface_brep.solid_offset_shell(solid_h, face_pred_expr_h, offset_dist);
+}
+
+pub export fn solid_boolean(
+    bool_op: u32,
+    solid_a: u64,
+    solid_b: u64,
+) u64 {
+    return surface_brep.solid_boolean(bool_op, solid_a, solid_b);
+}
+
+pub export fn solid_implicit_field(
+    scalar_expr_h: u64,
+    bbox_ptr: [*]const f64,
+) u64 {
+    return implicit_field.solid_implicit_field(scalar_expr_h, bbox_ptr);
+}
+
+pub export fn solid_tessellate(
+    solid_h: u64,
+    chord_tol: f32,
+    angle_tol: f32,
+) void {
+    tess_export.solid_tessellate(solid_h, chord_tol, angle_tol);
+}
+
+pub export fn solid_export_step(solid_h: u64) u32 {
+    return tess_export.solid_export_step(solid_h, &wasm_step_export_buf);
+}
+
+pub export fn solid_export_stl(solid_h: u64, binary: bool) u32 {
+    return tess_export.solid_export_stl(solid_h, binary, &wasm_stl_export_buf);
+}
+
+pub export fn get_positions_ptr() ?[*]const f32 {
+    const mem = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, 64);
+    const v_count = std.mem.readInt(u32, mem[0x04..0x08], .little);
+    if (v_count > 0) {
+        const pos_offset = std.mem.readInt(u32, mem[0x0C..0x10], .little);
+        const slice = memory_map.getMemorySlice(pos_offset, v_count * 3 * 4);
+        return @ptrCast(@alignCast(slice.ptr));
+    }
+    return cad_wasm_get_positions_ptr();
+}
+pub export fn get_positions_len() u32 {
+    const mem = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, 64);
+    const v_count = std.mem.readInt(u32, mem[0x04..0x08], .little);
+    if (v_count > 0) return v_count * 3;
+    return cad_wasm_get_positions_len();
+}
+pub export fn get_normals_ptr() ?[*]const f32 {
+    const mem = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, 64);
+    const v_count = std.mem.readInt(u32, mem[0x04..0x08], .little);
+    if (v_count > 0) {
+        const nrm_offset = std.mem.readInt(u32, mem[0x10..0x14], .little);
+        const slice = memory_map.getMemorySlice(nrm_offset, v_count * 3 * 4);
+        return @ptrCast(@alignCast(slice.ptr));
+    }
+    return cad_wasm_get_normals_ptr();
+}
+pub export fn get_normals_len() u32 {
+    const mem = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, 64);
+    const v_count = std.mem.readInt(u32, mem[0x04..0x08], .little);
+    if (v_count > 0) return v_count * 3;
+    return cad_wasm_get_normals_len();
+}
+pub export fn get_indices_ptr() ?[*]const u32 {
+    const mem = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, 64);
+    const tri_count = std.mem.readInt(u32, mem[0x08..0x0C], .little);
+    if (tri_count > 0) {
+        const idx_offset = std.mem.readInt(u32, mem[0x14..0x18], .little);
+        const slice = memory_map.getMemorySlice(idx_offset, tri_count * 3 * 4);
+        return @ptrCast(@alignCast(slice.ptr));
+    }
+    return cad_wasm_get_indices_ptr();
+}
+pub export fn get_indices_len() u32 {
+    const mem = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, 64);
+    const tri_count = std.mem.readInt(u32, mem[0x08..0x0C], .little);
+    if (tri_count > 0) return tri_count * 3;
+    return cad_wasm_get_indices_len();
+}
+pub export fn get_face_ids_ptr() ?[*]const u32 {
+    return cad_wasm_get_face_ids_ptr();
+}
+pub export fn get_face_ids_len() u32 {
+    return cad_wasm_get_face_ids_len();
+}
+
+pub export fn get_string_ptr() ?[*]const u8 {
+    if (wasm_step_export_buf.items.len > 0) return wasm_step_export_buf.items.ptr;
+    if (wasm_stl_export_buf.items.len > 0) return wasm_stl_export_buf.items.ptr;
+    const mem = memory_map.getMemorySlice(memory_map.SCRATCH_OFFSET, 64);
+    return mem.ptr;
+}
+
+pub export fn get_string_len() usize {
+    if (wasm_step_export_buf.items.len > 0) return wasm_step_export_buf.items.len;
+    if (wasm_stl_export_buf.items.len > 0) return wasm_stl_export_buf.items.len;
+    return tess_export.export_step_len;
 }

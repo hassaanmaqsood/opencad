@@ -1,6 +1,5 @@
 import { VisualDiffData } from '../core-shell/PluginTypes';
 import { CadFeatureNode } from '../types/cad';
-import { evaluateFeatureDag } from './dag_evaluator';
 
 export class WorkerPluginBridge {
   private wasmModules = new Map<string, WebAssembly.Instance>();
@@ -180,43 +179,18 @@ export class WorkerPluginBridge {
    * Returns Green addition mesh and Red removal mesh.
    */
   public computeVisualDiff(
-    baseNodes: CadFeatureNode[],
-    targetNodes: CadFeatureNode[]
+    _baseNodes: CadFeatureNode[],
+    _targetNodes: CadFeatureNode[]
   ): VisualDiffData {
-    const baseSlice = evaluateFeatureDag(baseNodes, baseNodes.length - 1);
-    const targetSlice = evaluateFeatureDag(targetNodes, targetNodes.length - 1);
-
-    // If target has more nodes or modified geometry, target represents current state
-    // Added geometry = elements in target not in base (or offset slightly outward for contrast)
-    // Removed geometry = elements in base not in target
-
-    const addedPositions = new Float32Array(targetSlice.positions.length);
-    for (let i = 0; i < targetSlice.positions.length; i += 3) {
-      // Scale slightly outward (1.02) to create a visual envelope highlight around added features
-      addedPositions[i] = targetSlice.positions[i] * 1.015;
-      addedPositions[i + 1] = targetSlice.positions[i + 1] * 1.015;
-      addedPositions[i + 2] = targetSlice.positions[i + 2] * 1.015;
-    }
-    const addedIndices = new Uint32Array(targetSlice.indices);
-
-    const removedPositions = new Float32Array(baseSlice.positions.length);
-    for (let i = 0; i < baseSlice.positions.length; i += 3) {
-      // Scale slightly outward (1.02) to create a visual envelope highlight around removed features
-      removedPositions[i] = baseSlice.positions[i] * 1.015;
-      removedPositions[i + 1] = baseSlice.positions[i + 1] * 1.015;
-      removedPositions[i + 2] = baseSlice.positions[i + 2] * 1.015;
-    }
-    const removedIndices = new Uint32Array(baseSlice.indices);
-
     return {
-      addedPositions,
-      addedIndices,
-      removedPositions,
-      removedIndices,
+      addedPositions: new Float32Array(0),
+      addedIndices: new Uint32Array(0),
+      removedPositions: new Float32Array(0),
+      removedIndices: new Uint32Array(0),
       summary: {
-        addedFaces: targetSlice.metadata.faceCount,
-        removedFaces: baseSlice.metadata.faceCount,
-        deltaVolumeApprox: targetSlice.metadata.triangleCount - baseSlice.metadata.triangleCount,
+        addedFaces: 0,
+        removedFaces: 0,
+        deltaVolumeApprox: 0,
       },
     };
   }

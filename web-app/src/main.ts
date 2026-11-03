@@ -5,7 +5,7 @@ import { CadHud } from './ui/hud';
 import { SketchHud } from './ui/sketch_hud';
 import { SketchManager } from './renderer/sketch_manager';
 import { FeatureTree } from './ui/feature_tree';
-import { getDefaultDemoFeatureDag } from './worker/dag_evaluator';
+import { getDefaultDemoFeatureDag } from './types/demo_dag';
 import { PluginManager } from './core-shell/PluginManager';
 import { TopRibbon } from './core-shell/TopRibbon';
 import { TimelineBar } from './core-shell/TimelineBar';

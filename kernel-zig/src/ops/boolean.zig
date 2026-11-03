@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Vec3 = @import("../math/vec3.zig").Vec3;
 const topo = @import("../topo/mod.zig");
-const router = @import("../router.zig");
 const c_abi = @import("../c_abi.zig");
 
 const SoASolid = topo.SoASolid;
@@ -71,15 +70,6 @@ pub fn booleanOp(
     if (solid_a.vertices.len == 0 and solid_b.vertices.len == 0) {
         return error.EmptySolid;
     }
-
-    // Check Strangler-Fig Operation Router
-    const cad_op: c_abi.CadOpType = switch (op) {
-        .Union => .BooleanUnion,
-        .Difference => .BooleanDifference,
-        .Intersection => .BooleanIntersection,
-    };
-    const backend = router.global_router.getBackend(cad_op);
-    _ = backend;
 
     switch (op) {
         .Union => return booleanUnion(allocator, feature_id, solid_a, solid_b),

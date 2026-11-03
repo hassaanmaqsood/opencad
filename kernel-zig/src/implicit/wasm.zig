@@ -23,7 +23,7 @@ var wasm_allocator = if (builtin.target.cpu.arch == .wasm32) std.heap.wasm_alloc
 var cached_mesh: ?dual_contour.DualContourMesh = null;
 var cached_slice: ?dual_contour.Slice2D = null;
 
-pub export fn cad_implicit_eval_tpms_gyroid(
+pub fn cad_implicit_eval_tpms_gyroid(
     x: f64,
     y: f64,
     z: f64,
@@ -38,7 +38,7 @@ pub export fn cad_implicit_eval_tpms_gyroid(
     return lattice.evalSdf(.{ .x = x, .y = y, .z = z }, null);
 }
 
-pub export fn cad_implicit_eval_tpms_schwarz_p(
+pub fn cad_implicit_eval_tpms_schwarz_p(
     x: f64,
     y: f64,
     z: f64,
@@ -53,7 +53,7 @@ pub export fn cad_implicit_eval_tpms_schwarz_p(
     return lattice.evalSdf(.{ .x = x, .y = y, .z = z }, null);
 }
 
-pub export fn cad_implicit_eval_tpms_schwarz_d(
+pub fn cad_implicit_eval_tpms_schwarz_d(
     x: f64,
     y: f64,
     z: f64,
@@ -68,7 +68,7 @@ pub export fn cad_implicit_eval_tpms_schwarz_d(
     return lattice.evalSdf(.{ .x = x, .y = y, .z = z }, null);
 }
 
-pub export fn cad_implicit_eval_tpms_lidinoid(
+pub fn cad_implicit_eval_tpms_lidinoid(
     x: f64,
     y: f64,
     z: f64,
@@ -83,7 +83,7 @@ pub export fn cad_implicit_eval_tpms_lidinoid(
     return lattice.evalSdf(.{ .x = x, .y = y, .z = z }, null);
 }
 
-pub export fn cad_implicit_eval_tpms_neovius(
+pub fn cad_implicit_eval_tpms_neovius(
     x: f64,
     y: f64,
     z: f64,
@@ -143,7 +143,7 @@ pub export fn cad_implicit_eval_strut_octet(
     return lattice.evalSdf(.{ .x = x, .y = y, .z = z }, null);
 }
 
-pub export fn cad_implicit_mesh_sphere(radius: f64, resolution: u32) u32 {
+pub fn cad_implicit_mesh_sphere(radius: f64, resolution: u32) u32 {
     if (cached_mesh) |*m| {
         m.deinit();
         cached_mesh = null;
@@ -164,7 +164,7 @@ pub export fn cad_implicit_mesh_sphere(radius: f64, resolution: u32) u32 {
     return @intCast(cached_mesh.?.vertices.items.len / 3);
 }
 
-pub export fn cad_implicit_dual_contour_tpms(
+pub fn cad_implicit_dual_contour_tpms(
     tpms_type_val: u8,
     cell_size: f64,
     wall_thickness: f64,
@@ -200,7 +200,7 @@ pub export fn cad_implicit_dual_contour_tpms(
     return @intCast(cached_mesh.?.vertices.items.len / 3);
 }
 
-pub export fn cad_implicit_slice_2d_tpms(
+pub fn cad_implicit_slice_2d_tpms(
     tpms_type_val: u8,
     cell_size: f64,
     wall_thickness: f64,

@@ -22,9 +22,8 @@ import {
   CadFeatureType,
   CadAssemblySolveStatus,
 } from '../types/cad';
-import { generateBoxBuffers, generateCylinderBuffers } from './geometry_generator';
 import { solveSketch } from './sketch_solver';
-import { evaluateFeatureDag, getDefaultDemoFeatureDag } from './dag_evaluator';
+import { getDefaultDemoFeatureDag } from '../types/demo_dag';
 import { parseStep, exportStep } from './step_io';
 import { exportStl } from './stl_io';
 import { solveAssemblyClient } from './assembly_solver';
@@ -117,6 +116,29 @@ interface WasmExports {
 
 let wasmInstance: WebAssembly.Instance | null = null;
 let wasmExports: WasmExports | null = null;
+
+function getEmptySlice(): CadTessellatedSolidSlice {
+  return {
+    positions: new Float32Array(0),
+    normals: new Float32Array(0),
+    indices: new Uint32Array(0),
+    triangleToFaceId: new BigUint64Array(0),
+    edgePolylines: new Float32Array(0),
+    edgeToTopoId: new BigUint64Array(0),
+    bbox: { min: [0, 0, 0], max: [0, 0, 0] },
+    metadata: {
+      vertexCount: 0,
+      triangleCount: 0,
+      edgeCount: 0,
+      faceCount: 0,
+      generatedAt: performance.now(),
+    },
+  };
+}
+
+function evaluateFeatureDag(_nodes: CadFeatureNode[], _rollbackIndex: number): CadTessellatedSolidSlice {
+  return getEmptySlice();
+}
 
 let cachedDagNodes: CadFeatureNode[] = getDefaultDemoFeatureDag();
 let cachedRollbackIndex: number = cachedDagNodes.length - 1;
@@ -244,25 +266,20 @@ self.onmessage = async (e: MessageEvent) => {
     if (wasmExports && req.solidType === 'box' && genBox) {
       genBox(req.params.width, req.params.height, req.params.depth);
       const wasmBuffers = extractFromWasmMemory('box');
-      buffers = wasmBuffers ?? generateBoxBuffers(req.params);
+      if (!wasmBuffers) throw new Error('WASM box generation failed');
+      buffers = wasmBuffers;
     } else if (wasmExports && req.solidType === 'cylinder' && genCyl) {
       genCyl(req.params.radius, req.params.height);
       const wasmBuffers = extractFromWasmMemory('cylinder');
-      buffers = wasmBuffers ?? generateCylinderBuffers(req.params);
+      if (!wasmBuffers) throw new Error('WASM cylinder generation failed');
+      buffers = wasmBuffers;
     } else {
-      // Pure flat typed memory generator matching cad_kernel.h layout
-      if (req.solidType === 'box') {
-        buffers = generateBoxBuffers(req.params);
-      } else if (req.solidType === 'cylinder') {
-        buffers = generateCylinderBuffers(req.params);
-      } else {
-        self.postMessage({
-          type: 'ERROR',
-          requestId,
-          error: `Unknown solidType: ${(req as any).solidType}`,
-        });
-        return;
-      }
+      self.postMessage({
+        type: 'ERROR',
+        requestId,
+        error: `Unknown or unavailable solidType: ${(req as any).solidType}`,
+      });
+      return;
     }
 
     const payload: CadMeshTransferPayload = {

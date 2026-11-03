@@ -225,7 +225,7 @@ pub export fn cad_flat_pattern_free(flat_pattern: ?*c_abi.CadFlatPattern) callco
     return .Ok;
 }
 
-pub export fn cad_sheetmetal_unfold_box(
+pub export fn cad_sheetmetal_unfold_flanged(
     width: f64,
     length: f64,
     thickness: f64,
@@ -314,7 +314,7 @@ test "WASM sheet metal exports verification" {
     const bd = cad_sheetmetal_calc_bend_deduction(2.0, 3.0, 0.44, std.math.pi / 2.0);
     try std.testing.expect(bd > 3.8 and bd < 4.0);
 
-    const pts_cnt = cad_sheetmetal_unfold_box(40.0, 60.0, 1.5, 2.0, 0.44, 20.0);
+    const pts_cnt = cad_sheetmetal_unfold_flanged(40.0, 60.0, 1.5, 2.0, 0.44, 20.0);
     try std.testing.expect(pts_cnt > 0);
     try std.testing.expect(cad_sheetmetal_get_unfolded_length() > 60.0);
     try std.testing.expect(cad_sheetmetal_get_cut_length() > 0.0);

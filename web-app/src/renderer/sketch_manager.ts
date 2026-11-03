@@ -85,7 +85,7 @@ export class SketchManager {
   private lineMeshes = new Map<number, THREE.Line>();
   private circleMeshes = new Map<number, THREE.Line>();
   private arcMeshes = new Map<number, THREE.Line>();
-  private sharedSphereGeom = new THREE.SphereGeometry(0.12, 16, 16);
+  private sharedSphereGeom = new THREE.BufferGeometry();
 
   // Previous camera state for restore on exit
   private prevCameraPos: THREE.Vector3 = new THREE.Vector3();

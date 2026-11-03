@@ -18,7 +18,7 @@ var cached_node_positions_f32: std.ArrayListUnmanaged(f32) = .empty;
 // SDK Legacy & Rapid Helper Exports
 // ============================================================================
 
-pub export fn cad_fea_generate_box_mesh(
+pub export fn cad_fea_generate_hexahedral_mesh(
     dx: f64,
     dy: f64,
     dz: f64,

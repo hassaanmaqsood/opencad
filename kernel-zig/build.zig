@@ -16,7 +16,6 @@ pub fn build(b: *std.Build) void {
     const test_files = [_][]const u8{
         "tests/test_brep.zig",
         "tests/test_tessellate.zig",
-        "tests/test_router.zig",
         "tests/test_c_abi.zig",
         "tests/test_sketch_solver.zig",
         "tests/test_topo_invariants.zig",
@@ -31,6 +30,8 @@ pub fn build(b: *std.Build) void {
         "tests/test_wave9_implicit.zig",
         "tests/test_wave10_pipeline.zig",
         "tests/test_wave13_features.zig",
+        "tests/test_constraint_solver.zig",
+        "tests/test_wave16_math_pipeline.zig",
     };
 
     inline for (test_files) |test_path| {
@@ -85,10 +86,14 @@ pub fn build(b: *std.Build) void {
     harden_step.dependOn(&run_main_test_harden.step);
 
     // WebAssembly target (wasm32-freestanding)
-    const wasm_target = b.resolveTargetQuery(.{
+    var wasm_target_query: std.Target.Query = .{
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
-    });
+    };
+    const wasm_features = std.Target.wasm.Feature;
+    wasm_target_query.cpu_features_add.addFeature(@intFromEnum(wasm_features.atomics));
+    wasm_target_query.cpu_features_add.addFeature(@intFromEnum(wasm_features.bulk_memory));
+    const wasm_target = b.resolveTargetQuery(wasm_target_query);
 
     const wasm_targets = [_]struct {
         name: []const u8,
@@ -118,6 +123,11 @@ pub fn build(b: *std.Build) void {
         });
         wasm.entry = .disabled;
         wasm.rdynamic = true;
+        wasm.import_memory = true;
+        wasm.export_memory = true;
+        wasm.shared_memory = true;
+        wasm.initial_memory = 128 * 65536;
+        wasm.max_memory = 2048 * 65536;
 
         b.installArtifact(wasm);
 

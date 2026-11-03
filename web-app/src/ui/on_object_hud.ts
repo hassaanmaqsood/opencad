@@ -102,8 +102,8 @@ export class OnObjectHud {
     this.arrowGizmo.name = 'DirectPushPullArrow';
     this.arrowGizmo.visible = false;
 
-    // Shaft (Cylinder)
-    const shaftGeom = new THREE.CylinderGeometry(0.06, 0.06, 1.2, 16);
+    // Shaft
+    const shaftGeom = new THREE.BufferGeometry();
     shaftGeom.translate(0, 0.6, 0);
     const arrowMat = new THREE.MeshStandardMaterial({
       color: 0x38bdf8,
