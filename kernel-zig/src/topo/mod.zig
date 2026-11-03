@@ -2,9 +2,12 @@ pub const half_edge = @import("half_edge.zig");
 pub const topo_naming = @import("topo_naming.zig");
 pub const dag = @import("dag.zig");
 pub const plugin_registry = @import("plugin_registry.zig");
+pub const topo_id = @import("topo_id.zig");
 
 pub const SoASolid = half_edge.SoASolid;
 pub const CadTopoId = half_edge.CadTopoId;
+pub const TopoId = topo_id.TopoId;
+pub const h64 = topo_id.h64;
 pub const CadSubshapeType = half_edge.CadSubshapeType;
 pub const VertexId = half_edge.VertexId;
 pub const HalfEdgeId = half_edge.HalfEdgeId;

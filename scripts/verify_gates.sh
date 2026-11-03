@@ -53,29 +53,64 @@ if [ "$MEM_COUNT" -ne 1 ]; then
   exit 1
 fi
 
+# --- Replace everything after the phase2 exit block in scripts/verify_gates.sh with: ---
+
+echo "=== [GATE 3B] CDML v1.0 Compiler, Fault Tolerance & §14 Normative Document Check ==="
+node scripts/test_cdml_compiler.mjs
+
+if [ "$PHASE" = "phase3" ]; then
+  echo "=== PHASE 3 GATES PASSED (Fault-Tolerant CDML v1.0 Kernel Compiler Verified) ==="
+  exit 0
+fi
+
+echo "=== [GATE 4] Checking Single SharedArrayBuffer & Zero-Copy Extension Canary ==="
+MEM_COUNT=$(rg -c "new WebAssembly\.Memory" web-app/src/ packages/ 2>/dev/null | awk -F: '{sum+=$2} END {print sum+0}')
+if [ "$MEM_COUNT" -ne 1 ]; then
+  echo "FAIL [GATE 4]: Found $MEM_COUNT WebAssembly.Memory allocations across web-app/ and packages/ (Expected EXACTLY 1 shared memory instance)!"
+  exit 1
+fi
+
 if ! rg -q "shared:\s*true" web-app/src/ packages/ 2>/dev/null; then
   echo "FAIL [GATE 4]: WebAssembly.Memory is not configured with { shared: true }!"
   exit 1
 fi
 
-if rg -n "window\.cad\.getStressField" web-app/src/ packages/ 2>/dev/null; then
-  echo "FAIL [GATE 4]: Banned global JS heap bus window.cad.getStressField found!"
-  exit 1
-fi
+node scripts/test_canary_extension.mjs
 
-echo "=== [GATE 5] Surface Wrapper & Python Handle Verification ==="
+echo "=== [GATE 5] CDML-Backed 4-Step Surface API (TS & Python) Verification ==="
 python3 -c "
 import sys; sys.path.insert(0, 'bindings/python')
 import opencad as cad
-p1 = cad.workplane('XY').sketch().rect(80, 50).circle(10, at=(20, 0)).extrude(20)
-p2 = cad.workplane('XY').sketch().rect(120, 50).extrude(10)
-assert p1._handle != 1 and p2._handle != 1 and p1._handle != p2._handle, f'Fake handles: {p1._handle}, {p2._handle}'
-assert (p1._handle >> 62) in (0, 1), f'Invalid solid_t representation tag bits: {hex(p1._handle)}'
-step_str = p1.to_step()
-assert 'MANIFOLD_SOLID_BREP' in step_str and '80.' in step_str, 'Invalid STEP output'
-stl_bytes = p1.to_stl(binary=True)
-assert len(stl_bytes) > 84, 'Invalid binary STL output'
-print('Python surface-wrapper-to-math-kernel check PASSED. Handles:', hex(p1._handle), hex(p2._handle))
+doc = (cad.cdml(units='mm')
+  .var('W', 80.0, min=40.0, max=120.0)
+  .var('H', 20.0)
+  .var('R', 10.0)
+  .chart_xy('c_xy')
+  .sketch('sk1', chart='c_xy')
+    .rect_wire('w_out', width='ref(W)', height='50.0', role='outer')
+    .circle_wire('w_hole', radius='ref(R)', role='hole')
+  .brep('b1')
+    .sweep_extrude('sw1', sketch='sk1', z_expr='ref(H) * v')
+  .probe('vol', type='volume', target='b1')
+  .export_tessellate('b1')
+  .export_step('b1')
+  .export_stl('b1', binary=True))
+
+xml_str = doc.to_cdml()
+assert '<cdml version=\"1.0\"' in xml_str and '<chart id=\"c_xy\">' in xml_str, 'Invalid CDML emission'
+res = doc.evaluate()
+assert res.status == 0, f'CDML eval failed: {res.diagnostic}'
+assert res.probe('vol') > 60000.0, f'Unexpected volume: {res.probe(\"vol\")}'
+assert len(res.to_stl()) > 84 and 'MANIFOLD_SOLID_BREP' in res.to_step()
+print('Python 4-step CDML builder & evaluation PASSED. Volume:', res.probe('vol'))
 "
 
-echo "=== ALL SMART-PROOF & FOOL-PROOF GATES PASSED ==="
+if [ "$PHASE" = "phase4" ]; then
+  echo "=== PHASE 4 GATES PASSED (CDML Surface SDK & Canary Shared-Memory Extension Verified) ==="
+  exit 0
+fi
+
+echo "=== [GATE 6] Responsive Flex Studio & Minimal URL/Data-Attr Embed E2E Check ==="
+cd web-app && npx playwright test && cd ..
+
+echo "=== ALL OPEN-CAD & CDML v1.0 GATES PASSED ==="

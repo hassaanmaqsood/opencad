@@ -2,17 +2,18 @@ const std = @import("std");
 const memory = @import("memory.zig");
 const nurbs = @import("geom/nurbs.zig");
 const curve_wire = @import("curve_wire.zig");
-const c_abi = @import("c_abi.zig");
+const topo_id = @import("topo/topo_id.zig");
 
 pub const Vec3d = nurbs.Vec3d;
-pub const CadTopoId = c_abi.CadTopoId;
+pub const TopoId = topo_id.TopoId;
 
 pub const SUBSHAPE_VERTEX: u8 = 1;
 pub const SUBSHAPE_EDGE: u8 = 2;
-pub const SUBSHAPE_FACE: u8 = 3;
+pub const SUBSHAPE_FACE: u8 = 4;
 
-pub fn makeTopoId(solid_id: u32, subshape_type: u8, local_idx: u32) CadTopoId {
-    return .{ .raw = (@as(u64, solid_id) << 32) | (@as(u64, subshape_type) << 24) | @as(u64, local_idx) };
+pub fn makeTopoId(solid_id: u32, subshape_type: u8, local_idx: u32) TopoId {
+    const f_hash = (@as(u64, solid_id) << 32) | @as(u64, local_idx);
+    return TopoId.init(f_hash, 0, subshape_type, topo_id.TopoFlags.ANALYTIC, 0);
 }
 
 // ============================================================================
@@ -24,7 +25,7 @@ pub const BRepSolid = struct {
     vertices: std.ArrayList(Vec3d) = .empty,
     normals: std.ArrayList(Vec3d) = .empty,
     indices: std.ArrayList(u32) = .empty,
-    triangle_to_topo_id: std.ArrayList(CadTopoId) = .empty,
+    triangle_to_topo_id: std.ArrayList(TopoId) = .empty,
     genus: usize = 0,
     allocator: std.mem.Allocator,
 

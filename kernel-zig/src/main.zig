@@ -2161,14 +2161,28 @@ pub export fn get_indices_len() u32 {
     if (tri_count > 0) return tri_count * 3;
     return cad_wasm_get_indices_len();
 }
-pub export fn get_face_ids_ptr() ?[*]const u32 {
-    return cad_wasm_get_face_ids_ptr();
+pub export fn get_face_ids_ptr() ?[*]const u8 {
+    const mem = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, 64);
+    const tri_count = std.mem.readInt(u32, mem[0x08..0x0C], .little);
+    if (tri_count > 0) {
+        const face_offset = std.mem.readInt(u32, mem[0x18..0x1C], .little);
+        const slice = memory_map.getMemorySlice(face_offset, tri_count * 24);
+        return slice.ptr;
+    }
+    return null;
 }
 pub export fn get_face_ids_len() u32 {
-    return cad_wasm_get_face_ids_len();
+    const mem = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, 64);
+    const tri_count = std.mem.readInt(u32, mem[0x08..0x0C], .little);
+    if (tri_count > 0) return tri_count;
+    return 0;
 }
 
 pub export fn get_string_ptr() ?[*]const u8 {
+    if (cdml.evaluator.active_diagnostic.code != cdml.types.CDML_OK) {
+        const mem = memory_map.getMemorySlice(memory_map.SCRATCH_OFFSET, 64);
+        return mem.ptr;
+    }
     if (wasm_step_export_buf.items.len > 0) return wasm_step_export_buf.items.ptr;
     if (wasm_stl_export_buf.items.len > 0) return wasm_stl_export_buf.items.ptr;
     const mem = memory_map.getMemorySlice(memory_map.SCRATCH_OFFSET, 64);
@@ -2176,7 +2190,32 @@ pub export fn get_string_ptr() ?[*]const u8 {
 }
 
 pub export fn get_string_len() usize {
+    if (cdml.evaluator.active_diagnostic.code != cdml.types.CDML_OK) {
+        return tess_export.export_step_len;
+    }
     if (wasm_step_export_buf.items.len > 0) return wasm_step_export_buf.items.len;
     if (wasm_stl_export_buf.items.len > 0) return wasm_stl_export_buf.items.len;
     return tess_export.export_step_len;
+}
+
+// ============================================================================
+// CDML v1.0 Kernel ABI Exports (CDML §2a, §3, §10, §12, §13, §14)
+// ============================================================================
+
+pub const cdml = @import("cdml/mod.zig");
+
+pub export fn cdml_register_import(path_ptr: [*]const u8, path_len: usize, xml_ptr: [*]const u8, xml_len: usize) u32 {
+    return cdml.cdml_register_import(path_ptr, path_len, xml_ptr, xml_len);
+}
+
+pub export fn cdml_eval_document(xml_ptr: [*]const u8, xml_len: usize) u32 {
+    return cdml.cdml_eval_document(xml_ptr, xml_len);
+}
+
+pub export fn cdml_set_var(id_ptr: [*]const u8, id_len: usize, value_f64: f64) u32 {
+    return cdml.cdml_set_var(id_ptr, id_len, value_f64);
+}
+
+pub export fn cdml_get_probe_value(id_ptr: [*]const u8, id_len: usize, out_f64_ptr: *f64) u32 {
+    return cdml.cdml_get_probe_value(id_ptr, id_len, out_f64_ptr);
 }

@@ -15,10 +15,24 @@ pub var export_stl_len: usize = 0;
 pub fn getSolidMesh(solid_h: u64) ?*const BRepSolid {
     const tag = solid_h >> 62;
     if (tag == 0b00 or tag == 0b10) {
-        return surface_brep.solid_brep_store.getPtr(solid_h);
+        if (surface_brep.solid_brep_store.getPtr(solid_h)) |p| return p;
     } else if (tag == 0b01) {
         if (surface_brep.csg_store.get(solid_h)) |node| {
             return getSolidMesh(node.left);
+        }
+    }
+
+    // Fallback: search across all stores by lower 32 bits
+    var it = surface_brep.solid_brep_store.iterator();
+    while (it.next()) |entry| {
+        if ((entry.key_ptr.* & 0xFFFFFFFF) == (solid_h & 0xFFFFFFFF)) {
+            return entry.value_ptr;
+        }
+    }
+    var it_csg = surface_brep.csg_store.iterator();
+    while (it_csg.next()) |entry| {
+        if ((entry.key_ptr.* & 0xFFFFFFFF) == (solid_h & 0xFFFFFFFF)) {
+            return getSolidMesh(entry.value_ptr.left);
         }
     }
     return null;
@@ -66,7 +80,7 @@ pub fn solid_tessellate(
     const idx_offset: u32 = nrm_offset + v_count * 3 * 4;
     const face_offset: u32 = idx_offset + tri_count * 3 * 4;
 
-    const total_len = (face_offset + tri_count * 8) - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
+    const total_len = (face_offset + tri_count * 24) - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
     const mem_slice = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, total_len + 128);
 
     // Write header
@@ -77,7 +91,7 @@ pub fn solid_tessellate(
     std.mem.writeInt(u32, mem_slice[0x10..0x14], nrm_offset, .little);
     std.mem.writeInt(u32, mem_slice[0x14..0x18], idx_offset, .little);
     std.mem.writeInt(u32, mem_slice[0x18..0x1C], face_offset, .little);
-    std.mem.writeInt(u32, mem_slice[0x1C..0x20], 0, .little); // reserved
+    std.mem.writeInt(u32, mem_slice[0x1C..0x20], @as(u32, @intCast((solid_h >> 32) & 0xFFFFFFFF)), .little); // solid_h upper bits
 
     // Bounding box at 0x20 (6 * 8 = 48 bytes)
     const bbox = [_]f64{ min_x, min_y, min_z, max_x, max_y, max_z };
@@ -116,11 +130,13 @@ pub fn solid_tessellate(
         i_cur += 4;
     }
 
-    // Write face IDs (u64 CadTopoId)
+    // Write face IDs (192-bit / 3 * u64 TopoId per triangle)
     var f_cur: usize = face_offset - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
     for (mesh.triangle_to_topo_id.items) |fid| {
-        std.mem.writeInt(u64, mem_slice[f_cur..][0..8], fid.raw, .little);
-        f_cur += 8;
+        std.mem.writeInt(u64, mem_slice[f_cur..][0..8], fid.words[0], .little);
+        std.mem.writeInt(u64, mem_slice[f_cur + 8 ..][0..8], fid.words[1], .little);
+        std.mem.writeInt(u64, mem_slice[f_cur + 16 ..][0..8], fid.words[2], .little);
+        f_cur += 24;
     }
 
     // Increment tess_generation_counter at 0x001C

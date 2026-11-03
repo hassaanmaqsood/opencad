@@ -144,6 +144,8 @@ let cachedDagNodes: CadFeatureNode[] = getDefaultDemoFeatureDag();
 let cachedRollbackIndex: number = cachedDagNodes.length - 1;
 let activeSlice: CadTessellatedSolidSlice | null = null;
 
+export const sharedWasmMemory = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
+
 /**
  * Initializes an optional WebAssembly binary conforming to cad_kernel.h.
  */
@@ -152,7 +154,14 @@ async function initWasm(wasmBinary: ArrayBuffer): Promise<boolean> {
     const module = await WebAssembly.compile(wasmBinary);
     wasmInstance = await WebAssembly.instantiate(module, {
       env: {
+        memory: sharedWasmMemory,
         abort: () => console.error('Wasm aborted'),
+      },
+      opencad: {
+        field_alloc: () => 0,
+        field_eval_scalar: () => 0.0,
+        field_eval_vec3: () => {},
+        cmd_write: () => {},
       },
     });
     wasmExports = wasmInstance.exports as unknown as WasmExports;
