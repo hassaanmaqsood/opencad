@@ -177,10 +177,10 @@ pub const Wire = struct {
 // ============================================================================
 
 var next_curve_id: u64 = 1;
-pub var curve_store: std.AutoHashMap(u64, NurbsCurve) = std.AutoHashMap(u64, NurbsCurve).init(std.heap.page_allocator);
+pub var curve_store: std.AutoHashMap(u64, NurbsCurve) = std.AutoHashMap(u64, NurbsCurve).init(memory.persistent_allocator);
 
 var next_wire_id: u64 = 1;
-pub var wire_store: std.AutoHashMap(u64, Wire) = std.AutoHashMap(u64, Wire).init(std.heap.page_allocator);
+pub var wire_store: std.AutoHashMap(u64, Wire) = std.AutoHashMap(u64, Wire).init(memory.persistent_allocator);
 
 pub fn curve_define_nurbs(
     sys_h: u64,
@@ -191,7 +191,7 @@ pub fn curve_define_nurbs(
     knots_ptr: [*]const f64,
     knot_count: u32,
 ) u64 {
-    const alloc = std.heap.page_allocator;
+    const alloc = memory.persistent_allocator;
     const num_indices = ctrl_count * (dim + 1);
     const ctrl_copy = alloc.dupe(u32, ctrl_ids_ptr[0..num_indices]) catch return 0;
     const knots_copy = alloc.dupe(f64, knots_ptr[0..knot_count]) catch {
@@ -223,7 +223,7 @@ pub fn wire_assemble(
     curve_handles_ptr: [*]const u64,
     curve_count: u32,
 ) u64 {
-    const alloc = std.heap.page_allocator;
+    const alloc = memory.persistent_allocator;
     const curves_copy = alloc.dupe(u64, curve_handles_ptr[0..curve_count]) catch return 0;
 
     const p0 = Vec3d.init(frame_origin_u_v_ptr[0], frame_origin_u_v_ptr[1], frame_origin_u_v_ptr[2]);

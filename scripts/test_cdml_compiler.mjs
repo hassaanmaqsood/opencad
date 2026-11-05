@@ -422,4 +422,100 @@ const diagFillet = getDiagnostic();
 assert.equal(diagFillet.code, '0x0402');
 console.log('[PASS] Test 3d: ERR_FILLET_RADIUS_COLLAPSE verified.');
 
+// --- Append to the bottom of scripts/test_cdml_compiler.mjs ---
+{
+  const sfx = Math.floor(1000 + Math.random() * 9000);
+  const vR = `rad_${sfx}`, vH = `hgt_${sfx}`, vW = `wid_${sfx}`;
+
+  // Acid Test A: Pure Region Cylinder (Volume = pi * R^2 * H = pi * 12^2 * 25 = 11309.7335)
+  const regionXml = `<?xml version="1.0" encoding="UTF-8"?>
+  <cdml version="1.0" units="mm">
+    <defs>
+      <var id="${vR}" value="12.0" unit="mm"/>
+      <var id="${vH}" value="25.0" unit="mm"/>
+    </defs>
+    <body>
+      <surface id="s_${sfx}"><eq>x^2 + y^2 - ref(${vR})^2</eq></surface>
+      <region id="reg_${sfx}">
+        <and>
+          <ineq id="iw_${sfx}" surface="s_${sfx}" sense="-"/>
+          <ineq id="ib_${sfx}">z</ineq>
+          <ineq id="it_${sfx}">ref(${vH}) - z</ineq>
+        </and>
+      </region>
+      <brep id="cyl_${sfx}" region="reg_${sfx}"/>
+      <probe id="vol_${sfx}" type="volume" target="cyl_${sfx}"/>
+    </body>
+    <exports><tessellate target="cyl_${sfx}" chord-tol="0.02" angle-tol="0.05"/></exports>
+  </cdml>`;
+
+  const stA = evalCdmlString(regionXml);
+  assert.equal(stA, 0, `Acid Test A (Region Cylinder) failed with status ${stA}`);
+  const volA = getProbeValue(`vol_${sfx}`);
+  const expectedCylVol = Math.PI * 12.0 * 12.0 * 25.0;
+  assert.ok(Math.abs(volA - expectedCylVol) / expectedCylVol < 0.02,
+    `Acid Test A Volume mismatch: got ${volA}, expected ~${expectedCylVol}`);
+
+  // Acid Test B: Constrained Sketch Square with +/-10 seeds forced to W=37.5, swept by H=10 -> Vol = 14062.5
+  const sketchXml = `<?xml version="1.0" encoding="UTF-8"?>
+  <cdml version="1.0" units="mm">
+    <defs>
+      <var id="${vW}" value="37.5" unit="mm"/>
+      <var id="${vH}" value="10.0" unit="mm"/>
+    </defs>
+    <body>
+      <chart id="ch_${sfx}">
+        <vars>
+          <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+          <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+          <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+        </vars>
+        <constraints>
+          <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+          <residual id="or" expr="dot(e1, e2)"/>
+          <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+        </constraints>
+      </chart>
+      <sketch id="sk_${sfx}" chart="ch_${sfx}" max-iter="100">
+        <vars>
+          <point2d id="v0" u="-10.0" v="-10.0"/>
+          <point2d id="v1" u=" 10.0" v="-10.0"/>
+          <point2d id="v2" u=" 10.0" v=" 10.0"/>
+          <point2d id="v3" u="-10.0" v=" 10.0"/>
+        </vars>
+        <wire id="w_${sfx}" closed="true" role="outer">
+          <curve id="c0" degree="1" ctrl="v0 v1" weights="1.0 1.0" knots="0 0 1 1"/>
+          <curve id="c1" degree="1" ctrl="v1 v2" weights="1.0 1.0" knots="0 0 1 1"/>
+          <curve id="c2" degree="1" ctrl="v2 v3" weights="1.0 1.0" knots="0 0 1 1"/>
+          <curve id="c3" degree="1" ctrl="v3 v0" weights="1.0 1.0" knots="0 0 1 1"/>
+        </wire>
+        <constraints>
+          <residual id="cx" expr="v0.u + v1.u"/>
+          <residual id="cy" expr="v0.v + v3.v"/>
+          <residual id="sy" expr="v2.u + v3.u"/>
+          <residual id="h0" expr="v1.v - v0.v"/>
+          <residual id="h1" expr="v2.v - v3.v"/>
+          <residual id="ot" expr="dot(v1 - v0, v2 - v1)"/>
+          <residual id="we" expr="dot(v1 - v0, v1 - v0) - ref(${vW})^2"/>
+          <residual id="he" expr="dot(v2 - v1, v2 - v1) - ref(${vW})^2"/>
+        </constraints>
+      </sketch>
+      <brep id="box_${sfx}">
+        <sweep id="sw_${sfx}" sketch="sk_${sfx}" cap-ends="true">
+          <trajectory><translate x="0" y="0" z-expr="ref(${vH}) * v"/></trajectory>
+        </sweep>
+      </brep>
+      <probe id="bvol_${sfx}" type="volume" target="box_${sfx}"/>
+    </body>
+    <exports><tessellate target="box_${sfx}" chord-tol="0.05" angle-tol="0.1"/></exports>
+  </cdml>`;
+
+  const stB = evalCdmlString(sketchXml);
+  assert.equal(stB, 0, `Acid Test B (Constrained Sketch Sweep) failed with status ${stB}`);
+  const volB = getProbeValue(`bvol_${sfx}`);
+  assert.ok(Math.abs(volB - 14062.5) < 1.0,
+    `Acid Test B Volume mismatch: got ${volB}, expected 14062.5 (37.5 * 37.5 * 10.0)`);
+  console.log('[ACID TEST PASSED] Randomized Region Cylinder Vol =', volA.toFixed(2), '| Solved Sketch Vol =', volB.toFixed(2));
+}
+
 console.log('=== ALL CDML v1.0 COMPILER TESTS PASSED CLEANLY ===');

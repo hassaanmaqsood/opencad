@@ -1,31 +1,31 @@
 """
 OpenCAD Python SDK: CDML-backed 4-Step Engineering Surface API.
 CDML v1.0 Compliant parametric modeling and zero-primitive mathematical kernel.
+Executed natively in-process via Python `wasmtime`.
 """
 
 from __future__ import annotations
 import os
-import sys
-import json
-import base64
-import subprocess
-from typing import Optional, Dict, Any, List, Union
-
-_RUNNER_PATH = os.path.join(os.path.dirname(__file__), "_eval_runner.mjs")
+import re
+import struct
+import ctypes
+from typing import Optional, Dict, Any, List
+import wasmtime
 
 # Find cad_core.wasm or cad_kernel.wasm
 _POSSIBLE_WASM_PATHS = [
-    os.path.join(os.path.dirname(__file__), "cad_core.wasm"),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "kernel-zig", "zig-out", "bin", "cad_core.wasm")),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web-app", "public", "cad_core.wasm")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "kernel-zig", "zig-out", "bin", "cad_kernel.wasm")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "kernel-zig", "zig-out", "bin", "cad_core.wasm")),
+    os.path.join(os.path.dirname(__file__), "cad_core.wasm"),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web-app", "public", "cad_core.wasm")),
 ]
 
-_WASM_PATH = None
-for p in _POSSIBLE_WASM_PATHS:
-    if os.path.exists(p):
-        _WASM_PATH = p
-        break
+
+def _resolve_wasm_path() -> str:
+    for p in _POSSIBLE_WASM_PATHS:
+        if os.path.exists(p):
+            return p
+    raise RuntimeError("OpenCAD WebAssembly kernel (cad_kernel.wasm / cad_core.wasm) not found!")
 
 
 class CdmlEvaluationResult:
@@ -302,36 +302,124 @@ def cdml(units: str = "mm", linear_tol: str = "1e-7", angular_tol: str = "1e-11"
     return CdmlDocument(units=units, linear_tol=linear_tol, angular_tol=angular_tol)
 
 
+def _get_base_ptr(mem: Any, store: wasmtime.Store) -> int:
+    if isinstance(mem, wasmtime.SharedMemory):
+        return ctypes.addressof(mem.data_ptr().contents)
+    return ctypes.addressof(mem.data_ptr(store).contents)
+
+
+def _read_mem_bytes(mem: Any, store: wasmtime.Store, offset: int, length: int) -> bytes:
+    base_ptr = _get_base_ptr(mem, store)
+    buf = (ctypes.c_ubyte * length).from_address(base_ptr + offset)
+    return bytes(buf)
+
+
+def _write_mem_bytes(mem: Any, store: wasmtime.Store, offset: int, data: bytes) -> None:
+    base_ptr = _get_base_ptr(mem, store)
+    ctypes.memmove(base_ptr + offset, data, len(data))
+
+
+def _patch_wasmtime_sharedmemory() -> None:
+    if hasattr(wasmtime, "SharedMemory") and hasattr(wasmtime, "_ffi"):
+        ffi = wasmtime._ffi
+        def _fixed_as_extern(self: Any) -> Any:
+            union = ffi.wasmtime_extern_union(sharedmemory=self.ptr())
+            return ffi.wasmtime_extern_t(ffi.WASMTIME_EXTERN_SHAREDMEMORY, union)
+        wasmtime.SharedMemory._as_extern = _fixed_as_extern
+
+
+_patch_wasmtime_sharedmemory()
+
+
 def eval_cdml(xml_string: str, imports_map: Optional[Dict[str, str]] = None) -> CdmlEvaluationResult:
-    """Evaluate a raw CDML v1.0 XML document in cad_core.wasm."""
-    wasm_path = _WASM_PATH
-    if not wasm_path or not os.path.exists(wasm_path):
-        raise RuntimeError("OpenCAD WebAssembly kernel (cad_core.wasm) not found!")
+    """Evaluate a raw CDML v1.0 XML document in-process using Python wasmtime."""
+    wasm_path = _resolve_wasm_path()
 
-    payload = json.dumps({
-        "wasmPath": wasm_path,
-        "xml": xml_string,
-        "imports": imports_map or {},
-    })
+    config = wasmtime.Config()
+    config.wasm_threads = True
+    config.shared_memory = True
+    engine = wasmtime.Engine(config)
+    store = wasmtime.Store(engine)
+    module = wasmtime.Module.from_file(engine, wasm_path)
 
-    proc = subprocess.run(
-        ["node", _RUNNER_PATH],
-        input=payload,
-        capture_output=True,
-        text=True,
-    )
+    linker = wasmtime.Linker(engine)
+    mem: Any = None
 
-    if proc.returncode != 0:
-        raise RuntimeError(f"CDML evaluator execution error: {proc.stderr}")
+    for imp in module.imports:
+        if imp.module == "env" and imp.name == "memory":
+            if getattr(imp.type, "shared", True):
+                mem = wasmtime.SharedMemory(engine, imp.type)
+            else:
+                mem = wasmtime.Memory(store, imp.type)
+            linker.define(store, "env", "memory", mem)
 
-    out_data = json.loads(proc.stdout)
-    stl_bytes = base64.b64decode(out_data.get("stl_base64", "")) if out_data.get("stl_base64") else b""
+    if mem is None:
+        mem = wasmtime.SharedMemory(engine, wasmtime.MemoryType(wasmtime.Limits(128, 2048), shared=True))
+        linker.define(store, "env", "memory", mem)
+
+    instance = linker.instantiate(store, module)
+    exports = instance.exports(store)
+
+    exports["kernel_init"](store)
+
+    scratch_cursor = 0x300000
+
+    def write_str(s: str) -> tuple[int, int]:
+        nonlocal scratch_cursor
+        raw = s.encode("utf-8")
+        ptr = scratch_cursor
+        _write_mem_bytes(mem, store, ptr, raw)
+        scratch_cursor = (scratch_cursor + len(raw) + 16) & ~15
+        return ptr, len(raw)
+
+    if imports_map:
+        reg_fn = exports["cdml_register_import"]
+        for path_str, content_str in imports_map.items():
+            p_ptr, p_len = write_str(path_str)
+            c_ptr, c_len = write_str(content_str)
+            reg_fn(store, p_ptr, p_len, c_ptr, c_len)
+
+    doc_ptr, doc_len = write_str(xml_string)
+    eval_fn = exports["cdml_eval_document"]
+    status = int(eval_fn(store, doc_ptr, doc_len))
+
+    diagnostic = ""
+    if status != 0:
+        diag_ptr = int(exports["get_string_ptr"](store))
+        diag_len = int(exports["get_string_len"](store))
+        if diag_ptr and diag_len > 0:
+            diagnostic = _read_mem_bytes(mem, store, diag_ptr, diag_len).decode("utf-8", errors="replace")
+
+    probes: Dict[str, float] = {}
+    probe_fn = exports["cdml_get_probe_value"]
+    for m in re.finditer(r'<probe\s+[^>]*id="([^"]+)"', xml_string):
+        pid = m.group(1)
+        if pid not in probes:
+            p_ptr, p_len = write_str(pid)
+            out_ptr = scratch_cursor
+            scratch_cursor += 16
+            p_res = int(probe_fn(store, p_ptr, p_len, out_ptr))
+            if p_res == 0:
+                val_bytes = _read_mem_bytes(mem, store, out_ptr, 8)
+                probes[pid] = struct.unpack("<d", val_bytes)[0]
+
+    step_str = ""
+    step_ptr = int(exports["get_step_ptr"](store))
+    step_len = int(exports["get_step_len"](store))
+    if step_ptr and step_len > 0:
+        step_str = _read_mem_bytes(mem, store, step_ptr, step_len).decode("utf-8", errors="replace")
+
+    stl_bytes = b""
+    stl_ptr = int(exports["get_stl_ptr"](store))
+    stl_len = int(exports["get_stl_len"](store))
+    if stl_ptr and stl_len > 0:
+        stl_bytes = _read_mem_bytes(mem, store, stl_ptr, stl_len)
 
     return CdmlEvaluationResult(
-        status=out_data.get("status", -1),
-        diagnostic=out_data.get("diagnostic", ""),
-        probes=out_data.get("probes", {}),
-        step_data=out_data.get("step", ""),
+        status=status,
+        diagnostic=diagnostic,
+        probes=probes,
+        step_data=step_str,
         stl_data=stl_bytes,
     )
 

@@ -36,17 +36,25 @@ if (typeof window === 'undefined') {
           statusText: response.statusText,
           headers: newHeaders,
         });
-      }).catch((e) => console.error(e))
+      })
     );
   });
 } else {
   (() => {
+    // If native headers already enable cross-origin isolation, unregister any stale service workers and return
+    if (window.crossOriginIsolated) {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const reg of registrations) {
+            reg.unregister();
+          }
+        });
+      }
+      return;
+    }
+
     const reloadedBySelf = window.sessionStorage.getItem("coiReloadedBySelf");
     window.sessionStorage.removeItem("coiReloadedBySelf");
-    const coepDegrading = (reloadedBySelf === "true");
-
-    // Check if headers already applied
-    if (window.crossOriginIsolated) return;
 
     const currentScript = document.currentScript;
     const src = currentScript ? currentScript.src : "coi-serviceworker.js";

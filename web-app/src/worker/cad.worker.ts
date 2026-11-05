@@ -129,8 +129,12 @@ function getEmptySlice(): CadTessellatedSolidSlice {
     metadata: {
       vertexCount: 0,
       triangleCount: 0,
-      edgeCount: 0,
+      edgeSegmentCount: 0,
       faceCount: 0,
+      rollbackIndex: 0,
+      activeFeatureCount: 0,
+      totalFeatureCount: 0,
+      lastEvaluatedFeatureName: '',
       generatedAt: performance.now(),
     },
   };
@@ -145,6 +149,140 @@ let cachedRollbackIndex: number = cachedDagNodes.length - 1;
 let activeSlice: CadTessellatedSolidSlice | null = null;
 
 export const sharedWasmMemory = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
+
+// Make shared memory available globally on worker global scope
+(self as any).__openCadSharedMemory = sharedWasmMemory;
+
+let canaryInstance: WebAssembly.Instance | null = null;
+async function ensureCanary(): Promise<WebAssembly.Instance | null> {
+  if (canaryInstance) return canaryInstance;
+  try {
+    const resp = await fetch('/ext_field_canary.wasm');
+    const buf = await resp.arrayBuffer();
+    const mod = await WebAssembly.compile(buf);
+    canaryInstance = await WebAssembly.instantiate(mod, {
+      env: { memory: sharedWasmMemory },
+      opencad: {
+        field_alloc: () => 0,
+        field_eval_scalar: () => 0.0,
+        field_eval_vec3: () => {},
+        cmd_write: () => {},
+      },
+    });
+    return canaryInstance;
+  } catch (err) {
+    console.warn('Canary extension load warning:', err);
+    return null;
+  }
+}
+
+async function ensureKernelWasm(): Promise<boolean> {
+  if (wasmExports && (wasmExports as any).cdml_eval_document) return true;
+  try {
+    const resp = await fetch('/cad_kernel.wasm');
+    const buf = await resp.arrayBuffer();
+    return await initWasm(buf);
+  } catch (err) {
+    console.error('Failed to load /cad_kernel.wasm in worker:', err);
+    return false;
+  }
+}
+
+let scratchCursor = 0x300000;
+function writeWasmString(str: string): { ptr: number; len: number } {
+  const bytes = new TextEncoder().encode(str);
+  scratchCursor = (scratchCursor + 15) & ~15;
+  const ptr = scratchCursor;
+  new Uint8Array(sharedWasmMemory.buffer).set(bytes, ptr);
+  scratchCursor += bytes.length + 16;
+  return { ptr, len: bytes.length };
+}
+
+function parseVarsFromXml(xml: string) {
+  const vars: Array<{ id: string; value: number; min?: number; max?: number; unit?: string }> = [];
+  const matches = xml.matchAll(/<var\s+([^>]+)\/>/g);
+  for (const m of matches) {
+    const attrs = m[1];
+    const idMatch = attrs.match(/id="([^"]+)"/);
+    const valMatch = attrs.match(/value="([^"]+)"/);
+    if (idMatch && valMatch) {
+      const minMatch = attrs.match(/min="([^"]+)"/);
+      const maxMatch = attrs.match(/max="([^"]+)"/);
+      const unitMatch = attrs.match(/unit="([^"]+)"/);
+      vars.push({
+        id: idMatch[1],
+        value: parseFloat(valMatch[1]),
+        min: minMatch ? parseFloat(minMatch[1]) : undefined,
+        max: maxMatch ? parseFloat(maxMatch[1]) : undefined,
+        unit: unitMatch ? unitMatch[1] : undefined,
+      });
+    }
+  }
+  return vars;
+}
+
+function parseProbesFromXml(xml: string): string[] {
+  const probeIds: string[] = [];
+  const matches = xml.matchAll(/<probe\s+[^>]*id="([^"]+)"/g);
+  for (const m of matches) {
+    probeIds.push(m[1]);
+  }
+  return probeIds;
+}
+
+function parseExportsFromXml(xml: string): string[] {
+  const exports: string[] = [];
+  if (xml.includes('<step')) exports.push('step');
+  if (xml.includes('<stl')) exports.push('stl');
+  if (xml.includes('<tessellate')) exports.push('tessellate');
+  return exports;
+}
+
+function readTessellationFromSharedMemory() {
+  const ctrlView = new DataView(sharedWasmMemory.buffer, 0x0F0000, 64);
+  const solidId = ctrlView.getUint32(0x00, true);
+  const vertexCount = ctrlView.getUint32(0x04, true);
+  const triangleCount = ctrlView.getUint32(0x08, true);
+  const posOffset = ctrlView.getUint32(0x0C, true);
+  const nrmOffset = ctrlView.getUint32(0x10, true);
+  const idxOffset = ctrlView.getUint32(0x14, true);
+  const genCounter = ctrlView.getUint32(0x1C, true);
+
+  if (vertexCount === 0 || triangleCount === 0) {
+    return null;
+  }
+
+  const positions = new Float32Array(sharedWasmMemory.buffer, posOffset, vertexCount * 3).slice();
+  const normals = new Float32Array(sharedWasmMemory.buffer, nrmOffset, vertexCount * 3).slice();
+  const indices = new Uint32Array(sharedWasmMemory.buffer, idxOffset, triangleCount * 3).slice();
+
+  const edgeList: number[] = [];
+  for (let i = 0; i < indices.length; i += 3) {
+    const a = indices[i];
+    const b = indices[i + 1];
+    const c = indices[i + 2];
+    edgeList.push(
+      positions[a * 3], positions[a * 3 + 1], positions[a * 3 + 2],
+      positions[b * 3], positions[b * 3 + 1], positions[b * 3 + 2],
+      positions[b * 3], positions[b * 3 + 1], positions[b * 3 + 2],
+      positions[c * 3], positions[c * 3 + 1], positions[c * 3 + 2],
+      positions[c * 3], positions[c * 3 + 1], positions[c * 3 + 2],
+      positions[a * 3], positions[a * 3 + 1], positions[a * 3 + 2]
+    );
+  }
+  const edgeVertices = new Float32Array(edgeList);
+
+  return {
+    solidId,
+    vertexCount,
+    triangleCount,
+    positions,
+    normals,
+    indices,
+    edgeVertices,
+    genCounter,
+  };
+}
 
 /**
  * Initializes an optional WebAssembly binary conforming to cad_kernel.h.
@@ -259,6 +397,224 @@ self.onmessage = async (e: MessageEvent) => {
   if (data.type === 'LOAD_WASM' && data.wasmBinary instanceof ArrayBuffer) {
     const success = await initWasm(data.wasmBinary);
     self.postMessage({ type: 'WASM_LOADED', success });
+    return;
+  }
+
+  if (data.type === 'CDML_EVAL') {
+    scratchCursor = 0x300000;
+    const reqId = data.requestId ?? 0;
+    try {
+      const ok = await ensureKernelWasm();
+      if (!ok) {
+        self.postMessage({
+          type: 'CDML_EVALUATED',
+          requestId: reqId,
+          status: -1,
+          diagnostic: 'Kernel WASM failed to initialize',
+          mesh: null,
+          vars: [],
+          probes: {},
+          exports: [],
+        });
+        return;
+      }
+
+      // Register imports
+      if (data.imports) {
+        for (const [path, content] of Object.entries(data.imports as Record<string, string>)) {
+          const p = writeWasmString(path);
+          const c = writeWasmString(content);
+          (wasmExports as any).cdml_register_import(p.ptr, p.len, c.ptr, c.len);
+        }
+      }
+
+      // Evaluate
+      const docStr = writeWasmString(data.xml);
+      const status = (wasmExports as any).cdml_eval_document(docStr.ptr, docStr.len);
+
+      if (status !== 0) {
+        const diagPtr = (wasmExports as any).get_string_ptr?.();
+        const diagLen = (wasmExports as any).get_string_len?.() ?? 0;
+        let diag = `CDML Error 0x${status.toString(16)}`;
+        if (diagPtr && diagLen > 0) {
+          diag = new TextDecoder().decode(new Uint8Array(sharedWasmMemory.buffer, diagPtr, diagLen).slice());
+        }
+        self.postMessage({
+          type: 'CDML_EVALUATED',
+          requestId: reqId,
+          status,
+          diagnostic: diag,
+          mesh: null,
+          vars: [],
+          probes: {},
+          exports: [],
+        });
+        return;
+      }
+
+      if (data.runCanary) {
+        const canary = await ensureCanary();
+        if (canary && typeof (canary.exports as any).extension_tick === 'function') {
+          (canary.exports as any).extension_tick(16.0);
+          // Re-evaluate to let infill absorb field changes
+          (wasmExports as any).cdml_eval_document(docStr.ptr, docStr.len);
+        }
+      }
+
+      const mesh = readTessellationFromSharedMemory();
+      const vars = parseVarsFromXml(data.xml);
+      const probeIds = parseProbesFromXml(data.xml);
+      const probes: Record<string, number> = {};
+
+      for (const pid of probeIds) {
+        const pStr = writeWasmString(pid);
+        scratchCursor = (scratchCursor + 15) & ~15;
+        const outPtr = scratchCursor;
+        scratchCursor += 16;
+        const pRes = (wasmExports as any).cdml_get_probe_value(pStr.ptr, pStr.len, outPtr);
+        if (pRes === 0) {
+          probes[pid] = new Float64Array(sharedWasmMemory.buffer, outPtr, 1)[0];
+        }
+      }
+
+      const exports = parseExportsFromXml(data.xml);
+
+      if (mesh) {
+        self.postMessage({
+          type: 'CDML_EVALUATED',
+          requestId: reqId,
+          status: 0,
+          diagnostic: '',
+          mesh: {
+            positions: mesh.positions.buffer,
+            normals: mesh.normals.buffer,
+            indices: mesh.indices.buffer,
+            edgeVertices: mesh.edgeVertices.buffer,
+            vertexCount: mesh.vertexCount,
+            triangleCount: mesh.triangleCount,
+            solidId: mesh.solidId,
+          },
+          vars,
+          probes,
+          exports,
+        }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer, mesh.edgeVertices.buffer]);
+      } else {
+        self.postMessage({
+          type: 'CDML_EVALUATED',
+          requestId: reqId,
+          status: 0,
+          diagnostic: '',
+          mesh: null,
+          vars,
+          probes,
+          exports,
+        });
+      }
+    } catch (err: any) {
+      console.error('CDML_EVAL worker error:', err);
+      self.postMessage({
+        type: 'CDML_EVALUATED',
+        requestId: reqId,
+        status: -1,
+        diagnostic: String(err?.message || err),
+        mesh: null,
+        vars: [],
+        probes: {},
+        exports: [],
+      });
+    }
+    return;
+  }
+
+  if (data.type === 'CDML_SET_VAR') {
+    const reqId = data.requestId ?? 0;
+    const varStr = writeWasmString(data.varId);
+    const status = (wasmExports as any).cdml_set_var(varStr.ptr, varStr.len, data.value);
+
+    if (status !== 0) {
+      const diagPtr = (wasmExports as any).get_string_ptr?.();
+      const diagLen = (wasmExports as any).get_string_len?.() ?? 0;
+      let diag = `CDML Error 0x${status.toString(16)}`;
+      if (diagPtr && diagLen > 0) {
+        diag = new TextDecoder().decode(new Uint8Array(sharedWasmMemory.buffer, diagPtr, diagLen).slice());
+      }
+      self.postMessage({
+        type: 'CDML_VAR_UPDATED',
+        requestId: reqId,
+        status,
+        diagnostic: diag,
+        mesh: null,
+        probes: {},
+      });
+      return;
+    }
+
+    const mesh = readTessellationFromSharedMemory();
+    const probeIds = (data.probeIds as string[]) || [];
+    const probes: Record<string, number> = {};
+
+    for (const pid of probeIds) {
+      const pStr = writeWasmString(pid);
+      scratchCursor = (scratchCursor + 15) & ~15;
+      const outPtr = scratchCursor;
+      scratchCursor += 16;
+      const pRes = (wasmExports as any).cdml_get_probe_value(pStr.ptr, pStr.len, outPtr);
+      if (pRes === 0) {
+        probes[pid] = new Float64Array(sharedWasmMemory.buffer, outPtr, 1)[0];
+      }
+    }
+
+    if (mesh) {
+      self.postMessage({
+        type: 'CDML_VAR_UPDATED',
+        requestId: reqId,
+        status: 0,
+        diagnostic: '',
+        mesh: {
+          positions: mesh.positions.buffer,
+          normals: mesh.normals.buffer,
+          indices: mesh.indices.buffer,
+          edgeVertices: mesh.edgeVertices.buffer,
+          vertexCount: mesh.vertexCount,
+          triangleCount: mesh.triangleCount,
+          solidId: mesh.solidId,
+        },
+        probes,
+      }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer, mesh.edgeVertices.buffer]);
+    } else {
+      self.postMessage({
+        type: 'CDML_VAR_UPDATED',
+        requestId: reqId,
+        status: 0,
+        diagnostic: '',
+        mesh: null,
+        probes,
+      });
+    }
+    return;
+  }
+
+  if (data.type === 'CDML_EXPORT_STEP') {
+    const reqId = data.requestId ?? 0;
+    const stepPtr = (wasmExports as any).get_step_ptr?.();
+    const stepLen = (wasmExports as any).get_step_len?.() ?? 0;
+    let stepStr = '';
+    if (stepPtr && stepLen > 0) {
+      stepStr = new TextDecoder().decode(new Uint8Array(sharedWasmMemory.buffer, stepPtr, stepLen).slice());
+    }
+    self.postMessage({ type: 'CDML_STEP_EXPORTED', requestId: reqId, stepStr });
+    return;
+  }
+
+  if (data.type === 'CDML_EXPORT_STL') {
+    const reqId = data.requestId ?? 0;
+    const stlPtr = (wasmExports as any).get_stl_ptr?.();
+    const stlLen = (wasmExports as any).get_stl_len?.() ?? 0;
+    let stlBuf = new Uint8Array(0);
+    if (stlPtr && stlLen > 0) {
+      stlBuf = new Uint8Array(sharedWasmMemory.buffer, stlPtr, stlLen).slice();
+    }
+    self.postMessage({ type: 'CDML_STL_EXPORTED', requestId: reqId, stlBuf: stlBuf.buffer }, [stlBuf.buffer]);
     return;
   }
 

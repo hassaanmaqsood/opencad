@@ -1,6 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+pub const persistent_allocator: std.mem.Allocator = if (builtin.target.cpu.arch == .wasm32)
+    std.heap.wasm_allocator
+else
+    std.heap.page_allocator;
+
 /// In test mode, returns std.testing.allocator which enforces zero memory leaks.
 /// In WASM mode, uses std.heap.wasm_allocator.
 /// In native production mode, uses std.heap.smp_allocator or c_allocator.

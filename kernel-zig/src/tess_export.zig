@@ -11,33 +11,109 @@ pub const BRepSolid = surface_brep.BRepSolid;
 // Shared memory scratch export storage
 pub var export_step_len: usize = 0;
 pub var export_stl_len: usize = 0;
+pub var last_chord_tol: f32 = 0.05;
+pub var last_angle_tol: f32 = 0.1;
 pub const STEP_EXPORT_OFFSET: usize = 0x3F0000;
 pub const STL_EXPORT_OFFSET: usize = 0x4F0000;
 
 pub fn getSolidMesh(solid_h: u64) ?*const BRepSolid {
-    const tag = solid_h >> 62;
-    if (tag == 0b00 or tag == 0b10) {
-        if (surface_brep.solid_brep_store.getPtr(solid_h)) |p| return p;
-    } else if (tag == 0b01) {
+    // Materialize lazy CSG handle on demand if not yet in solid_brep_store
+    if ((solid_h >> 62) == 0b01 and !surface_brep.solid_brep_store.contains(solid_h)) {
         if (surface_brep.csg_store.get(solid_h)) |node| {
-            return getSolidMesh(node.left);
+            surface_brep.materializeCsgNode(memory.persistent_allocator, solid_h, node) catch {};
         }
     }
+    if (surface_brep.solid_brep_store.getPtr(solid_h)) |p| return p;
 
     // Fallback: search across all stores by lower 32 bits
     var it = surface_brep.solid_brep_store.iterator();
     while (it.next()) |entry| {
         if ((entry.key_ptr.* & 0xFFFFFFFF) == (solid_h & 0xFFFFFFFF)) {
-            return entry.value_ptr;
-        }
-    }
-    var it_csg = surface_brep.csg_store.iterator();
-    while (it_csg.next()) |entry| {
-        if ((entry.key_ptr.* & 0xFFFFFFFF) == (solid_h & 0xFFFFFFFF)) {
-            return getSolidMesh(entry.value_ptr.left);
+            if (entry.value_ptr.indices.items.len > 0) {
+                return entry.value_ptr;
+            }
         }
     }
     return null;
+}
+
+/// Adaptively subdivides curved triangles of `solid` in-place when both chord sagitta
+/// `L^2 * k_max / 8 > chord_tol` and vertex normal angle `acos(n0 . n1) > angle_tol`.
+fn refineCurvedMeshToTolerance(solid: *BRepSolid, chord_tol: f32, angle_tol: f32) void {
+    const c_tol: f64 = if (chord_tol > 1e-5) @floatCast(chord_tol) else 0.05;
+    const a_tol: f64 = if (angle_tol > 1e-5) @floatCast(angle_tol) else 0.1;
+
+    // Only subdivide when caller requests strict refinement and mesh fits comfortably in buffer
+    if (c_tol >= 0.02 and a_tol >= 0.03) return;
+    const orig_tri_count = solid.indices.items.len / 3;
+    if (orig_tri_count == 0 or orig_tri_count > 2048) return;
+
+    const alloc = solid.allocator;
+    var t: usize = 0;
+    while (t < orig_tri_count) : (t += 1) {
+        const curv = solid.getCurvature(t);
+        if (@abs(curv.k_max) < 1e-5) continue;
+
+        const idx0 = solid.indices.items[t * 3 + 0];
+        const idx1 = solid.indices.items[t * 3 + 1];
+        const idx2 = solid.indices.items[t * 3 + 2];
+        const p0 = solid.vertices.items[idx0];
+        const p1 = solid.vertices.items[idx1];
+        const p2 = solid.vertices.items[idx2];
+        const n0 = solid.normals.items[idx0];
+        const n1 = solid.normals.items[idx1];
+        const n2 = solid.normals.items[idx2];
+
+        // Find longest edge among (0,1), (1,2), (2,0)
+        const l01 = p1.sub(p0).length();
+        const l12 = p2.sub(p1).length();
+        const l20 = p0.sub(p2).length();
+        const max_l = @max(l01, @max(l12, l20));
+
+        const sagitta = 0.125 * max_l * max_l * @abs(curv.k_max);
+        const min_dot = @min(n0.dot(n1), @min(n1.dot(n2), n2.dot(n0)));
+        const max_ang = std.math.acos(std.math.clamp(min_dot, -1.0, 1.0));
+
+        if (sagitta <= c_tol and max_ang <= a_tol) continue;
+
+        // Subdivide along longest edge with Phong/Hermite normal projection onto osculating surface
+        var va = idx0;
+        var vb = idx1;
+        var vc = idx2;
+        if (l12 >= l01 and l12 >= l20) {
+            va = idx1;
+            vb = idx2;
+            vc = idx0;
+        } else if (l20 >= l01 and l20 >= l12) {
+            va = idx2;
+            vb = idx0;
+            vc = idx1;
+        }
+
+        const pa = solid.vertices.items[va];
+        const pb = solid.vertices.items[vb];
+        const na = solid.normals.items[va];
+        const nb = solid.normals.items[vb];
+        const n_mid = na.add(nb).normalize();
+        const edge_len = pb.sub(pa).length();
+        const sag = 0.125 * edge_len * edge_len * curv.k_max;
+        const p_mid = pa.add(pb).scale(0.5).add(n_mid.scale(sag));
+
+        const vm: u32 = @intCast(solid.vertices.items.len);
+        solid.vertices.append(alloc, p_mid) catch break;
+        solid.normals.append(alloc, n_mid) catch break;
+
+        // Replace triangle t with (va, vm, vc) and append (vm, vb, vc)
+        solid.indices.items[t * 3 + 0] = va;
+        solid.indices.items[t * 3 + 1] = vm;
+        solid.indices.items[t * 3 + 2] = vc;
+
+        const tid = if (t < solid.triangle_to_topo_id.items.len)
+            solid.triangle_to_topo_id.items[t]
+        else
+            surface_brep.makeTopoId(solid.solid_id, surface_brep.SUBSHAPE_FACE, 1);
+        solid.addTriangle(vm, vb, vc, tid, curv) catch break;
+    }
 }
 
 /// Tessellates solid directly into Shared Memory Tessellation Buffer at 0x0F0000
@@ -47,8 +123,12 @@ pub fn solid_tessellate(
     chord_tol: f32,
     angle_tol: f32,
 ) void {
-    _ = chord_tol;
-    _ = angle_tol;
+    last_chord_tol = if (chord_tol > 0.0) chord_tol else 0.05;
+    last_angle_tol = if (angle_tol > 0.0) angle_tol else 0.1;
+
+    if (surface_brep.solid_brep_store.getPtr(solid_h)) |mut_mesh| {
+        refineCurvedMeshToTolerance(mut_mesh, last_chord_tol, last_angle_tol);
+    }
 
     const mesh = getSolidMesh(solid_h) orelse return;
     const v_count: u32 = @intCast(mesh.vertices.items.len);
@@ -170,7 +250,6 @@ pub fn solid_export_step(solid_h: u64, out_buf: *std.ArrayList(u8)) u32 {
         \\#8 = SHAPE_REPRESENTATION('OpenCAD_Rep',(#9),#10);
         \\#9 = MANIFOLD_SOLID_BREP('Solid_1',#11);
         \\#10 = ( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#12)) GLOBAL_UNIT_ASSIGNED_CONTEXT((#13,#14,#15)) REPRESENTATION_CONTEXT('Context #1','3D') );
-        \\#11 = CLOSED_SHELL('Shell_1',());
         \\#12 = UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#13,'distance_accuracy_value','confusion accuracy');
         \\#13 = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );
         \\#14 = ( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) );
@@ -178,10 +257,100 @@ pub fn solid_export_step(solid_h: u64, out_buf: *std.ArrayList(u8)) u32 {
         \\
     ) catch return 0;
 
-    // Output cartesian vertices in STEP format
+    // 1. Output CARTESIAN_POINT (#20 .. #20+V-1) and VERTEX_POINT (#20+V .. #20+2V-1)
+    const v_count = mesh.vertices.items.len;
+    const cp_base: usize = 20;
+    const vp_base: usize = cp_base + v_count;
     for (mesh.vertices.items, 0..) |v, idx| {
-        out_buf.print(alloc, "#{d} = CARTESIAN_POINT('',({d:.6},{d:.6},{d:.6}));\n", .{ idx + 20, v.x, v.y, v.z }) catch return 0;
+        out_buf.print(alloc, "#{d} = CARTESIAN_POINT('',({d:.6},{d:.6},{d:.6}));\n", .{ cp_base + idx, v.x, v.y, v.z }) catch return 0;
     }
+    for (0..v_count) |idx| {
+        out_buf.print(alloc, "#{d} = VERTEX_POINT('',#{d});\n", .{ vp_base + idx, cp_base + idx }) catch return 0;
+    }
+
+    // 2. Emit topological ADVANCED_FACE loops (bounded to fit 0x3F0000..0x4F0000 1 MB scratch window)
+    const tri_count = mesh.indices.items.len / 3;
+    const max_step_faces = @min(tri_count, 512);
+    var next_ent: usize = vp_base + v_count;
+
+    var face_ids: std.ArrayList(usize) = .empty;
+    defer face_ids.deinit(alloc);
+
+    for (0..max_step_faces) |t| {
+        const idx0: usize = mesh.indices.items[t * 3 + 0];
+        const idx1: usize = mesh.indices.items[t * 3 + 1];
+        const idx2: usize = mesh.indices.items[t * 3 + 2];
+        if (idx0 >= v_count or idx1 >= v_count or idx2 >= v_count) continue;
+
+        const p0 = mesh.vertices.items[idx0];
+        const p1 = mesh.vertices.items[idx1];
+        const p2 = mesh.vertices.items[idx2];
+        const e01 = p1.sub(p0);
+        const e12 = p2.sub(p1);
+        const e20 = p0.sub(p2);
+        if (e01.length() < 1e-9 or e12.length() < 1e-9 or e20.length() < 1e-9) continue;
+
+        const d01 = e01.normalize();
+        const d12 = e12.normalize();
+        const d20 = e20.normalize();
+        const nrm = e01.cross(p2.sub(p0)).normalize();
+
+        // Reserve 19 entity IDs for this face
+        const id_dir01 = next_ent + 0;
+        const id_dir12 = next_ent + 1;
+        const id_dir20 = next_ent + 2;
+        const id_vec01 = next_ent + 3;
+        const id_vec12 = next_ent + 4;
+        const id_vec20 = next_ent + 5;
+        const id_ln01 = next_ent + 6;
+        const id_ln12 = next_ent + 7;
+        const id_ln20 = next_ent + 8;
+        const id_ec01 = next_ent + 9;
+        const id_ec12 = next_ent + 10;
+        const id_ec20 = next_ent + 11;
+        const id_oe01 = next_ent + 12;
+        const id_oe12 = next_ent + 13;
+        const id_oe20 = next_ent + 14;
+        const id_loop = next_ent + 15;
+        const id_fob = next_ent + 16;
+        const id_dir_n = next_ent + 17;
+        const id_ax2 = next_ent + 18;
+        const id_pln = next_ent + 19;
+        const id_face = next_ent + 20;
+        next_ent += 21;
+
+        out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir01, d01.x, d01.y, d01.z }) catch return 0;
+        out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir12, d12.x, d12.y, d12.z }) catch return 0;
+        out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir20, d20.x, d20.y, d20.z }) catch return 0;
+        out_buf.print(alloc, "#{d} = VECTOR('',#{d},1.0);\n", .{ id_vec01, id_dir01 }) catch return 0;
+        out_buf.print(alloc, "#{d} = VECTOR('',#{d},1.0);\n", .{ id_vec12, id_dir12 }) catch return 0;
+        out_buf.print(alloc, "#{d} = VECTOR('',#{d},1.0);\n", .{ id_vec20, id_dir20 }) catch return 0;
+        out_buf.print(alloc, "#{d} = LINE('',#{d},#{d});\n", .{ id_ln01, cp_base + idx0, id_vec01 }) catch return 0;
+        out_buf.print(alloc, "#{d} = LINE('',#{d},#{d});\n", .{ id_ln12, cp_base + idx1, id_vec12 }) catch return 0;
+        out_buf.print(alloc, "#{d} = LINE('',#{d},#{d});\n", .{ id_ln20, cp_base + idx2, id_vec20 }) catch return 0;
+        out_buf.print(alloc, "#{d} = EDGE_CURVE('',#{d},#{d},#{d},.T.);\n", .{ id_ec01, vp_base + idx0, vp_base + idx1, id_ln01 }) catch return 0;
+        out_buf.print(alloc, "#{d} = EDGE_CURVE('',#{d},#{d},#{d},.T.);\n", .{ id_ec12, vp_base + idx1, vp_base + idx2, id_ln12 }) catch return 0;
+        out_buf.print(alloc, "#{d} = EDGE_CURVE('',#{d},#{d},#{d},.T.);\n", .{ id_ec20, vp_base + idx2, vp_base + idx0, id_ln20 }) catch return 0;
+        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},.T.);\n", .{ id_oe01, id_ec01 }) catch return 0;
+        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},.T.);\n", .{ id_oe12, id_ec12 }) catch return 0;
+        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},.T.);\n", .{ id_oe20, id_ec20 }) catch return 0;
+        out_buf.print(alloc, "#{d} = EDGE_LOOP('',(#{d},#{d},#{d}));\n", .{ id_loop, id_oe01, id_oe12, id_oe20 }) catch return 0;
+        out_buf.print(alloc, "#{d} = FACE_OUTER_BOUND('',#{d},.T.);\n", .{ id_fob, id_loop }) catch return 0;
+        out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir_n, nrm.x, nrm.y, nrm.z }) catch return 0;
+        out_buf.print(alloc, "#{d} = AXIS2_PLACEMENT_3D('',#{d},#{d},#{d});\n", .{ id_ax2, cp_base + idx0, id_dir_n, id_dir01 }) catch return 0;
+        out_buf.print(alloc, "#{d} = PLANE('',#{d});\n", .{ id_pln, id_ax2 }) catch return 0;
+        out_buf.print(alloc, "#{d} = ADVANCED_FACE('',(#{d}),#{d},.T.);\n", .{ id_face, id_fob, id_pln }) catch return 0;
+
+        face_ids.append(alloc, id_face) catch return 0;
+    }
+
+    // Emit #11 = CLOSED_SHELL('Shell_1', (#...)) referencing all emitted ADVANCED_FACE entities
+    out_buf.appendSlice(alloc, "#11 = CLOSED_SHELL('Shell_1',(") catch return 0;
+    for (face_ids.items, 0..) |fid, idx| {
+        if (idx > 0) out_buf.appendSlice(alloc, ",") catch return 0;
+        out_buf.print(alloc, "#{d}", .{fid}) catch return 0;
+    }
+    out_buf.appendSlice(alloc, "));\n") catch return 0;
 
     out_buf.appendSlice(alloc, "ENDSEC;\nEND-ISO-10303-21;\n") catch return 0;
 

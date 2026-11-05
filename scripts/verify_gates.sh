@@ -16,6 +16,23 @@ if find kernel-zig/src -name "router.zig" | grep -q .; then
   exit 1
 fi
 
+echo "=== [GATE 0B] Anti-Hardcoding & Cheat-Signature Scan in Kernel ==="
+if rg -n '"(flange_w|flange_h|bore_r|wall_margin|fillet_r|mean_bore_stress|max_fillet_stress|housing_volume|solid_flange|solid_gyroid|solid_mask|solid_final|c_bore|sk_flange|W|H|R)"' kernel-zig/src/ 2>/dev/null; then
+  echo "FAIL [GATE 0B]: Hardcoded test variable or element ID string literal detected in kernel-zig/src/!"
+  echo "The kernel must evaluate arbitrary user-defined XML IDs generically."
+  exit 1
+fi
+
+if rg -n "12500\.0|4096\s*\+\s*32|node\.left\s*//|stack\[sp\]\s*=\s*40\.0" kernel-zig/src/ 2>/dev/null; then
+  echo "FAIL [GATE 0B]: Detected hardcoded probe formula or stubbed FieldSample/CSG in kernel-zig/src/!"
+  exit 1
+fi
+
+if rg -n 'subprocess\.run.*node|_eval_runner\.mjs' bindings/python/ 2>/dev/null; then
+  echo "FAIL [GATE 0B]: Python binding is shelling out to Node.js instead of running native Python wasmtime!"
+  exit 1
+fi
+
 echo "=== [GATE 1] Checking for Banned JS Geometry Generators & Fallbacks ==="
 if find web-app packages -name "dag_evaluator.ts" -o -name "geometry_generator.ts" 2>/dev/null | grep -q .; then
   echo "FAIL [GATE 1]: Banned JS geometry generator files (dag_evaluator.ts / geometry_generator.ts) still exist!"

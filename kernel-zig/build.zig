@@ -126,6 +126,8 @@ pub fn build(b: *std.Build) void {
         wasm.import_memory = true;
         wasm.export_memory = true;
         wasm.shared_memory = true;
+        wasm.global_base = 0x600000;
+        wasm.stack_size = 0x0E0000;
         wasm.initial_memory = 128 * 65536;
         wasm.max_memory = 2048 * 65536;
 

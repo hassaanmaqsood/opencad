@@ -64,15 +64,15 @@ export class CadViewer {
 
     // 3. Initialize Camera (Isometric 3D CAD view)
     const aspect = this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight);
-    this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
-    this.camera.position.set(6, 6, 8);
-    this.camera.lookAt(0, 0, 0);
+    this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 2000);
+    this.camera.position.set(100, 100, 120);
+    this.camera.lookAt(0, 0, 8);
 
     // 4. Initialize Orbit Controls
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.target.set(0, 0, 0);
+    this.controls.target.set(0, 0, 8);
 
     // 5. Lighting Setup (Multi-point balanced studio lighting)
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
@@ -277,19 +277,45 @@ export class CadViewer {
     return this.meshManager.getTriangleCount();
   }
 
+  private hasInitialCameraFit: boolean = false;
+
+  public fitCameraToMesh(force: boolean = false): void {
+    if (!this.meshManager.solidMesh.geometry) return;
+    const geom = this.meshManager.solidMesh.geometry;
+    geom.computeBoundingSphere();
+    const sphere = geom.boundingSphere;
+    if (!sphere || sphere.radius <= 0) return;
+
+    if (!force && this.hasInitialCameraFit) return;
+
+    const center = sphere.center;
+    const radius = Math.max(sphere.radius, 10);
+    const fov = this.camera.fov * (Math.PI / 180);
+    const dist = (radius / Math.sin(fov / 2)) * 1.35;
+
+    const dir = new THREE.Vector3(1.2, 1.2, 1.0).normalize();
+    this.camera.position.copy(center).addScaledVector(dir, dist);
+    this.controls.target.copy(center);
+    this.camera.lookAt(center);
+    this.controls.update();
+    this.camera.updateProjectionMatrix();
+
+    this.hasInitialCameraFit = true;
+  }
+
   public captureScreenshot(viewAngle: 'current' | 'front' | 'top' | 'isometric' = 'current'): string {
     const originalPos = this.camera.position.clone();
     const originalTarget = this.controls.target.clone();
 
     if (viewAngle === 'front') {
-      this.camera.position.set(0, 0, 10);
+      this.camera.position.set(0, 0, 150);
       this.camera.lookAt(0, 0, 0);
     } else if (viewAngle === 'top') {
-      this.camera.position.set(0, 10, 0);
+      this.camera.position.set(0, 150, 0);
       this.camera.lookAt(0, 0, 0);
     } else if (viewAngle === 'isometric') {
-      this.camera.position.set(6, 6, 8);
-      this.camera.lookAt(0, 0, 0);
+      this.camera.position.set(100, 100, 120);
+      this.camera.lookAt(0, 0, 8);
     }
     this.camera.updateProjectionMatrix();
     this.renderer.render(this.scene, this.camera);

@@ -95,7 +95,34 @@ export class MeshManager {
   }
 
   public getTriangleCount(): number {
-    return this.currentBuffers?.metadata.triangleCount ?? this.currentSlice?.metadata.triangleCount ?? 12;
+    return this.currentBuffers?.metadata.triangleCount ?? this.currentSlice?.metadata.triangleCount ?? 0;
+  }
+
+  public updateFromCdmlMesh(mesh: {
+    positions: Float32Array;
+    normals: Float32Array;
+    indices: Uint32Array;
+    edgeVertices?: Float32Array;
+    vertexCount: number;
+    triangleCount: number;
+  }): void {
+    const rawBuffers: CadMeshRawBuffers = {
+      positions: mesh.positions,
+      normals: mesh.normals,
+      indices: mesh.indices,
+      triangleToFaceId: new Uint32Array(mesh.triangleCount),
+      edgeVertices: mesh.edgeVertices || new Float32Array(0),
+      edgeIds: new Uint32Array((mesh.edgeVertices?.length ?? 0) / 6),
+      metadata: {
+        solidType: 'cdml',
+        vertexCount: mesh.vertexCount,
+        triangleCount: mesh.triangleCount,
+        edgeCount: (mesh.edgeVertices?.length ?? 0) / 6,
+        faceCount: 6,
+        generatedAt: performance.now(),
+      },
+    };
+    this.updateGeometry(rawBuffers);
   }
 
   /**

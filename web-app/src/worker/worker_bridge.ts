@@ -78,6 +78,10 @@ export class CadWorkerBridge {
     { resolve: (val: { mergedScript: string; conflictCount: number }) => void; reject: (err: any) => void }
   >();
   private pendingVisualDiffRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
+  private pendingCdmlEvalRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
+  private pendingCdmlVarRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
+  private pendingCdmlStepRequests = new Map<number, { resolve: (val: string) => void; reject: (err: any) => void }>();
+  private pendingCdmlStlRequests = new Map<number, { resolve: (val: Uint8Array) => void; reject: (err: any) => void }>();
   private nextRequestId = 1;
 
   constructor() {
@@ -92,6 +96,54 @@ export class CadWorkerBridge {
   private handleMessage(e: MessageEvent) {
     const data = e.data;
     if (!data || typeof data !== 'object') return;
+
+    if (data.type === 'CDML_EVALUATED') {
+      const pending = this.pendingCdmlEvalRequests.get(data.requestId);
+      if (pending) {
+        this.pendingCdmlEvalRequests.delete(data.requestId);
+        if (data.mesh) {
+          data.mesh.positions = new Float32Array(data.mesh.positions);
+          data.mesh.normals = new Float32Array(data.mesh.normals);
+          data.mesh.indices = new Uint32Array(data.mesh.indices);
+          data.mesh.edgeVertices = new Float32Array(data.mesh.edgeVertices);
+        }
+        pending.resolve(data);
+      }
+      return;
+    }
+
+    if (data.type === 'CDML_VAR_UPDATED') {
+      const pending = this.pendingCdmlVarRequests.get(data.requestId);
+      if (pending) {
+        this.pendingCdmlVarRequests.delete(data.requestId);
+        if (data.mesh) {
+          data.mesh.positions = new Float32Array(data.mesh.positions);
+          data.mesh.normals = new Float32Array(data.mesh.normals);
+          data.mesh.indices = new Uint32Array(data.mesh.indices);
+          data.mesh.edgeVertices = new Float32Array(data.mesh.edgeVertices);
+        }
+        pending.resolve(data);
+      }
+      return;
+    }
+
+    if (data.type === 'CDML_STEP_EXPORTED') {
+      const pending = this.pendingCdmlStepRequests.get(data.requestId);
+      if (pending) {
+        this.pendingCdmlStepRequests.delete(data.requestId);
+        pending.resolve(data.stepStr || '');
+      }
+      return;
+    }
+
+    if (data.type === 'CDML_STL_EXPORTED') {
+      const pending = this.pendingCdmlStlRequests.get(data.requestId);
+      if (pending) {
+        this.pendingCdmlStlRequests.delete(data.requestId);
+        pending.resolve(new Uint8Array(data.stlBuf));
+      }
+      return;
+    }
 
     if (data.type === 'GEOMETRY_READY') {
       const payload = data as CadMeshTransferPayload;
@@ -532,6 +584,76 @@ export class CadWorkerBridge {
     return new Promise((resolve, reject) => {
       this.pendingVisualDiffRequests.set(requestId, { resolve, reject });
       this.worker.postMessage({ type: 'COMPUTE_VISUAL_DIFF', requestId, baseNodes, targetNodes });
+    });
+  }
+
+  public evalCDML(
+    xml: string,
+    imports?: Record<string, string>,
+    runCanary?: boolean
+  ): Promise<{
+    status: number;
+    diagnostic: string;
+    mesh: any;
+    vars: Array<{ id: string; value: number; min?: number; max?: number; unit?: string }>;
+    probes: Record<string, number>;
+    exports: string[];
+  }> {
+    const requestId = this.nextRequestId++;
+    return new Promise((resolve, reject) => {
+      this.pendingCdmlEvalRequests.set(requestId, { resolve, reject });
+      this.worker.postMessage({
+        type: 'CDML_EVAL',
+        requestId,
+        xml,
+        imports,
+        runCanary,
+      });
+    });
+  }
+
+  public setCDMLVar(
+    varId: string,
+    value: number,
+    probeIds?: string[]
+  ): Promise<{
+    status: number;
+    diagnostic: string;
+    mesh: any;
+    probes: Record<string, number>;
+  }> {
+    const requestId = this.nextRequestId++;
+    return new Promise((resolve, reject) => {
+      this.pendingCdmlVarRequests.set(requestId, { resolve, reject });
+      this.worker.postMessage({
+        type: 'CDML_SET_VAR',
+        requestId,
+        varId,
+        value,
+        probeIds,
+      });
+    });
+  }
+
+  public exportCDMLStep(): Promise<string> {
+    const requestId = this.nextRequestId++;
+    return new Promise((resolve, reject) => {
+      this.pendingCdmlStepRequests.set(requestId, { resolve, reject });
+      this.worker.postMessage({
+        type: 'CDML_EXPORT_STEP',
+        requestId,
+      });
+    });
+  }
+
+  public exportCDMLStl(): Promise<Uint8Array> {
+    const requestId = this.nextRequestId++;
+    return new Promise((resolve, reject) => {
+      this.pendingCdmlStlRequests.set(requestId, { resolve, reject });
+      this.worker.postMessage({
+        type: 'CDML_EXPORT_STL',
+        requestId,
+      });
     });
   }
 

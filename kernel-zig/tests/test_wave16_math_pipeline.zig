@@ -118,8 +118,17 @@ test "Step 2 Unified Pipeline: Constrained NURBS Wire, Kinematic SE(3) Sweep, Fi
     try testing.expectEqual(@as(u64, 0b00), swept_solid_h >> 62); // B-Rep solid tag
 
     // 4. Differential Envelope Fillet
-    const filleted_solid_h = cad.solid_envelope_fillet(swept_solid_h, 0, 0);
+    // Exact r = 0.2 blend on the four sweep-parallel corner edges (no predicate => all such edges)
+    const r_expr = cad.expr_compile("0.2", 3);
+    try testing.expect(r_expr != 0);
+    const vol_before = cad.surface_brep.solid_brep_store.getPtr(swept_solid_h).?.computeEnclosedVolume();
+    const filleted_solid_h = cad.solid_envelope_fillet(swept_solid_h, 0, r_expr);
     try testing.expect(filleted_solid_h != 0);
+    const vol_after = cad.surface_brep.solid_brep_store.getPtr(filleted_solid_h).?.computeEnclosedVolume();
+    // Each 90-degree corner loses (1 - pi/4) r^2 of profile area, swept over the sweep depth
+    const depth = cad.surface_brep.active_sweep_depth;
+    const expected_loss = 4.0 * (1.0 - std.math.pi / 4.0) * 0.2 * 0.2 * depth;
+    try testing.expectApproxEqRel(expected_loss, vol_before - vol_after, 2e-3);
 
     // 5. Implicit Scalar Field: Sphere x^2 + y^2 + z^2 - 10000 = 0
     const sphere_expr = cad.expr_compile("x^2 + y^2 + z^2 - 10000".ptr, "x^2 + y^2 + z^2 - 10000".len);
@@ -160,4 +169,97 @@ test "Step 2 Unified Pipeline: Constrained NURBS Wire, Kinematic SE(3) Sweep, Fi
 
     const stl_ascii_len = cad.solid_export_stl(bool_solid_h, false);
     try testing.expect(stl_ascii_len > 100);
+}
+
+test "Tensor Loft & Offset Shell: Multi-Wire Frustum Loft, Quadratic Skinning, and Watertight Open-Top Shell" {
+    defer _ = cad.cad_kernel_deinit();
+    cad.kernel_init();
+
+    const sys_h = cad.sys_create();
+    try testing.expect(sys_h != 0);
+
+    // Define 3 square profiles:
+    // Wire 0 at z = 0:   40 x 40 ([-20, 20]^2), Area = 1600
+    // Wire 1 at z = 10:  20 x 20 ([-10, 10]^2), Area = 400
+    // Wire 2 at z = 20:  10 x 10 ([-5,  5]^2),  Area = 100
+    const q_w0 = [_]f64{ -20.0, -20.0, 20.0, -20.0, 20.0, 20.0, -20.0, 20.0, 1.0 };
+    const q_w1 = [_]f64{ -10.0, -10.0, 10.0, -10.0, 10.0, 10.0, -10.0, 10.0, 1.0 };
+    const q_w2 = [_]f64{ -5.0, -5.0, 5.0, -5.0, 5.0, 5.0, -5.0, 5.0, 1.0 };
+
+    const b0 = cad.sys_alloc_params(sys_h, &q_w0, q_w0.len);
+    const b1 = cad.sys_alloc_params(sys_h, &q_w1, q_w1.len);
+    const b2 = cad.sys_alloc_params(sys_h, &q_w2, q_w2.len);
+
+    const knots_lin = [_]f64{ 0.0, 0.0, 1.0, 1.0 };
+    const makeSquareWire = struct {
+        fn build(sh: u64, base: u32, z_height: f64, kn: *const [4]f64) u64 {
+            const w_slot = base + 8;
+            var c_handles: [4]u64 = undefined;
+            for (0..4) |edge_i| {
+                const n_i = (edge_i + 1) % 4;
+                const p_a = base + @as(u32, @intCast(edge_i * 2));
+                const p_b = base + @as(u32, @intCast(n_i * 2));
+                const slots = [6]u32{ p_a, p_a + 1, w_slot, p_b, p_b + 1, w_slot };
+                c_handles[edge_i] = cad.curve_define_nurbs(sh, 2, 1, &slots, 2, kn, 4);
+            }
+            const frame = [9]f64{ 0.0, 0.0, z_height, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0 };
+            return cad.wire_assemble(sh, &frame, &c_handles, 4);
+        }
+    }.build;
+
+    const w0_h = makeSquareWire(sys_h, b0, 0.0, &knots_lin);
+    const w1_h = makeSquareWire(sys_h, b1, 10.0, &knots_lin);
+    const w2_h = makeSquareWire(sys_h, b2, 20.0, &knots_lin);
+
+    // 1. Ruled 2-section frustum loft (w0 -> w1, degree_v = 1)
+    // Exact frustum volume = (h / 3) * (A0 + A1 + sqrt(A0 * A1)) = (10 / 3) * (1600 + 400 + 800) = 9333.333333...
+    const wires_2 = [2]u64{ w0_h, w1_h };
+    const loft2_h = cad.solid_tensor_loft(&wires_2, 2, 1);
+    try testing.expect(loft2_h != 0);
+    const loft2_mesh = cad.surface_brep.solid_brep_store.getPtr(loft2_h).?;
+    try testing.expect(loft2_mesh.verifyTwoManifoldEdges());
+    try testing.expect(loft2_mesh.verifyEulerPoincare());
+    const expected_frustum_vol: f64 = (10.0 / 3.0) * (1600.0 + 400.0 + 800.0);
+    try testing.expectApproxEqRel(expected_frustum_vol, loft2_mesh.computeEnclosedVolume(), 1e-6);
+
+    // 2. Smooth 3-section quadratic B-spline loft (w0 -> w1 -> w2, degree_v = 2)
+    const wires_3 = [3]u64{ w0_h, w1_h, w2_h };
+    const loft3_h = cad.solid_tensor_loft(&wires_3, 3, 2);
+    try testing.expect(loft3_h != 0);
+    const loft3_mesh = cad.surface_brep.solid_brep_store.getPtr(loft3_h).?;
+    try testing.expect(loft3_mesh.verifyTwoManifoldEdges());
+    try testing.expect(loft3_mesh.verifyEulerPoincare());
+    try testing.expect(loft3_mesh.computeEnclosedVolume() > expected_frustum_vol);
+
+    // 3. Non-destructive Offset Shell with Top Face Removed (face_pred = "nz - 0.9 > 0" -> "x5 > 0.9")
+    // Extrude w0 (40x40) by depth 10 -> Box volume = 16000.0
+    const box_h = cad.solid_kinematic_sweep(w0_h, 0, true);
+    try testing.expect(box_h != 0);
+    const orig_box_vol = cad.surface_brep.solid_brep_store.getPtr(box_h).?.computeEnclosedVolume();
+    try testing.expectApproxEqAbs(@as(f64, 16000.0), orig_box_vol, 1e-6);
+
+    // Predicate variable nz (outward unit normal Z component > 0.9 selects top cap)
+    const top_face_pred = cad.expr_compile("nz > 0.9".ptr, "nz > 0.9".len);
+    try testing.expect(top_face_pred != 0);
+
+    // Shell with wall thickness 2.0 mm and top face open:
+    // Expected volume = 40*40*10 - (40-4)*(40-4)*(10-2) = 16000 - 36*36*8 = 5632.0
+    const shelled_h = cad.solid_offset_shell(box_h, top_face_pred, 2.0);
+    try testing.expect(shelled_h != 0);
+    try testing.expect(shelled_h != box_h); // Non-destructive!
+
+    // Original box must remain untouched
+    try testing.expectApproxEqAbs(@as(f64, 16000.0), cad.surface_brep.solid_brep_store.getPtr(box_h).?.computeEnclosedVolume(), 1e-6);
+
+    const shelled_mesh = cad.surface_brep.solid_brep_store.getPtr(shelled_h).?;
+    try testing.expect(shelled_mesh.verifyTwoManifoldEdges());
+    try testing.expect(shelled_mesh.verifyEulerPoincare());
+    try testing.expectApproxEqAbs(@as(f64, 5632.0), shelled_mesh.computeEnclosedVolume(), 1e-5);
+
+    // Verify STEP export contains non-empty CLOSED_SHELL and ADVANCED_FACE entities
+    const step_len = cad.solid_export_step(shelled_h);
+    try testing.expect(step_len > 500);
+    const step_slice = cad.get_string_ptr().?[0..step_len];
+    try testing.expect(std.mem.indexOf(u8, step_slice, "ADVANCED_FACE") != null);
+    try testing.expect(std.mem.indexOf(u8, step_slice, "CLOSED_SHELL('Shell_1',(#") != null);
 }

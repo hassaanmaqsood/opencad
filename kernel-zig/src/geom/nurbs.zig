@@ -46,6 +46,10 @@ pub const Vec3d = extern struct {
         return @sqrt(self.normSq());
     }
 
+    pub fn length(self: Vec3d) f64 {
+        return self.norm();
+    }
+
     pub fn normalize(self: Vec3d) Vec3d {
         const n = self.norm();
         if (n < 1e-14) return Vec3d.zero();

@@ -79,8 +79,8 @@ pub fn h64(id_str: []const u8) u64 {
 }
 
 test "h64 and TopoId encoding" {
-    const h1 = h64("solid_flange");
-    const h2 = h64("c_bore");
+    const h1 = h64("feature_alpha");
+    const h2 = h64("curve_beta");
     try std.testing.expect(h1 != 0);
     try std.testing.expect(h2 != 0);
     try std.testing.expect(h1 != h2);

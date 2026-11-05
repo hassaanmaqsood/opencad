@@ -231,8 +231,8 @@ test "XmlParser basic" {
         \\<cdml version="1.0" units="mm">
         \\  <!-- Test comment -->
         \\  <defs>
-        \\    <var id="R" value="25.0"/>
-        \\    <expr id="r" expr="R - 4.0"/>
+        \\    <var id="rad_param" value="25.0"/>
+        \\    <expr id="r" expr="rad_param - 4.0"/>
         \\  </defs>
         \\  <body/>
         \\</cdml>
@@ -248,6 +248,6 @@ test "XmlParser basic" {
 
     const defs = root.findChild("defs").?;
     try std.testing.expectEqual(@as(usize, 2), defs.children.items.len);
-    try std.testing.expectEqualStrings("R", defs.children.items[0].getAttr("id").?);
+    try std.testing.expectEqualStrings("rad_param", defs.children.items[0].getAttr("id").?);
     try std.testing.expectEqualStrings("25.0", defs.children.items[0].getAttr("value").?);
 }

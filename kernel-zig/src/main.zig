@@ -1756,6 +1756,9 @@ test {
     _ = @import("cam_hlr/mod.zig");
     _ = @import("solver/sketch2d.zig");
     _ = @import("solver/sketch3d.zig");
+    _ = @import("autodiff.zig");
+    _ = @import("constraint_sys.zig");
+    _ = @import("implicit_field.zig");
 }
 
 test "STEP C ABI and WASM round-trip export and import" {

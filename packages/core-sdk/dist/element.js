@@ -1,204 +1,367 @@
 /**
  * @file element.ts
  * Zero-Code Web Component (<opencad-viewer> and <opencad-studio>)
- * Allows non-dev makers and engineers to embed interactive 3D parametric CAD models
- * with parameter sliders into any HTML page, Notion, or Markdown document.
+ * CDML v1.0 URL Sourcing, Declarative HTML data-* Attributes & lil-gui Controller.
  */
 const BaseElement = typeof HTMLElement !== 'undefined' ? HTMLElement : class {
 };
 export class OpenCadViewerElement extends BaseElement {
-    iframe = null;
     canvas = null;
+    animId = null;
+    currentXml = '';
+    wasmApi = null;
+    lilController = null;
     static get observedAttributes() {
-        return ['code', 'gist', 'step-url', 'template', 'sliders', 'src', 'theme', 'width', 'height', 'mount', 'config'];
+        return [
+            'src',
+            'cdml-url',
+            'cdml',
+            'data-gui',
+            'data-gui-vars',
+            'data-gui-probes',
+            'data-gui-exports',
+            'data-canary-ext',
+            'width',
+            'height',
+        ];
     }
     connectedCallback() {
-        this.render();
-        window.addEventListener('message', this.handleMessage);
+        this.mountViewer();
     }
     disconnectedCallback() {
-        window.removeEventListener('message', this.handleMessage);
-    }
-    handleMessage = (e) => {
-        const data = e.data;
-        if (!data || typeof data !== 'object')
-            return;
-        const type = data.type;
-        if (typeof type === 'string' && (type.startsWith('OPENCAD_') || type.startsWith('opencad:'))) {
-            const normalizedEvent = type.startsWith('OPENCAD_')
-                ? type.toLowerCase().replace(/_/g, ':')
-                : type;
-            this.dispatchEvent(new CustomEvent(normalizedEvent, {
-                detail: data.payload ?? data,
-                bubbles: true,
-                composed: true,
-            }));
-        }
-    };
-    attributeChangedCallback(name, oldValue, newValue) {
-        if (oldValue !== newValue && this.iframe) {
-            this.updateIframeSrc();
-        }
-    }
-    getBaseUrl() {
-        return this.getAttribute('src') || 'https://hassaanmaqsood.github.io/opencad/';
-    }
-    isEmbedMode() {
-        return true;
-    }
-    buildTargetUrl() {
-        const baseUrl = this.getBaseUrl();
-        const url = new URL(baseUrl, window.location.href);
-        if (this.isEmbedMode()) {
-            url.searchParams.set('embed', 'true');
-        }
-        const gist = this.getAttribute('gist');
-        if (gist) {
-            url.searchParams.set('gist', gist);
-        }
-        const stepUrl = this.getAttribute('step-url');
-        if (stepUrl) {
-            url.searchParams.set('step-url', stepUrl);
-        }
-        const template = this.getAttribute('template');
-        if (template) {
-            url.searchParams.set('template', template);
-        }
-        const sliders = this.getAttribute('sliders');
-        if (sliders !== null) {
-            url.searchParams.set('sliders', sliders === '' || sliders === 'true' ? 'true' : 'false');
-        }
-        const theme = this.getAttribute('theme');
-        if (theme) {
-            url.searchParams.set('theme', theme);
-        }
-        const config = this.getAttribute('config');
-        if (config) {
-            url.searchParams.set('config', config);
-        }
-        const code = this.getAttribute('code');
-        if (code) {
+        if (this.animId)
+            cancelAnimationFrame(this.animId);
+        if (this.lilController) {
             try {
-                const encoded = btoa(unescape(encodeURIComponent(code)));
-                url.hash = `code=${encoded}`;
+                this.lilController.destroy();
             }
-            catch {
-                url.hash = `code=${encodeURIComponent(code)}`;
+            catch { }
+            this.lilController = null;
+        }
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+        if (oldValue !== newValue && this.canvas) {
+            if (name === 'src' || name === 'cdml-url' || name === 'cdml') {
+                this.loadAndRender();
+            }
+            else if (name.startsWith('data-gui')) {
+                this.updateGui();
             }
         }
-        return url.toString();
     }
-    updateIframeSrc() {
-        if (this.iframe) {
-            this.iframe.src = this.buildTargetUrl();
+    async mountViewer() {
+        // Style container
+        this.style.display = 'block';
+        this.style.position = 'relative';
+        this.style.width = this.getAttribute('width') || '100%';
+        this.style.height = this.getAttribute('height') || '100%';
+        this.style.overflow = 'hidden';
+        // Create 3D canvas
+        this.canvas = document.createElement('canvas');
+        this.canvas.id = 'cad-canvas';
+        this.canvas.setAttribute('data-testid', 'cad-canvas');
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+        this.canvas.style.display = 'block';
+        this.appendChild(this.canvas);
+        await this.loadAndRender();
+    }
+    async getSharedMemory() {
+        const globalAny = globalThis;
+        if (globalAny.__opencadSharedMemory)
+            return globalAny.__opencadSharedMemory;
+        if (globalAny.__openCadSharedMemory)
+            return globalAny.__openCadSharedMemory;
+        if (globalAny.sharedWasmMemory)
+            return globalAny.sharedWasmMemory;
+        // Fallback: wait up to 1 second for worker to export memory
+        for (let i = 0; i < 20; i++) {
+            if (globalAny.__opencadSharedMemory)
+                return globalAny.__opencadSharedMemory;
+            if (globalAny.__openCadSharedMemory)
+                return globalAny.__openCadSharedMemory;
+            if (globalAny.sharedWasmMemory)
+                return globalAny.sharedWasmMemory;
+            await new Promise((r) => setTimeout(r, 50));
+        }
+        throw new Error('OpenCAD Shared Memory instance not found');
+    }
+    async ensureWasmApi() {
+        if (this.wasmApi)
+            return this.wasmApi;
+        const memory = await this.getSharedMemory();
+        const opencadImports = {
+            field_alloc: () => 0,
+            field_eval_scalar: () => 0.0,
+            field_eval_vec3: () => { },
+            cmd_write: () => { },
+        };
+        const resp = await fetch('/cad_core.wasm');
+        const bytes = await resp.arrayBuffer();
+        const { instance } = await WebAssembly.instantiate(bytes, {
+            env: { memory },
+            opencad: opencadImports,
+        });
+        this.wasmApi = instance.exports;
+        if (typeof this.wasmApi.kernel_init === 'function') {
+            this.wasmApi.kernel_init();
+        }
+        return this.wasmApi;
+    }
+    async resolveCdmlContent() {
+        const src = this.getAttribute('src') || this.getAttribute('cdml-url');
+        let xml = this.getAttribute('cdml') || '';
+        // Check inline <script type="application/cdml+xml">
+        if (!src && !xml) {
+            const scriptTag = this.querySelector('script[type="application/cdml+xml"]');
+            if (scriptTag) {
+                xml = scriptTag.textContent || '';
+            }
+        }
+        const imports = {};
+        if (src) {
+            const fullUrl = new URL(src, window.location.href);
+            const resp = await fetch(fullUrl.toString());
+            xml = await resp.text();
+            // Resolve relative <import src="..."/>
+            const importMatches = xml.matchAll(/<import\s+[^>]*src="([^"]+)"/g);
+            for (const m of importMatches) {
+                const importSrc = m[1];
+                try {
+                    const importUrl = new URL(importSrc, fullUrl).toString();
+                    const impResp = await fetch(importUrl);
+                    if (impResp.ok) {
+                        imports[importSrc] = await impResp.text();
+                    }
+                }
+                catch (e) {
+                    console.warn('Failed to load CDML import:', importSrc, e);
+                }
+            }
+        }
+        return { xml, imports };
+    }
+    async loadAndRender() {
+        const { xml, imports } = await this.resolveCdmlContent();
+        if (!xml)
+            return;
+        this.currentXml = xml;
+        const api = await this.ensureWasmApi();
+        const memory = await this.getSharedMemory();
+        let scratchCursor = 0x300000;
+        function writeString(str) {
+            const bytes = new TextEncoder().encode(str);
+            scratchCursor = (scratchCursor + 15) & ~15;
+            const ptr = scratchCursor;
+            new Uint8Array(memory.buffer).set(bytes, ptr);
+            scratchCursor += bytes.length + 16;
+            return { ptr, len: bytes.length };
+        }
+        // Register imports
+        for (const [path, content] of Object.entries(imports)) {
+            const p = writeString(path);
+            const c = writeString(content);
+            api.cdml_register_import(p.ptr, p.len, c.ptr, c.len);
+        }
+        // Evaluate CDML
+        const docStr = writeString(xml);
+        const status = api.cdml_eval_document(docStr.ptr, docStr.len);
+        if (status === 0) {
+            const runCanary = this.getAttribute('data-canary-ext') === 'true';
+            if (runCanary) {
+                try {
+                    const cResp = await fetch('/ext_field_canary.wasm');
+                    const cBytes = await cResp.arrayBuffer();
+                    const { instance: cInst } = await WebAssembly.instantiate(cBytes, {
+                        env: { memory },
+                        opencad: {
+                            field_alloc: () => 0,
+                            field_eval_scalar: () => 0.0,
+                            field_eval_vec3: () => { },
+                            cmd_write: () => { },
+                        },
+                    });
+                    cInst.exports.extension_tick(16.0);
+                    api.cdml_eval_document(docStr.ptr, docStr.len);
+                }
+                catch (e) {
+                    console.warn('Canary run error:', e);
+                }
+            }
+            await this.renderMeshFromMemory(memory);
+            this.updateGui();
         }
     }
-    postMessage(message) {
-        if (this.iframe && this.iframe.contentWindow) {
-            this.iframe.contentWindow.postMessage(message, '*');
-        }
-    }
-    downloadStep() {
-        this.postMessage({ type: 'OPENCAD_DOWNLOAD_STEP' });
-    }
-    downloadStl(options) {
-        this.postMessage({ type: 'OPENCAD_DOWNLOAD_STL', payload: options });
-    }
-    download3mf() {
-        this.postMessage({ type: 'OPENCAD_DOWNLOAD_3MF' });
-    }
-    downloadDxf() {
-        this.postMessage({ type: 'OPENCAD_DOWNLOAD_DXF' });
-    }
-    setCode(code) {
-        this.setAttribute('code', code);
-    }
-    setTemplate(templateId) {
-        this.setAttribute('template', templateId);
-    }
-    emitMetrics(metrics) {
-        this.dispatchEvent(new CustomEvent('opencad:metrics', {
-            detail: metrics,
-            bubbles: true,
-            composed: true,
-        }));
-    }
-    render() {
-        const shadow = this.attachShadow({ mode: 'open' });
-        const width = this.getAttribute('width') || '100%';
-        const height = this.getAttribute('height') || '500px';
-        const isDirectMount = this.getAttribute('mount') === 'direct';
-        const style = document.createElement('style');
-        style.textContent = `
-      :host {
-        display: block;
-        width: ${width};
-        height: ${height};
-        position: relative;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-        background: #11141a;
-        box-sizing: border-box;
-      }
-      iframe, canvas {
-        width: 100%;
-        height: 100%;
-        border: none;
-        display: block;
-        background: transparent;
-      }
-      .loading-placeholder {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #798299;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: 14px;
-        pointer-events: none;
-      }
-    `;
-        const placeholder = document.createElement('div');
-        placeholder.className = 'loading-placeholder';
-        placeholder.innerHTML = '<span>📐 Loading OpenCAD Viewport...</span>';
-        shadow.appendChild(style);
-        shadow.appendChild(placeholder);
-        if (isDirectMount) {
-            this.canvas = document.createElement('canvas');
-            this.canvas.id = 'opencad-direct-canvas';
-            shadow.appendChild(this.canvas);
-            placeholder.style.display = 'none';
-            // Trigger initial direct mount metrics event
-            setTimeout(() => {
-                this.emitMetrics({
-                    volumeMm3: 80000.0,
-                    massGrams: 216.0,
-                    bbox: { dx: 80.0, dy: 50.0, dz: 20.0 },
-                    bendCount: 0,
-                    cncRuntimeMinutes: 3.5,
-                });
-            }, 50);
+    async renderMeshFromMemory(memory) {
+        const ctrl = new DataView(memory.buffer, 0x0F0000, 64);
+        const vertexCount = ctrl.getUint32(0x04, true);
+        const triangleCount = ctrl.getUint32(0x08, true);
+        const posOffset = ctrl.getUint32(0x0C, true);
+        const nrmOffset = ctrl.getUint32(0x10, true);
+        const idxOffset = ctrl.getUint32(0x14, true);
+        if (vertexCount === 0 || triangleCount === 0)
+            return;
+        const positions = new Float32Array(memory.buffer, posOffset, vertexCount * 3);
+        const normals = new Float32Array(memory.buffer, nrmOffset, vertexCount * 3);
+        const indices = new Uint32Array(memory.buffer, idxOffset, triangleCount * 3);
+        const globalAny = globalThis;
+        const THREE = globalAny.THREE ?? (await Function('return import("three")')().catch(() => null));
+        if (!THREE || !this.canvas)
+            return;
+        if (!this._scene) {
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight), 0.1, 1000);
+            camera.position.set(60, 60, 80);
+            camera.lookAt(0, 0, 0);
+            const renderer = new THREE.WebGLRenderer({
+                canvas: this.canvas,
+                antialias: true,
+                alpha: false,
+            });
+            renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
+            renderer.setClearColor(0x11141a, 1.0);
+            const amb = new THREE.AmbientLight(0xffffff, 0.7);
+            const dir1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dir1.position.set(50, 80, 50);
+            scene.add(amb);
+            scene.add(dir1);
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geom.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+            geom.setIndex(new THREE.BufferAttribute(indices, 1));
+            geom.computeBoundingBox();
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0x768fa5,
+                roughness: 0.35,
+                metalness: 0.1,
+                side: THREE.DoubleSide,
+            });
+            const mesh = new THREE.Mesh(geom, mat);
+            scene.add(mesh);
+            this._scene = scene;
+            this._camera = camera;
+            this._renderer = renderer;
+            this._mesh = mesh;
+            const renderLoop = () => {
+                renderer.render(scene, camera);
+                this.animId = requestAnimationFrame(renderLoop);
+            };
+            this.animId = requestAnimationFrame(renderLoop);
+            new ResizeObserver(() => {
+                if (!this.canvas)
+                    return;
+                const w = this.canvas.clientWidth;
+                const h = this.canvas.clientHeight;
+                if (w > 0 && h > 0) {
+                    camera.aspect = w / h;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(w, h, false);
+                }
+            }).observe(this);
         }
         else {
-            this.iframe = document.createElement('iframe');
-            this.iframe.src = this.buildTargetUrl();
-            this.iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-            this.iframe.loading = 'lazy';
-            this.iframe.onload = () => {
-                placeholder.style.display = 'none';
-            };
-            shadow.appendChild(this.iframe);
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geom.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+            geom.setIndex(new THREE.BufferAttribute(indices, 1));
+            geom.computeBoundingBox();
+            this._mesh.geometry.dispose();
+            this._mesh.geometry = geom;
+        }
+    }
+    updateGui() {
+        const dataGui = this.getAttribute('data-gui');
+        const isGuiDisabled = dataGui === 'false';
+        if (isGuiDisabled) {
+            if (this.lilController) {
+                this.lilController.destroy();
+                this.lilController = null;
+            }
+            const existing = this.querySelector('.lil-gui');
+            if (existing)
+                existing.remove();
+            return;
+        }
+        const varsAttr = this.getAttribute('data-gui-vars');
+        const probesAttr = this.getAttribute('data-gui-probes');
+        const exportsAttr = this.getAttribute('data-gui-exports');
+        const varsFilter = varsAttr ? varsAttr.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+        const probesFilter = probesAttr ? probesAttr.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+        const exportsFilter = exportsAttr ? exportsAttr.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+        // Parse params from CDML
+        const params = {};
+        const varMatches = this.currentXml.matchAll(/<var\s+([^>]+)\/>/g);
+        for (const m of varMatches) {
+            const attrs = m[1];
+            const idM = attrs.match(/id="([^"]+)"/);
+            const valM = attrs.match(/value="([^"]+)"/);
+            if (idM && valM) {
+                const id = idM[1];
+                const val = parseFloat(valM[1]);
+                const minM = attrs.match(/min="([^"]+)"/);
+                const maxM = attrs.match(/max="([^"]+)"/);
+                params[id] = {
+                    value: val,
+                    min: minM ? parseFloat(minM[1]) : 0,
+                    max: maxM ? parseFloat(maxM[1]) : val * 2,
+                };
+            }
+        }
+        // Read live probes from WASM
+        const probeValues = {};
+        if (this.wasmApi) {
+            const probeMatches = this.currentXml.matchAll(/<probe\s+[^>]*id="([^"]+)"/g);
+            for (const m of probeMatches) {
+                const pid = m[1];
+                const bytes = new TextEncoder().encode(pid);
+                const ptr = 0x360000;
+                new Uint8Array(this.wasmApi.memory?.buffer || globalThis.__openCadSharedMemory.buffer).set(bytes, ptr);
+                const outPtr = 0x361000;
+                const res = this.wasmApi.cdml_get_probe_value(ptr, bytes.length, outPtr);
+                if (res === 0) {
+                    const val = new Float64Array((this.wasmApi.memory?.buffer || globalThis.__openCadSharedMemory.buffer), outPtr, 1)[0];
+                    probeValues[pid] = val;
+                }
+            }
+        }
+        const globalAny = globalThis;
+        const LilControllerClass = globalAny.LilController;
+        if (!LilControllerClass)
+            return;
+        if (!this.lilController) {
+            this.lilController = new LilControllerClass(this, {
+                vars: varsFilter,
+                probes: probesFilter,
+                exports: exportsFilter,
+                params,
+                probeValues,
+                onParamChange: async (key, val) => {
+                    if (this.wasmApi) {
+                        const memory = await this.getSharedMemory();
+                        const bytes = new TextEncoder().encode(key);
+                        const ptr = 0x360000;
+                        new Uint8Array(memory.buffer).set(bytes, ptr);
+                        const res = this.wasmApi.cdml_set_var(ptr, bytes.length, val);
+                        if (res === 0) {
+                            await this.renderMeshFromMemory(memory);
+                        }
+                    }
+                },
+            });
+        }
+        else {
+            this.lilController.setConfig({
+                vars: varsFilter,
+                probes: probesFilter,
+                exports: exportsFilter,
+                params,
+                probeValues,
+            });
         }
     }
 }
 export class OpenCadStudioElement extends OpenCadViewerElement {
-    isEmbedMode() {
-        return false;
-    }
 }
-// Auto-register Custom Elements when loaded in browser
 if (typeof customElements !== 'undefined') {
     if (!customElements.get('opencad-viewer')) {
         customElements.define('opencad-viewer', OpenCadViewerElement);
