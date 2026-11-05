@@ -423,6 +423,31 @@ assert.equal(diagFillet.code, '0x0402');
 console.log('[PASS] Test 3d: ERR_FILLET_RADIUS_COLLAPSE verified.');
 
 // --- Append to the bottom of scripts/test_cdml_compiler.mjs ---
+// Adapter helpers for the Randomized Acid Test block
+function evalCdmlString(xmlStr) {
+  const enc = new TextEncoder().encode(xmlStr);
+  const scratchOffset = 0x3A0000; // Safe input staging offset in SharedArrayBuffer
+  new Uint8Array(sharedMem.buffer, scratchOffset, enc.length).set(enc);
+  return api.cdml_eval_document(scratchOffset, enc.length);
+}
+
+function getProbeValue(probeId) {
+  const idBytes = new TextEncoder().encode(probeId);
+  const idOffset = 0x3B0000;
+  const outF64Offset = 0x3B1000;
+  new Uint8Array(sharedMem.buffer, idOffset, idBytes.length).set(idBytes);
+  if (typeof api.cdml_get_probe_value === 'function') {
+    const st = api.cdml_get_probe_value(idOffset, idBytes.length, outF64Offset);
+    assert.equal(st, 0, `cdml_get_probe_value failed for ${probeId}`);
+    return new DataView(sharedMem.buffer).getFloat64(outF64Offset, true);
+  }
+  // Fallback via expr_compile("probe('...')") + expr_eval
+  const exprBytes = new TextEncoder().encode(`probe('${probeId}')`);
+  new Uint8Array(sharedMem.buffer, idOffset, exprBytes.length).set(exprBytes);
+  const exprH = api.expr_compile(idOffset, exprBytes.length);
+  return api.expr_eval(exprH, 0, 0, 0);
+}
+
 {
   const sfx = Math.floor(1000 + Math.random() * 9000);
   const vR = `rad_${sfx}`, vH = `hgt_${sfx}`, vW = `wid_${sfx}`;

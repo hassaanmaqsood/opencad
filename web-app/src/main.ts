@@ -135,6 +135,7 @@ async function initApp() {
       probes: probesFilter,
       exports: exportsFilter,
       onParamChange: async (varId: string, val: number) => {
+        (window as any).__cadBusy = true;
         try {
           const res = await bridge.setCDMLVar(varId, val, probesFilter);
           if (res.status === 0) {
@@ -149,6 +150,8 @@ async function initApp() {
           }
         } catch (err) {
           console.error('Error changing param:', varId, err);
+        } finally {
+          (window as any).__cadBusy = false;
         }
       },
       onAction: async (actionId: string) => {
@@ -182,10 +185,12 @@ async function initApp() {
     if (statusMessage) {
       statusMessage.textContent = 'Evaluating CDML...';
     }
+    (window as any).__cadBusy = true;
 
     try {
       const imports = await resolveImports(currentDocUrl, xml);
       const res = await bridge.evalCDML(xml, imports, runCanary);
+      (window as any).__cadBusy = false;
       const elapsed = Math.round(performance.now() - t0);
       if (statusTiming) statusTiming.textContent = `${elapsed} ms`;
 
@@ -241,6 +246,7 @@ async function initApp() {
 
       return res;
     } catch (err: any) {
+      (window as any).__cadBusy = false;
       if (statusIndicator) statusIndicator.className = 'status-dot status-err';
       if (statusMessage) statusMessage.textContent = err.message || 'Evaluation error';
       return { status: -1, diagnostic: err.message, mesh: null, vars: [], probes: {}, exports: [] };

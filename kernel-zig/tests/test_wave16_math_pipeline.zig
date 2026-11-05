@@ -262,4 +262,105 @@ test "Tensor Loft & Offset Shell: Multi-Wire Frustum Loft, Quadratic Skinning, a
     const step_slice = cad.get_string_ptr().?[0..step_len];
     try testing.expect(std.mem.indexOf(u8, step_slice, "ADVANCED_FACE") != null);
     try testing.expect(std.mem.indexOf(u8, step_slice, "CLOSED_SHELL('Shell_1',(#") != null);
+    try testing.expect(std.mem.indexOf(u8, step_slice, ",.F.);") != null); // Shared EDGE_CURVE with opposite orientation!
+}
+
+test "CSG Straddling Triangle Subdivision, Off-Axis Analytic Region Seed, Cap-Edge Fillet & Octree-Depth 5 Implicit Mesh" {
+    defer _ = cad.cad_kernel_deinit();
+    cad.kernel_init();
+
+    // 1. Off-axis Analytic Region Cylinder centered at (35.0, -25.0), R = 12.0, Z in [0, 25]
+    // Completely disjoint from the Z-axis (0, 0, z): tests 3D Interval Arithmetic seed discovery!
+    var var_map = std.StringHashMap(u32).init(testing.allocator);
+    defer var_map.deinit();
+    const terms = [_]cad.surface_brep.RegionIneqTerm{
+        .{ .id = "wall", .branch_hash = 0x1111, .expr_str = "144.0 - ((x - 35.0)^2 + (y + 25.0)^2)" },
+        .{ .id = "bot", .branch_hash = 0x2222, .expr_str = "z" },
+        .{ .id = "top", .branch_hash = 0x3333, .expr_str = "25.0 - z" },
+    };
+    const cyl_h = try cad.surface_brep.constructAnalyticRegionBrep(
+        testing.allocator,
+        0xABCD,
+        &terms,
+        &var_map,
+        &[_]f64{},
+    );
+    try testing.expect(cyl_h != 0);
+    const cyl_mesh = cad.surface_brep.solid_brep_store.getPtr(cyl_h).?;
+    try testing.expect(cyl_mesh.verifyTwoManifoldEdges());
+    try testing.expect(cyl_mesh.verifyEulerPoincare());
+    const expected_cyl_vol = std.math.pi * 12.0 * 12.0 * 25.0;
+    const cyl_vol_before = cyl_mesh.computeEnclosedVolume();
+    try testing.expectApproxEqRel(expected_cyl_vol, cyl_vol_before, 1e-3);
+
+    // Verify all 512 triangles of the cylinder are exported to STEP without truncation
+    const step_len = cad.solid_export_step(cyl_h);
+    try testing.expect(step_len > 10000);
+
+    // 2. Cap-Edge Rolling-Ball Fillet (abs(tz) < 0.001) on top and bottom cap edges of the cylinder (r = 1.5 mm)
+    const cap_pred = cad.expr_compile("abs(tz) < 0.001".ptr, "abs(tz) < 0.001".len);
+    const cap_r_expr = cad.expr_compile("1.5".ptr, "1.5".len);
+    try testing.expect(cap_pred != 0 and cap_r_expr != 0);
+    const cap_filleted_h = cad.solid_envelope_fillet(cyl_h, cap_pred, cap_r_expr);
+    try testing.expect(cap_filleted_h != 0);
+    const cap_filleted_mesh = cad.surface_brep.solid_brep_store.getPtr(cap_filleted_h).?;
+    try testing.expect(cap_filleted_mesh.verifyTwoManifoldEdges());
+    try testing.expect(cap_filleted_mesh.verifyEulerPoincare());
+    const cyl_vol_after = cap_filleted_mesh.computeEnclosedVolume();
+    try testing.expect(cyl_vol_after < cyl_vol_before);
+
+    // Verify analytical curvature k_max = 1 / 1.5 on cap fillet rolling-ball strip triangles
+    var found_fillet_curv = false;
+    for (cap_filleted_mesh.triangle_curvatures.items) |curv| {
+        if (@abs(curv.k_max - (1.0 / 1.5)) < 1e-6) {
+            found_fillet_curv = true;
+            break;
+        }
+    }
+    try testing.expect(found_fillet_curv);
+
+    // 3. CSG Straddling Triangle Subdivision:
+    // (a) Subtract an implicit sphere of radius 10.0 centered at (35, -25, 25) from the cap-filleted cylinder
+    // and verify enclosed volume decreases by the exact intersection volume via straddling triangle subdivision.
+    const cut_sphere_str = "(x - 35.0)^2 + (y + 25.0)^2 + (z - 25.0)^2 - 100.0";
+    const cut_sphere_expr = cad.expr_compile(cut_sphere_str.ptr, cut_sphere_str.len);
+    const cut_bbox = [6]f64{ 15.0, -45.0, -5.0, 55.0, -5.0, 45.0 };
+    const cut_sphere_h = cad.solid_implicit_field(cut_sphere_expr, &cut_bbox);
+    const csg_cut_h = cad.solid_boolean(1, cap_filleted_h, cut_sphere_h); // op=1 (Subtract)
+    try testing.expect(csg_cut_h != 0);
+    const csg_cut_mesh = cad.surface_brep.solid_brep_store.getPtr(csg_cut_h).?;
+    const cut_vol = csg_cut_mesh.computeEnclosedVolume();
+    // Hemisphere of R=10 inside the top of the cylinder has volume ~ (2/3)*pi*10^3 = 2094.4 mm^3
+    try testing.expect(cut_vol < cyl_vol_after - 1500.0);
+    try testing.expect(cut_vol > cyl_vol_after - 2600.0);
+
+    // (b) Intersect Gyroid Lattice with Annular Mask (r >= 18.0 mm) and verify ZERO vertices protrude inside r < 17.95 mm
+    const gyroid_str = "abs_smooth(sin(0.7*x)*cos(0.7*y) + sin(0.7*y)*cos(0.7*z) + sin(0.7*z)*cos(0.7*x), 1e-4) - 0.35";
+    const gyroid_expr = cad.expr_compile(gyroid_str.ptr, gyroid_str.len);
+    const mask_str = "18.0 - sqrt(x^2 + y^2)";
+    const mask_expr = cad.expr_compile(mask_str.ptr, mask_str.len);
+    const bbox = [6]f64{ -30.0, -30.0, 0.0, 30.0, 30.0, 10.0 };
+    const gyroid_h = cad.solid_implicit_field(gyroid_expr, &bbox);
+    const mask_h = cad.solid_implicit_field(mask_expr, &bbox);
+    const clipped_h = cad.solid_boolean(2, mask_h, gyroid_h);
+    const clipped_mesh = cad.surface_brep.solid_brep_store.getPtr(clipped_h).?;
+    try testing.expect(clipped_mesh.indices.items.len > 0);
+    for (clipped_mesh.vertices.items) |v| {
+        const r = @sqrt(v.x * v.x + v.y * v.y);
+        try testing.expect(r >= 17.95);
+    }
+
+    // 4. Explicit octree-depth="5" (32^3 Dual Contouring with Newton-Gradient surface projection)
+    const oct5_sphere_str = "x^2 + y^2 + z^2 - 64.0"; // Sphere R = 8.0
+    const oct5_expr = cad.expr_compile(oct5_sphere_str.ptr, oct5_sphere_str.len);
+    const oct5_bbox = [6]f64{ -12.0, -12.0, -12.0, 12.0, 12.0, 12.0 };
+    const oct5_h = cad.implicit_field.solid_implicit_field_WithParams(oct5_expr, &oct5_bbox, 5, 1e-4);
+    try testing.expect(oct5_h != 0);
+    const oct5_mesh = cad.surface_brep.solid_brep_store.getPtr(oct5_h).?;
+    try testing.expect(oct5_mesh.vertices.items.len > 200);
+    // Every projected Dual Contouring vertex should lie tightly on the R = 8.0 sphere surface
+    for (oct5_mesh.vertices.items) |v| {
+        const rad = @sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+        try testing.expectApproxEqAbs(@as(f64, 8.0), rad, 0.25);
+    }
 }

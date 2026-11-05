@@ -1431,7 +1431,7 @@ fn constructImplicitSolid(ev: *DocumentEvaluator, node: *const XmlNode) !u64 {
         if (d_node.getAttr("zmax")) |s| domain_bbox[5] = ev.evaluateExpression(s, .residual) catch 16.0;
         if (d_node.getAttr("octree-depth")) |s| {
             const d_val = std.fmt.parseInt(u32, s, 10) catch 4;
-            parsed_depth = @intCast(@min(@max(d_val, 2), 4));
+            parsed_depth = if (d_val == 5) 5 else @intCast(@min(@max(d_val, 2), 4));
         }
         if (d_node.getAttr("qef-reg")) |s| {
             qef_reg = std.fmt.parseFloat(f64, s) catch 1e-4;

@@ -15,6 +15,8 @@ pub var last_chord_tol: f32 = 0.05;
 pub var last_angle_tol: f32 = 0.1;
 pub const STEP_EXPORT_OFFSET: usize = 0x3F0000;
 pub const STL_EXPORT_OFFSET: usize = 0x4F0000;
+pub const STEP_MAX_SCRATCH_BYTES: usize = STL_EXPORT_OFFSET - STEP_EXPORT_OFFSET;
+pub const STL_MAX_SCRATCH_BYTES: usize = 0x5F0000 - STL_EXPORT_OFFSET;
 
 pub fn getSolidMesh(solid_h: u64) ?*const BRepSolid {
     // Materialize lazy CSG handle on demand if not yet in solid_brep_store
@@ -160,7 +162,7 @@ pub fn solid_tessellate(
     const pos_offset: u32 = 0x0F0080;
     const nrm_offset: u32 = pos_offset + v_count * 3 * 4;
     const idx_offset: u32 = nrm_offset + v_count * 3 * 4;
-    const face_offset: u32 = idx_offset + tri_count * 3 * 4;
+    const face_offset: u32 = (idx_offset + tri_count * 3 * 4 + 7) & ~@as(u32, 7);
 
     const total_len = (face_offset + tri_count * 24) - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
     const mem_slice = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, total_len + 128);
@@ -225,7 +227,31 @@ pub fn solid_tessellate(
     memory_map.incTessGenCounter();
 }
 
-/// Generates ISO-10303-21 STEP AP214 format into Shared Memory scratch buffer at 0x3F0000
+fn hashStepVertexPos(p: Vec3d) u64 {
+    const qx: i64 = @intFromFloat(@round(p.x * 1e5));
+    const qy: i64 = @intFromFloat(@round(p.y * 1e5));
+    const qz: i64 = @intFromFloat(@round(p.z * 1e5));
+    var buf: [24]u8 = undefined;
+    std.mem.writeInt(i64, buf[0..8], qx, .little);
+    std.mem.writeInt(i64, buf[8..16], qy, .little);
+    std.mem.writeInt(i64, buf[16..24], qz, .little);
+    return std.hash.Wyhash.hash(0, &buf);
+}
+
+fn hashStepPlane(nrm: Vec3d, dist: f64) u64 {
+    const qnx: i64 = @intFromFloat(@round(nrm.x * 1e5));
+    const qny: i64 = @intFromFloat(@round(nrm.y * 1e5));
+    const qnz: i64 = @intFromFloat(@round(nrm.z * 1e5));
+    const qd: i64 = @intFromFloat(@round(dist * 1e4));
+    var buf: [32]u8 = undefined;
+    std.mem.writeInt(i64, buf[0..8], qnx, .little);
+    std.mem.writeInt(i64, buf[8..16], qny, .little);
+    std.mem.writeInt(i64, buf[16..24], qnz, .little);
+    std.mem.writeInt(i64, buf[24..32], qd, .little);
+    return std.hash.Wyhash.hash(0, &buf);
+}
+
+/// Generates topologically welded ISO-10303-21 STEP AP214 format into Shared Memory scratch buffer at 0x3F0000
 pub fn solid_export_step(solid_h: u64, out_buf: *std.ArrayList(u8)) u32 {
     const mesh = getSolidMesh(solid_h) orelse return 0;
     const alloc = memory.getAllocator();
@@ -257,88 +283,152 @@ pub fn solid_export_step(solid_h: u64, out_buf: *std.ArrayList(u8)) u32 {
         \\
     ) catch return 0;
 
-    // 1. Output CARTESIAN_POINT (#20 .. #20+V-1) and VERTEX_POINT (#20+V .. #20+2V-1)
-    const v_count = mesh.vertices.items.len;
+    // 1. Weld coincident vertices (1e-5 mm grid) so adjacent faces share topological VERTEX_POINTs
+    const raw_v_count = mesh.vertices.items.len;
+    var raw_to_welded = alloc.alloc(u32, raw_v_count) catch return 0;
+    defer alloc.free(raw_to_welded);
+
+    var welded_verts: std.ArrayList(Vec3d) = .empty;
+    defer welded_verts.deinit(alloc);
+
+    var vert_map = std.AutoHashMap(u64, u32).init(alloc);
+    defer vert_map.deinit();
+
+    for (mesh.vertices.items, 0..) |v, i| {
+        const key = hashStepVertexPos(v);
+        if (vert_map.get(key)) |w_idx| {
+            raw_to_welded[i] = w_idx;
+        } else {
+            const w_idx: u32 = @intCast(welded_verts.items.len);
+            welded_verts.append(alloc, v) catch return 0;
+            vert_map.put(key, w_idx) catch return 0;
+            raw_to_welded[i] = w_idx;
+        }
+    }
+
+    const w_count = welded_verts.items.len;
     const cp_base: usize = 20;
-    const vp_base: usize = cp_base + v_count;
-    for (mesh.vertices.items, 0..) |v, idx| {
+    const vp_base: usize = cp_base + w_count;
+    for (welded_verts.items, 0..) |v, idx| {
         out_buf.print(alloc, "#{d} = CARTESIAN_POINT('',({d:.6},{d:.6},{d:.6}));\n", .{ cp_base + idx, v.x, v.y, v.z }) catch return 0;
     }
-    for (0..v_count) |idx| {
+    for (0..w_count) |idx| {
         out_buf.print(alloc, "#{d} = VERTEX_POINT('',#{d});\n", .{ vp_base + idx, cp_base + idx }) catch return 0;
     }
 
-    // 2. Emit topological ADVANCED_FACE loops (bounded to fit 0x3F0000..0x4F0000 1 MB scratch window)
+    // 2. Emit shared EDGE_CURVE, shared coplanar PLANE, and connected ADVANCED_FACE loops
     const tri_count = mesh.indices.items.len / 3;
-    const max_step_faces = @min(tri_count, 512);
-    var next_ent: usize = vp_base + v_count;
+    var next_ent: usize = vp_base + w_count;
+
+    var edge_map = std.AutoHashMap(u64, usize).init(alloc);
+    defer edge_map.deinit();
+
+    var plane_map = std.AutoHashMap(u64, usize).init(alloc);
+    defer plane_map.deinit();
 
     var face_ids: std.ArrayList(usize) = .empty;
     defer face_ids.deinit(alloc);
 
-    for (0..max_step_faces) |t| {
-        const idx0: usize = mesh.indices.items[t * 3 + 0];
-        const idx1: usize = mesh.indices.items[t * 3 + 1];
-        const idx2: usize = mesh.indices.items[t * 3 + 2];
-        if (idx0 >= v_count or idx1 >= v_count or idx2 >= v_count) continue;
+    const getOrEmitEdgeCurve = struct {
+        fn call(
+            a_alloc: std.mem.Allocator,
+            buf: *std.ArrayList(u8),
+            emap: *std.AutoHashMap(u64, usize),
+            wverts: []const Vec3d,
+            c_base: usize,
+            v_base: usize,
+            n_ent: *usize,
+            u: u32,
+            v: u32,
+        ) !usize {
+            const u_min = @min(u, v);
+            const u_max = @max(u, v);
+            const key = (@as(u64, u_min) << 32) | @as(u64, u_max);
+            if (emap.get(key)) |existing_ec| return existing_ec;
 
-        const p0 = mesh.vertices.items[idx0];
-        const p1 = mesh.vertices.items[idx1];
-        const p2 = mesh.vertices.items[idx2];
+            const p_start = wverts[u_min];
+            const p_end = wverts[u_max];
+            const d = p_end.sub(p_start).normalize();
+
+            const id_dir = n_ent.* + 0;
+            const id_vec = n_ent.* + 1;
+            const id_ln = n_ent.* + 2;
+            const id_ec = n_ent.* + 3;
+            n_ent.* += 4;
+
+            try buf.print(a_alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir, d.x, d.y, d.z });
+            try buf.print(a_alloc, "#{d} = VECTOR('',#{d},1.0);\n", .{ id_vec, id_dir });
+            try buf.print(a_alloc, "#{d} = LINE('',#{d},#{d});\n", .{ id_ln, c_base + u_min, id_vec });
+            try buf.print(a_alloc, "#{d} = EDGE_CURVE('',#{d},#{d},#{d},.T.);\n", .{ id_ec, v_base + u_min, v_base + u_max, id_ln });
+
+            try emap.put(key, id_ec);
+            return id_ec;
+        }
+    }.call;
+
+    for (0..tri_count) |t| {
+        // Reserve 128 bytes at the end for CLOSED_SHELL + ENDSEC if approaching STEP_MAX_SCRATCH_BYTES
+        if (out_buf.items.len + 2048 + face_ids.items.len * 10 >= STEP_MAX_SCRATCH_BYTES) break;
+
+        const r0: usize = mesh.indices.items[t * 3 + 0];
+        const r1: usize = mesh.indices.items[t * 3 + 1];
+        const r2: usize = mesh.indices.items[t * 3 + 2];
+        if (r0 >= raw_v_count or r1 >= raw_v_count or r2 >= raw_v_count) continue;
+
+        const w0 = raw_to_welded[r0];
+        const w1 = raw_to_welded[r1];
+        const w2 = raw_to_welded[r2];
+        if (w0 == w1 or w1 == w2 or w2 == w0) continue;
+
+        const p0 = welded_verts.items[w0];
+        const p1 = welded_verts.items[w1];
+        const p2 = welded_verts.items[w2];
         const e01 = p1.sub(p0);
         const e12 = p2.sub(p1);
         const e20 = p0.sub(p2);
         if (e01.length() < 1e-9 or e12.length() < 1e-9 or e20.length() < 1e-9) continue;
 
-        const d01 = e01.normalize();
-        const d12 = e12.normalize();
-        const d20 = e20.normalize();
-        const nrm = e01.cross(p2.sub(p0)).normalize();
+        const cr = e01.cross(p2.sub(p0));
+        if (cr.length() < 1e-12) continue;
+        const nrm = cr.normalize();
+        const ref_dir = e01.normalize();
 
-        // Reserve 19 entity IDs for this face
-        const id_dir01 = next_ent + 0;
-        const id_dir12 = next_ent + 1;
-        const id_dir20 = next_ent + 2;
-        const id_vec01 = next_ent + 3;
-        const id_vec12 = next_ent + 4;
-        const id_vec20 = next_ent + 5;
-        const id_ln01 = next_ent + 6;
-        const id_ln12 = next_ent + 7;
-        const id_ln20 = next_ent + 8;
-        const id_ec01 = next_ent + 9;
-        const id_ec12 = next_ent + 10;
-        const id_ec20 = next_ent + 11;
-        const id_oe01 = next_ent + 12;
-        const id_oe12 = next_ent + 13;
-        const id_oe20 = next_ent + 14;
-        const id_loop = next_ent + 15;
-        const id_fob = next_ent + 16;
-        const id_dir_n = next_ent + 17;
-        const id_ax2 = next_ent + 18;
-        const id_pln = next_ent + 19;
-        const id_face = next_ent + 20;
-        next_ent += 21;
+        const ec01 = getOrEmitEdgeCurve(alloc, out_buf, &edge_map, welded_verts.items, cp_base, vp_base, &next_ent, w0, w1) catch return 0;
+        const ec12 = getOrEmitEdgeCurve(alloc, out_buf, &edge_map, welded_verts.items, cp_base, vp_base, &next_ent, w1, w2) catch return 0;
+        const ec20 = getOrEmitEdgeCurve(alloc, out_buf, &edge_map, welded_verts.items, cp_base, vp_base, &next_ent, w2, w0) catch return 0;
 
-        out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir01, d01.x, d01.y, d01.z }) catch return 0;
-        out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir12, d12.x, d12.y, d12.z }) catch return 0;
-        out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir20, d20.x, d20.y, d20.z }) catch return 0;
-        out_buf.print(alloc, "#{d} = VECTOR('',#{d},1.0);\n", .{ id_vec01, id_dir01 }) catch return 0;
-        out_buf.print(alloc, "#{d} = VECTOR('',#{d},1.0);\n", .{ id_vec12, id_dir12 }) catch return 0;
-        out_buf.print(alloc, "#{d} = VECTOR('',#{d},1.0);\n", .{ id_vec20, id_dir20 }) catch return 0;
-        out_buf.print(alloc, "#{d} = LINE('',#{d},#{d});\n", .{ id_ln01, cp_base + idx0, id_vec01 }) catch return 0;
-        out_buf.print(alloc, "#{d} = LINE('',#{d},#{d});\n", .{ id_ln12, cp_base + idx1, id_vec12 }) catch return 0;
-        out_buf.print(alloc, "#{d} = LINE('',#{d},#{d});\n", .{ id_ln20, cp_base + idx2, id_vec20 }) catch return 0;
-        out_buf.print(alloc, "#{d} = EDGE_CURVE('',#{d},#{d},#{d},.T.);\n", .{ id_ec01, vp_base + idx0, vp_base + idx1, id_ln01 }) catch return 0;
-        out_buf.print(alloc, "#{d} = EDGE_CURVE('',#{d},#{d},#{d},.T.);\n", .{ id_ec12, vp_base + idx1, vp_base + idx2, id_ln12 }) catch return 0;
-        out_buf.print(alloc, "#{d} = EDGE_CURVE('',#{d},#{d},#{d},.T.);\n", .{ id_ec20, vp_base + idx2, vp_base + idx0, id_ln20 }) catch return 0;
-        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},.T.);\n", .{ id_oe01, id_ec01 }) catch return 0;
-        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},.T.);\n", .{ id_oe12, id_ec12 }) catch return 0;
-        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},.T.);\n", .{ id_oe20, id_ec20 }) catch return 0;
+        const p_key = hashStepPlane(nrm, nrm.dot(p0));
+        const id_pln = if (plane_map.get(p_key)) |existing_pln| existing_pln else blk: {
+            const id_dir_n = next_ent + 0;
+            const id_dir_r = next_ent + 1;
+            const id_ax2 = next_ent + 2;
+            const id_p = next_ent + 3;
+            next_ent += 4;
+            out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir_n, nrm.x, nrm.y, nrm.z }) catch return 0;
+            out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir_r, ref_dir.x, ref_dir.y, ref_dir.z }) catch return 0;
+            out_buf.print(alloc, "#{d} = AXIS2_PLACEMENT_3D('',#{d},#{d},#{d});\n", .{ id_ax2, cp_base + w0, id_dir_n, id_dir_r }) catch return 0;
+            out_buf.print(alloc, "#{d} = PLANE('',#{d});\n", .{ id_p, id_ax2 }) catch return 0;
+            plane_map.put(p_key, id_p) catch return 0;
+            break :blk id_p;
+        };
+
+        const id_oe01 = next_ent + 0;
+        const id_oe12 = next_ent + 1;
+        const id_oe20 = next_ent + 2;
+        const id_loop = next_ent + 3;
+        const id_fob = next_ent + 4;
+        const id_face = next_ent + 5;
+        next_ent += 6;
+
+        const s01 = if (w0 < w1) ".T." else ".F.";
+        const s12 = if (w1 < w2) ".T." else ".F.";
+        const s20 = if (w2 < w0) ".T." else ".F.";
+
+        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},{s});\n", .{ id_oe01, ec01, s01 }) catch return 0;
+        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},{s});\n", .{ id_oe12, ec12, s12 }) catch return 0;
+        out_buf.print(alloc, "#{d} = ORIENTED_EDGE('',*,*,#{d},{s});\n", .{ id_oe20, ec20, s20 }) catch return 0;
         out_buf.print(alloc, "#{d} = EDGE_LOOP('',(#{d},#{d},#{d}));\n", .{ id_loop, id_oe01, id_oe12, id_oe20 }) catch return 0;
         out_buf.print(alloc, "#{d} = FACE_OUTER_BOUND('',#{d},.T.);\n", .{ id_fob, id_loop }) catch return 0;
-        out_buf.print(alloc, "#{d} = DIRECTION('',({d:.6},{d:.6},{d:.6}));\n", .{ id_dir_n, nrm.x, nrm.y, nrm.z }) catch return 0;
-        out_buf.print(alloc, "#{d} = AXIS2_PLACEMENT_3D('',#{d},#{d},#{d});\n", .{ id_ax2, cp_base + idx0, id_dir_n, id_dir01 }) catch return 0;
-        out_buf.print(alloc, "#{d} = PLANE('',#{d});\n", .{ id_pln, id_ax2 }) catch return 0;
         out_buf.print(alloc, "#{d} = ADVANCED_FACE('',(#{d}),#{d},.T.);\n", .{ id_face, id_fob, id_pln }) catch return 0;
 
         face_ids.append(alloc, id_face) catch return 0;
@@ -354,12 +444,12 @@ pub fn solid_export_step(solid_h: u64, out_buf: *std.ArrayList(u8)) u32 {
 
     out_buf.appendSlice(alloc, "ENDSEC;\nEND-ISO-10303-21;\n") catch return 0;
 
-    const len = out_buf.items.len;
+    const len = @min(out_buf.items.len, STEP_MAX_SCRATCH_BYTES);
     export_step_len = len;
 
     // Copy to scratch memory at STEP_EXPORT_OFFSET (0x3F0000)
     const scratch = memory_map.getMemorySlice(STEP_EXPORT_OFFSET, len);
-    @memcpy(scratch, out_buf.items);
+    @memcpy(scratch, out_buf.items[0..len]);
 
     return @intCast(len);
 }
@@ -456,12 +546,12 @@ pub fn solid_export_stl(solid_h: u64, binary: bool, out_buf: *std.ArrayList(u8))
         out_buf.appendSlice(alloc, "endsolid OpenCAD_Model\n") catch return 0;
     }
 
-    const len = out_buf.items.len;
+    const len = @min(out_buf.items.len, STL_MAX_SCRATCH_BYTES);
     export_stl_len = len;
 
-    // Copy to scratch memory at STL_EXPORT_OFFSET (0x4F0000)
+    // Copy to scratch memory at STL_EXPORT_OFFSET (0x670000)
     const scratch = memory_map.getMemorySlice(STL_EXPORT_OFFSET, len);
-    @memcpy(scratch, out_buf.items);
+    @memcpy(scratch, out_buf.items[0..len]);
 
     return @intCast(len);
 }

@@ -480,7 +480,7 @@ export function exportStep(slice: CadTessellatedSolidSlice): string {
       const boundId = entityId++;
       lines.push(`#${boundId} = FACE_OUTER_BOUND('', #${polyLoopId}, .T.);`);
 
-      // Face normal for plane surface
+      // Face normal and orthogonal reference direction for plane surface
       const v01 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
       const v02 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
       let fnx = v01[1] * v02[2] - v01[2] * v02[1];
@@ -491,11 +491,19 @@ export function exportStep(slice: CadTessellatedSolidSlice): string {
       fny /= fnlen;
       fnz /= fnlen;
 
+      const tlen = Math.hypot(v01[0], v01[1], v01[2]) || 1.0;
+      const rdx = v01[0] / tlen;
+      const rdy = v01[1] / tlen;
+      const rdz = v01[2] / tlen;
+
       const normDirId = entityId++;
       lines.push(`#${normDirId} = DIRECTION('', (${fnx.toFixed(6)}, ${fny.toFixed(6)}, ${fnz.toFixed(6)}));`);
 
+      const refDirId = entityId++;
+      lines.push(`#${refDirId} = DIRECTION('', (${rdx.toFixed(6)}, ${rdy.toFixed(6)}, ${rdz.toFixed(6)}));`);
+
       const facePlacementId = entityId++;
-      lines.push(`#${facePlacementId} = AXIS2_PLACEMENT_3D('', #${cp0}, #${normDirId}, #${xAxisDirId});`);
+      lines.push(`#${facePlacementId} = AXIS2_PLACEMENT_3D('', #${cp0}, #${normDirId}, #${refDirId});`);
 
       const planeId = entityId++;
       lines.push(`#${planeId} = PLANE('', #${facePlacementId});`);

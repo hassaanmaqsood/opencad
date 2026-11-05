@@ -256,21 +256,31 @@ function readTessellationFromSharedMemory() {
   const normals = new Float32Array(sharedWasmMemory.buffer, nrmOffset, vertexCount * 3).slice();
   const indices = new Uint32Array(sharedWasmMemory.buffer, idxOffset, triangleCount * 3).slice();
 
-  const edgeList: number[] = [];
+  const tempEdges = new Float32Array(triangleCount * 18);
+  let eIdx = 0;
   for (let i = 0; i < indices.length; i += 3) {
-    const a = indices[i];
-    const b = indices[i + 1];
-    const c = indices[i + 2];
-    edgeList.push(
-      positions[a * 3], positions[a * 3 + 1], positions[a * 3 + 2],
-      positions[b * 3], positions[b * 3 + 1], positions[b * 3 + 2],
-      positions[b * 3], positions[b * 3 + 1], positions[b * 3 + 2],
-      positions[c * 3], positions[c * 3 + 1], positions[c * 3 + 2],
-      positions[c * 3], positions[c * 3 + 1], positions[c * 3 + 2],
-      positions[a * 3], positions[a * 3 + 1], positions[a * 3 + 2]
-    );
+    const idx0 = indices[i];
+    const idx1 = indices[i + 1];
+    const idx2 = indices[i + 2];
+    const pairs = [idx0, idx1, idx1, idx2, idx2, idx0];
+    for (let p = 0; p < 6; p += 2) {
+      const u = pairs[p];
+      const v = pairs[p + 1];
+      if (u > v) continue;
+      const u3 = u * 3;
+      const v3 = v * 3;
+      const dot = normals[u3] * normals[v3] + normals[u3 + 1] * normals[v3 + 1] + normals[u3 + 2] * normals[v3 + 2];
+      if (dot < 0.995) {
+        tempEdges[eIdx++] = positions[u3];
+        tempEdges[eIdx++] = positions[u3 + 1];
+        tempEdges[eIdx++] = positions[u3 + 2];
+        tempEdges[eIdx++] = positions[v3];
+        tempEdges[eIdx++] = positions[v3 + 1];
+        tempEdges[eIdx++] = positions[v3 + 2];
+      }
+    }
   }
-  const edgeVertices = new Float32Array(edgeList);
+  const edgeVertices = tempEdges.slice(0, eIdx);
 
   return {
     solidId,
@@ -596,8 +606,14 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (data.type === 'CDML_EXPORT_STEP') {
     const reqId = data.requestId ?? 0;
+    let stepLen = (wasmExports as any).get_step_len?.() ?? 0;
+    if (stepLen === 0 && typeof (wasmExports as any).cdml_get_active_solid === 'function') {
+      const activeH = (wasmExports as any).cdml_get_active_solid();
+      if (activeH) {
+        stepLen = (wasmExports as any).solid_export_step?.(activeH) ?? 0;
+      }
+    }
     const stepPtr = (wasmExports as any).get_step_ptr?.();
-    const stepLen = (wasmExports as any).get_step_len?.() ?? 0;
     let stepStr = '';
     if (stepPtr && stepLen > 0) {
       stepStr = new TextDecoder().decode(new Uint8Array(sharedWasmMemory.buffer, stepPtr, stepLen).slice());
@@ -608,8 +624,14 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (data.type === 'CDML_EXPORT_STL') {
     const reqId = data.requestId ?? 0;
+    let stlLen = (wasmExports as any).get_stl_len?.() ?? 0;
+    if (stlLen === 0 && typeof (wasmExports as any).cdml_get_active_solid === 'function') {
+      const activeH = (wasmExports as any).cdml_get_active_solid();
+      if (activeH) {
+        stlLen = (wasmExports as any).solid_export_stl?.(activeH, true) ?? 0;
+      }
+    }
     const stlPtr = (wasmExports as any).get_stl_ptr?.();
-    const stlLen = (wasmExports as any).get_stl_len?.() ?? 0;
     let stlBuf = new Uint8Array(0);
     if (stlPtr && stlLen > 0) {
       stlBuf = new Uint8Array(sharedWasmMemory.buffer, stlPtr, stlLen).slice();

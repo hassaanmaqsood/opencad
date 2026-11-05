@@ -373,7 +373,9 @@ export class CadViewer {
       }
 
       this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      if (!(window as any).__cadBusy) {
+        this.renderer.render(this.scene, this.camera);
+      }
 
       this.animFrameId = requestAnimationFrame(renderLoop);
     };

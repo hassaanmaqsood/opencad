@@ -266,15 +266,30 @@ const OctreeContext = struct {
             rhs[2] += d * nk.z;
         }
 
+        const cell_min = self.cornerPos(ix, iy, iz);
+        const cell_max = self.cornerPos(ix + 1, iy + 1, iz + 1);
         var u_sol = [3]f64{ 0.0, 0.0, 0.0 };
         var dual_v = mass_pt;
         if (constraint_sys.solveLinearSystem(&A, &rhs, &u_sol, 3)) {
-            const cell_min = self.cornerPos(ix, iy, iz);
-            const cell_max = self.cornerPos(ix + 1, iy + 1, iz + 1);
             dual_v = Vec3d.init(
                 std.math.clamp(mass_pt.x + u_sol[0], cell_min.x, cell_max.x),
                 std.math.clamp(mass_pt.y + u_sol[1], cell_min.y, cell_max.y),
                 std.math.clamp(mass_pt.z + u_sol[2], cell_min.z, cell_max.z),
+            );
+        }
+
+        // Project solved QEF vertex onto exact F(x,y,z) = 0 level set via damped Newton-Gradient steps
+        for (0..4) |_| {
+            var g_step: [3]f64 = undefined;
+            const f_val = autodiff.expr_eval(self.expr_h, &[3]f64{ dual_v.x, dual_v.y, dual_v.z }, 3, &g_step);
+            if (@abs(f_val) < 1e-9) break;
+            const g_sq = g_step[0] * g_step[0] + g_step[1] * g_step[1] + g_step[2] * g_step[2];
+            if (g_sq < 1e-18) break;
+            const alpha = f_val / g_sq;
+            dual_v = Vec3d.init(
+                std.math.clamp(dual_v.x - alpha * g_step[0], cell_min.x, cell_max.x),
+                std.math.clamp(dual_v.y - alpha * g_step[1], cell_min.y, cell_max.y),
+                std.math.clamp(dual_v.z - alpha * g_step[2], cell_min.z, cell_max.z),
             );
         }
 
