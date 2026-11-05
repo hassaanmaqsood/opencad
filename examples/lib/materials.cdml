@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cdml version="1.0" units="mm">
+  <defs>
+    <material id="al6061" name="Aluminum 6061-T6" youngs-modulus="68.9e9" poisson="0.33" density="2700"/>
+  </defs>
+</cdml>

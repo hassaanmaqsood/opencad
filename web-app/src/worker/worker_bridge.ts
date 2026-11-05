@@ -22,6 +22,7 @@ import {
   TessellateLodWorkerRequest,
   ApplyDressUpWorkerRequest,
 } from '../types/cad';
+import { getAssetUrl } from '../utils/assets';
 
 export class CadWorkerBridge {
   private worker: Worker;
@@ -91,6 +92,17 @@ export class CadWorkerBridge {
 
     this.worker.onmessage = this.handleMessage.bind(this);
     this.worker.onerror = this.handleError.bind(this);
+
+    // Eagerly prime worker with asset URLs so WASM kernel initializes immediately
+    try {
+      this.worker.postMessage({
+        type: 'INIT_CONFIG',
+        wasmUrl: getAssetUrl('cad_kernel.wasm'),
+        canaryUrl: getAssetUrl('ext_field_canary.wasm'),
+      });
+    } catch (err) {
+      console.warn('Failed to post INIT_CONFIG to worker:', err);
+    }
   }
 
   private handleMessage(e: MessageEvent) {

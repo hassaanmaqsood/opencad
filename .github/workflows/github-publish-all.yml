@@ -105,7 +105,7 @@ jobs:
       - name: Commit and Force-Push to dist branch
         run: |
           cd dist-publish
-          rm -f opencad-wasm-sdk.zip
+          rm -f opencad-wasm-sdk.zip opencad-examples.zip
           git init
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -153,6 +153,7 @@ jobs:
           files: |
             dist-publish/opencad-portable.html
             dist-publish/opencad-wasm-sdk.zip
+            dist-publish/opencad-examples.zip
             dist-publish/cad_core.wasm
             dist-publish/opencad.mjs
             dist-publish/opencad-element.mjs

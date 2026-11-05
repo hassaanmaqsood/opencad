@@ -28,6 +28,7 @@ import { parseStep, exportStep } from './step_io';
 import { exportStl } from './stl_io';
 import { solveAssemblyClient } from './assembly_solver';
 import { WorkerPluginBridge } from './WorkerPluginBridge';
+import { getAssetUrl } from '../utils/assets';
 
 const workerPluginBridge = new WorkerPluginBridge();
 
@@ -154,38 +155,85 @@ export const sharedWasmMemory = new WebAssembly.Memory({ initial: 128, maximum: 
 (self as any).__openCadSharedMemory = sharedWasmMemory;
 
 let canaryInstance: WebAssembly.Instance | null = null;
+let configuredWasmUrl: string | null = null;
+let configuredCanaryUrl: string | null = null;
+let kernelInitPromise: Promise<boolean> | null = null;
+
+function getCandidateWasmUrls(filename: string): string[] {
+  const list: string[] = [];
+  if (filename === 'cad_kernel.wasm' && configuredWasmUrl) list.push(configuredWasmUrl);
+  if (filename === 'ext_field_canary.wasm' && configuredCanaryUrl) list.push(configuredCanaryUrl);
+
+  try {
+    const assetUrl = getAssetUrl(filename);
+    if (assetUrl) list.push(assetUrl);
+  } catch {}
+
+  if (typeof self !== 'undefined' && self.location) {
+    try {
+      list.push(new URL(`../${filename}`, self.location.href).href);
+      list.push(new URL(filename, self.location.href).href);
+      list.push(new URL(`./${filename}`, self.location.href).href);
+    } catch {}
+  }
+  list.push(`/${filename}`);
+  list.push(`./${filename}`);
+  return [...new Set(list)];
+}
+
 async function ensureCanary(): Promise<WebAssembly.Instance | null> {
   if (canaryInstance) return canaryInstance;
-  try {
-    const resp = await fetch('/ext_field_canary.wasm');
-    const buf = await resp.arrayBuffer();
-    const mod = await WebAssembly.compile(buf);
-    canaryInstance = await WebAssembly.instantiate(mod, {
-      env: { memory: sharedWasmMemory },
-      opencad: {
-        field_alloc: () => 0,
-        field_eval_scalar: () => 0.0,
-        field_eval_vec3: () => {},
-        cmd_write: () => {},
-      },
-    });
-    return canaryInstance;
-  } catch (err) {
-    console.warn('Canary extension load warning:', err);
-    return null;
+  const candidates = getCandidateWasmUrls('ext_field_canary.wasm');
+  for (const url of candidates) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const buf = await resp.arrayBuffer();
+        const mod = await WebAssembly.compile(buf);
+        canaryInstance = await WebAssembly.instantiate(mod, {
+          env: { memory: sharedWasmMemory },
+          opencad: {
+            field_alloc: () => 0,
+            field_eval_scalar: () => 0.0,
+            field_eval_vec3: () => {},
+            cmd_write: () => {},
+          },
+        });
+        return canaryInstance;
+      }
+    } catch (err) {
+      // Try next candidate
+    }
   }
+  console.warn('Canary extension could not be loaded from any candidate URL');
+  return null;
 }
 
 async function ensureKernelWasm(): Promise<boolean> {
   if (wasmExports && (wasmExports as any).cdml_eval_document) return true;
-  try {
-    const resp = await fetch('/cad_kernel.wasm');
-    const buf = await resp.arrayBuffer();
-    return await initWasm(buf);
-  } catch (err) {
-    console.error('Failed to load /cad_kernel.wasm in worker:', err);
+  if (kernelInitPromise) return kernelInitPromise;
+
+  kernelInitPromise = (async () => {
+    const candidates = getCandidateWasmUrls('cad_kernel.wasm');
+    for (const url of candidates) {
+      try {
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const buf = await resp.arrayBuffer();
+          const ok = await initWasm(buf);
+          if (ok) return true;
+        }
+      } catch (err) {
+        // Try next candidate URL
+      }
+    }
+    console.error('Failed to load cad_kernel.wasm across all candidates:', candidates);
     return false;
-  }
+  })();
+
+  const res = await kernelInitPromise;
+  if (!res) kernelInitPromise = null;
+  return res;
 }
 
 let scratchCursor = 0x300000;
@@ -403,6 +451,14 @@ function extractFromWasmMemory(solidType: 'box' | 'cylinder'): CadMeshRawBuffers
 self.onmessage = async (e: MessageEvent) => {
   const data = e.data;
   if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'INIT_CONFIG') {
+    if (data.wasmUrl) configuredWasmUrl = data.wasmUrl;
+    if (data.canaryUrl) configuredCanaryUrl = data.canaryUrl;
+    // Eagerly initialize WASM in background so user can write code immediately
+    ensureKernelWasm().catch(err => console.warn('Background WASM initialization warning:', err));
+    return;
+  }
 
   if (data.type === 'LOAD_WASM' && data.wasmBinary instanceof ArrayBuffer) {
     const success = await initWasm(data.wasmBinary);

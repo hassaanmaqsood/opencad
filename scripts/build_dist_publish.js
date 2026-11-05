@@ -98,6 +98,7 @@ const pkgJson = {
     "opencad-element.mjs",
     "cad_core.wasm",
     "README.md",
+    "examples",
     "python",
     "rust"
   ],
@@ -156,6 +157,19 @@ const rustSrc = path.resolve(rootDir, 'bindings/rust');
 const rustDest = path.resolve(distPublishDir, 'rust');
 fs.cpSync(rustSrc, rustDest, { recursive: true });
 fs.copyFileSync(wasmSrc, path.resolve(rustDest, 'cad_core.wasm'));
+
+// 10b. Stage Examples distribution & create opencad-examples.zip
+console.log('[dist-publish] Staging examples in dist-publish/examples/...');
+const examplesSrc = path.resolve(rootDir, 'web-app/public/examples');
+const examplesDest = path.resolve(distPublishDir, 'examples');
+fs.cpSync(examplesSrc, examplesDest, { recursive: true });
+
+console.log('[dist-publish] Creating opencad-examples.zip...');
+try {
+  execSync(`cd "${distPublishDir}" && zip -r opencad-examples.zip examples`, { stdio: 'inherit' });
+} catch (e) {
+  console.warn('Could not create opencad-examples.zip:', e);
+}
 
 // 11. Generate Single-File Offline Portable HTML (opencad-portable.html)
 console.log('[dist-publish] Generating opencad-portable.html...');

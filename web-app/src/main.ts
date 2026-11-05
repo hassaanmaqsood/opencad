@@ -2,6 +2,7 @@ import './style.css';
 import { CadViewer } from './renderer/viewer';
 import { CadWorkerBridge } from './worker/worker_bridge';
 import { LilController } from './ui/lil_controller';
+import { getAssetUrl } from './utils/assets';
 import '../../packages/core-sdk/src/element';
 
 declare global {
@@ -76,19 +77,165 @@ export function renderOpenCadLogoSvg(
 
 export const renderControlMarkSvg = renderOpenCadLogoSvg;
 
+const BUILTIN_IMPORTS: Record<string, string> = {
+  'lib/materials.cdml': `<?xml version="1.0" encoding="UTF-8"?>
+<cdml version="1.0" units="mm">
+  <defs>
+    <material id="al6061" name="Aluminum 6061-T6" youngs-modulus="68.9e9" poisson="0.33" density="2700"/>
+  </defs>
+</cdml>`,
+  'lib/fasteners.cdml': `<?xml version="1.0" encoding="UTF-8"?>
+<cdml version="1.0" units="mm">
+  <defs>
+    <var id="bolt_d" value="6.0" unit="mm"/>
+    <var id="bolt_pcd" value="35.0" unit="mm"/>
+  </defs>
+</cdml>`,
+};
+
+function getStarterCdml(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports>
+    <import src="lib/materials.cdml"/>
+    <import src="lib/fasteners.cdml" prefix="fs"/>
+  </imports>
+  <defs>
+    <var id="flange_w"    value="90.0"  unit="mm" min="60.0" max="150.0"/>
+    <var id="flange_h"    value="16.0"  unit="mm" min="8.0"  max="40.0"/>
+    <var id="bore_r"      value="15.0"  unit="mm" min="8.0"  max="25.0"/>
+    <var id="wall_margin" value="3.0"   unit="mm" min="1.5"  max="6.0"/>
+    <var id="fillet_r"    value="4.0"   unit="mm" min="0.5"  max="10.0"/>
+    <var id="period"      value="9.0"   unit="mm"/>
+
+    <expr id="half_w"   expr="flange_w / 2"/>
+    <expr id="infill_r" expr="bore_r + wall_margin"/>
+
+    <field-slot id="stress_field" slot="0"
+                semantic="stress"
+                grid-x="64" grid-y="64" grid-z="24"
+                default="40.0"/>
+
+    <assert id="bore_clearance"
+      expr="half_w - bore_r - wall_margin - 5.0"
+      error="bore plus wall margin exceeds half flange width"/>
+    <assert id="wall_positive"
+      expr="flange_w * 0.5 - bore_r - wall_margin"
+      error="no material between bore and edge"/>
+  </defs>
+  <body>
+    <chart id="chart_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="unit_e2"  expr="dot(e2, e2) - 1.0"/>
+        <residual id="ortho"    expr="dot(e1, e2)"/>
+        <residual id="planar_z" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_flange" chart="chart_xy" max-iter="100">
+      <vars>
+        <point2d id="v0" u="-45.0" v="-45.0"/>
+        <point2d id="v1" u=" 45.0" v="-45.0"/>
+        <point2d id="v2" u=" 45.0" v=" 45.0"/>
+        <point2d id="v3" u="-45.0" v=" 45.0"/>
+      </vars>
+      <wire id="wire_outer" closed="true" role="outer">
+        <curve id="seg_bot" degree="1" ctrl="v0 v1" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="seg_rgt" degree="1" ctrl="v1 v2" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="seg_top" degree="1" ctrl="v2 v3" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="seg_lft" degree="1" ctrl="v3 v0" weights="1.0 1.0" knots="0 0 1 1"/>
+      </wire>
+      <wire id="wire_bore" closed="true" role="hole">
+        <param-curve id="c_bore" param="t" domain="0 1"
+          u-expr="ref(bore_r) * cos(2 * PI * t)"
+          v-expr="ref(bore_r) * sin(2 * PI * t)"/>
+      </wire>
+      <constraints>
+        <residual id="cx"    expr="v0.u + v1.u"/>
+        <residual id="cy"    expr="v0.v + v3.v"/>
+        <residual id="sym"   expr="v2.u + v3.u"/>
+        <residual id="h0"    expr="v1.v - v0.v"/>
+        <residual id="h1"    expr="v2.v - v3.v"/>
+        <residual id="ortho" expr="dot(v1-v0, v2-v1)"/>
+        <residual id="width" expr="norm(v1 - v0) - ref(flange_w)"/>
+        <residual id="height" expr="norm(v2 - v1) - ref(flange_w)"/>
+      </constraints>
+    </sketch>
+
+    <brep id="solid_flange">
+      <sweep id="sw_flange" sketch="sk_flange" cap-ends="true">
+        <trajectory>
+          <translate x="0" y="0" z-expr="ref(flange_h) * v"/>
+        </trajectory>
+      </sweep>
+      <fillet id="f_bore" edge="wire_bore" radius-expr="ref(fillet_r)"/>
+    </brep>
+
+    <surface id="surf_wall">
+      <eq>x^2 + y^2 - ref(infill_r)^2</eq>
+    </surface>
+    <region id="reg_wall">
+      <and>
+        <ineq id="wall_out" surface="surf_wall" sense="-"/>
+        <ineq id="wall_bot">z</ineq>
+        <ineq id="wall_top">ref(flange_h) - z</ineq>
+      </and>
+    </region>
+    <brep id="solid_wall" region="reg_wall"/>
+
+    <implicit id="infill_lattice" solid="solid_wall">
+      <field type="gyroid" period="ref(period)"
+             thickness-field="stress_field"
+             t-min="0.8" t-max="2.4"
+             stress-min="10.0" stress-max="80.0"/>
+      <dual-contour resolution="64" max-depth="6"/>
+    </implicit>
+
+    <csg id="solid_final">
+      <union op1="solid_flange" op2="infill_lattice"/>
+    </csg>
+
+    <probe id="housing_volume"   type="volume"      target="solid_final"/>
+    <probe id="max_fillet_stress" type="field_max"   target="f_bore" field="stress_field"/>
+    <probe id="mass_estimate"    type="mass"        target="solid_final" material="al6061"/>
+  </body>
+
+  <exports>
+    <tessellate target="solid_final" chord-tol="0.02" angle-tol="0.05"/>
+    <step        target="solid_flange" schema="AP214"/>
+    <stl         target="solid_final"  binary="true"/>
+  </exports>
+</cdml>`;
+}
+
 async function resolveImports(baseUrl: string, xml: string): Promise<Record<string, string>> {
   const imports: Record<string, string> = {};
   const matches = xml.matchAll(/<import\s+[^>]*src="([^"]+)"/g);
   for (const m of matches) {
     const src = m[1];
+    const cleanKey = src.replace(/^\.\//, '').replace(/^\//, '');
+    let content: string | null = null;
     try {
       const fullUrl = new URL(src, baseUrl).toString();
       const res = await fetch(fullUrl);
       if (res.ok) {
-        imports[src] = await res.text();
+        content = await res.text();
       }
     } catch (err) {
-      console.warn('Could not resolve relative import:', src, err);
+      console.warn('Network import fetch failed for:', src, err);
+    }
+
+    // Seamless offline/embedded fallback for standard engineering imports
+    if (!content && BUILTIN_IMPORTS[cleanKey]) {
+      content = BUILTIN_IMPORTS[cleanKey];
+    }
+
+    if (content) {
+      imports[src] = content;
     }
   }
   return imports;
@@ -384,12 +531,15 @@ async function initApp() {
       const selected = exampleSelect.value;
       if (selected) {
         try {
-          const resp = await fetch(selected);
+          const targetUrl = getAssetUrl(selected);
+          const resp = await fetch(targetUrl);
           if (resp.ok) {
             const text = await resp.text();
             cdmlEditor.value = text;
-            currentDocUrl = new URL(selected, window.location.href).toString();
+            currentDocUrl = new URL(targetUrl, window.location.href).toString();
             await evaluateCode(text);
+          } else {
+            console.warn('Example fetch returned status:', resp.status);
           }
         } catch (err) {
           console.error('Failed to load example:', selected, err);
@@ -398,31 +548,56 @@ async function initApp() {
     });
   }
 
-  // Live Debounced CDML Editing
+  // Live Debounced CDML Editing: Geometry is built and rendered whenever user writes code
   if (cdmlEditor) {
     let debounceTimer: any = null;
     cdmlEditor.addEventListener('input', () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        evaluateCode(cdmlEditor.value);
+        const code = cdmlEditor.value.trim();
+        if (code.length > 0) {
+          evaluateCode(cdmlEditor.value);
+        } else {
+          if (statusMessage) statusMessage.textContent = 'Ready (Enter CDML)';
+          if (statusIndicator) statusIndicator.className = 'status-dot';
+        }
       }, 200);
     });
   }
 
-  // Initial Load
-  const initialUrl = cdmlParam || '/examples/flange_normative.cdml';
+  // Initial Load: If example is not loaded, user can still write code and geometry is built & rendered
+  const initialUrl = cdmlParam || getAssetUrl('examples/flange_normative.cdml');
+  let initialLoaded = false;
   try {
     const resp = await fetch(initialUrl);
     if (resp.ok) {
       const text = await resp.text();
-      if (cdmlEditor) cdmlEditor.value = text;
+      // If user hasn't already typed in the editor, load the fetched example
+      if (cdmlEditor && (!cdmlEditor.value || cdmlEditor.value.trim().length === 0)) {
+        cdmlEditor.value = text;
+      }
       currentDocUrl = new URL(initialUrl, window.location.href).toString();
-      await evaluateCode(text);
+      const codeToEval = cdmlEditor && cdmlEditor.value.trim().length > 0 ? cdmlEditor.value : text;
+      await evaluateCode(codeToEval);
+      initialLoaded = true;
     } else {
       console.warn('Initial CDML fetch returned status:', resp.status);
     }
   } catch (err) {
-    console.warn('Error fetching initial CDML:', err);
+    console.warn('Network error fetching initial CDML:', err);
+  }
+
+  // Fallback: If example could not be loaded over network, user can still write code or use embedded starter
+  if (!initialLoaded) {
+    if (cdmlEditor && cdmlEditor.value && cdmlEditor.value.trim().length > 0) {
+      // User has already typed code into the editor: evaluate and render it directly!
+      await evaluateCode(cdmlEditor.value);
+    } else {
+      // Populate with standalone normative starter so the viewport is live
+      const starter = getStarterCdml();
+      if (cdmlEditor) cdmlEditor.value = starter;
+      await evaluateCode(starter);
+    }
   }
 }
 

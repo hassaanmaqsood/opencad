@@ -9,11 +9,12 @@
 
 export function getAssetUrl(filename: string): string {
   const clean = filename.replace(/^\.\//, '').replace(/^\//, '');
-  if (typeof window === 'undefined') {
+  const loc = typeof window !== 'undefined' ? window.location : (typeof self !== 'undefined' ? self.location : null);
+  if (!loc) {
     return clean;
   }
 
-  let pathname = window.location.pathname;
+  let pathname = loc.pathname || '/';
   if (!pathname.endsWith('/')) {
     if (pathname.includes('.')) {
       pathname = pathname.substring(0, pathname.lastIndexOf('/') + 1);
@@ -22,5 +23,10 @@ export function getAssetUrl(filename: string): string {
     }
   }
 
-  return new URL(clean, `${window.location.origin}${pathname}`).href;
+  // If inside /assets/ directory (e.g. bundled web worker), traverse up to root
+  if (pathname.endsWith('/assets/')) {
+    pathname = pathname.substring(0, pathname.length - 7);
+  }
+
+  return new URL(clean, `${loc.origin}${pathname}`).href;
 }

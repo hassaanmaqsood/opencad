@@ -305,4 +305,100 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
     expect(Math.abs(updatedHeight - 30.0)).toBeLessThan(0.2);
   });
 
+  test('Standalone Code Authoring: user can write code and geometry is built and rendered when example fails to load', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // Navigate with a 404 example URL to simulate network failure or missing example
+    await page.goto('/?cdml=/examples/non_existent_404.cdml');
+
+    await expect(page.locator('#cad-canvas')).toBeVisible();
+    await expect(page.locator('#cdml-editor')).toBeVisible();
+
+    const customCdml = `<?xml version="1.0" encoding="UTF-8"?>
+<cdml version="1.0" units="mm">
+  <defs>
+    <var id="bracket_w" value="70.0" min="30.0" max="120.0" unit="mm"/>
+    <var id="bracket_h" value="25.0" min="10.0" max="50.0" unit="mm"/>
+    <var id="hole_d"    value="16.0" min="4.0"  max="24.0" unit="mm"/>
+    <expr id="hole_r"   expr="hole_d / 2"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_bracket" chart="ch_xy" max-iter="100">
+      <vars>
+        <point2d id="v0" u="-35.0" v="-35.0"/>
+        <point2d id="v1" u=" 35.0" v="-35.0"/>
+        <point2d id="v2" u=" 35.0" v=" 35.0"/>
+        <point2d id="v3" u="-35.0" v=" 35.0"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+        <curve id="c0" degree="1" ctrl="v0 v1" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="c1" degree="1" ctrl="v1 v2" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="c2" degree="1" ctrl="v2 v3" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="c3" degree="1" ctrl="v3 v0" weights="1.0 1.0" knots="0 0 1 1"/>
+      </wire>
+      <wire id="w_bore" closed="true" role="hole">
+        <param-curve id="c_bore" param="t" domain="0 1"
+          u-expr="ref(hole_r) * cos(2 * PI * t)"
+          v-expr="ref(hole_r) * sin(2 * PI * t)"/>
+      </wire>
+      <constraints>
+        <residual id="cx" expr="v0.u + v1.u"/>
+        <residual id="cy" expr="v0.v + v3.v"/>
+        <residual id="sy" expr="v2.u + v3.u"/>
+        <residual id="h0" expr="v1.v - v0.v"/>
+        <residual id="h1" expr="v2.v - v3.v"/>
+        <residual id="ot" expr="dot(v1 - v0, v2 - v1)"/>
+        <residual id="we" expr="dot(v1 - v0, v1 - v0) - ref(bracket_w)^2"/>
+        <residual id="he" expr="dot(v2 - v1, v2 - v1) - ref(bracket_w)^2"/>
+      </constraints>
+    </sketch>
+    <brep id="bracket_solid">
+      <sweep id="sw_bracket" sketch="sk_bracket" cap-ends="true">
+        <trajectory><translate x="0" y="0" z-expr="ref(bracket_h) * v"/></trajectory>
+      </sweep>
+    </brep>
+  </body>
+  <exports>
+    <tessellate target="bracket_solid" chord-tol="0.05" angle-tol="0.1"/>
+  </exports>
+</cdml>`;
+
+    await page.locator('#cdml-editor').fill(customCdml);
+
+    // Wait for debounced evaluation & 3D mesh generation
+    await page.waitForFunction(() => {
+      const geom = (window as any).__cadViewer?.meshManager?.solidMesh?.geometry;
+      return geom?.attributes?.position?.count > 0 && (window as any).__cadViewer.meshManager.getTriangleCount() > 0;
+    }, { timeout: 10000 });
+
+    const triangleCount = await page.evaluate(() => (window as any).__cadViewer.meshManager.getTriangleCount());
+    expect(triangleCount).toBeGreaterThan(0);
+
+    const statusMsg = await page.locator('#status-message').textContent();
+    expect(statusMsg).toBe('Ready (CDML Valid)');
+
+    // Verify mesh dimensions: width = 70.0, height = 25.0
+    const dims = await page.evaluate(() => {
+      const geom = (window as any).__cadViewer.meshManager.solidMesh.geometry;
+      geom.computeBoundingBox();
+      return {
+        w: geom.boundingBox.max.x - geom.boundingBox.min.x,
+        h: geom.boundingBox.max.z - geom.boundingBox.min.z,
+      };
+    });
+    expect(Math.abs(dims.w - 70.0)).toBeLessThan(0.5);
+    expect(Math.abs(dims.h - 25.0)).toBeLessThan(0.5);
+  });
+
 });
