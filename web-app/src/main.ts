@@ -19,6 +19,63 @@ declare global {
 // Expose LilController globally for SDK & Web Components
 window.LilController = LilController;
 
+/**
+ * OpenCAD Abstract Identity Mark
+ * Inspired by nTop (continuous topological manifold) & MATLAB (mathematical level-set contours).
+ * Abstractly conveys OpenCAD's core function:
+ * - Parametric B-Rep boundary modeling
+ * - Continuous field iso-contours / level sets
+ * - Central constraint solver origin node with dynamic live kernel health status
+ */
+export function renderOpenCadLogoSvg(
+  size: number,
+  statusState: 'nominal' | 'caution' | 'fault' | 'offline' | 'linked' | 'neutral' = 'neutral'
+): string {
+  let originColor = 'var(--state-nominal, #3FB950)';
+  if (statusState === 'caution') originColor = 'var(--state-caution, #D29922)';
+  else if (statusState === 'fault') originColor = 'var(--state-fault, #F85149)';
+  else if (statusState === 'offline') originColor = 'var(--state-offline, #6E7681)';
+  else if (statusState === 'linked') originColor = 'var(--state-linked, #58A6FF)';
+  else if (statusState === 'neutral') originColor = 'var(--ink, #E6EDF3)';
+
+  const strokeWidth = Math.max(1, (size / 32) * 1.5).toFixed(1);
+  const thinWidth = Math.max(0.75, (size / 32) * 1.0).toFixed(1);
+
+  if (size < 16) {
+    // Crisp degradation for micro / favicon sizes (< 16px)
+    return `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+      <path d="M 8 2.2 L 13.5 5.2 V 10.8 L 8 13.8 L 2.5 10.8 V 5.2 Z" stroke="var(--ink, #E6EDF3)" stroke-width="1.2" stroke-linejoin="round" />
+      <path d="M 8 2.2 V 8 M 8 8 L 2.5 10.8 M 8 8 L 13.5 10.8" stroke="var(--ink, #E6EDF3)" stroke-width="1.0" stroke-linejoin="round" />
+      <circle cx="8" cy="8" r="1.8" fill="${originColor}" />
+    </svg>`;
+  }
+
+  return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+    <!-- Isometric Parametric B-Rep Shell (Clean Minimalist Manifold) -->
+    <path d="M 16 4.5 L 26.5 10.5 V 21.5 L 16 27.5 L 5.5 21.5 V 10.5 Z" 
+          stroke="var(--ink, #E6EDF3)" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" />
+    
+    <!-- Coordinate Origin Creases (Parametric Reference Axes) -->
+    <path d="M 16 4.5 V 16 M 16 16 L 5.5 21.5 M 16 16 L 26.5 21.5" 
+          stroke="var(--ink, #E6EDF3)" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" />
+    
+    <!-- Mathematical Iso-Contour Field Lines (MATLAB Eigenmode + nTop Continuous Field) -->
+    <!-- Top Face Level-Set -->
+    <path d="M 10 7.8 Q 16 11.2 22 7.8" 
+          stroke="var(--ink-2, #8B949E)" stroke-width="${thinWidth}" stroke-linecap="round" fill="none" />
+    <!-- Swept Lateral Field Contours -->
+    <path d="M 5.5 15.8 Q 11 18.8 16 16" 
+          stroke="var(--ink-2, #8B949E)" stroke-width="${thinWidth}" stroke-linecap="round" fill="none" />
+    <path d="M 16 16 Q 21 13.2 26.5 15.8" 
+          stroke="var(--ink-2, #8B949E)" stroke-width="${thinWidth}" stroke-linecap="round" fill="none" />
+    
+    <!-- Central Solver Convergence / Origin Node (Dynamic Live Health Core) -->
+    <circle cx="16" cy="16" r="2.2" fill="${originColor}" />
+  </svg>`;
+}
+
+export const renderControlMarkSvg = renderOpenCadLogoSvg;
+
 async function resolveImports(baseUrl: string, xml: string): Promise<Record<string, string>> {
   const imports: Record<string, string> = {};
   const matches = xml.matchAll(/<import\s+[^>]*src="([^"]+)"/g);
@@ -90,6 +147,10 @@ async function initApp() {
   const statTriangles = document.getElementById('stat-triangles');
   const statVertices = document.getElementById('stat-vertices');
   const fpsVal = document.getElementById('fps-val');
+  const brandMark = document.getElementById('brand-mark');
+  if (brandMark) {
+    brandMark.innerHTML = renderControlMarkSvg(20, 'nominal');
+  }
 
   // Embed Mode handling
   if (isEmbed) {
@@ -185,6 +246,9 @@ async function initApp() {
     if (statusMessage) {
       statusMessage.textContent = 'Evaluating CDML...';
     }
+    if (brandMark) {
+      brandMark.innerHTML = renderControlMarkSvg(20, 'caution');
+    }
     (window as any).__cadBusy = true;
 
     try {
@@ -197,10 +261,11 @@ async function initApp() {
       if (res.status === 0) {
         if (statusIndicator) statusIndicator.className = 'status-dot status-ok';
         if (statusMessage) statusMessage.textContent = 'Ready (CDML Valid)';
+        if (brandMark) brandMark.innerHTML = renderControlMarkSvg(20, 'nominal');
 
         if (res.mesh) {
           viewer.meshManager.updateFromCdmlMesh(res.mesh);
-          viewer.fitCameraToMesh(false);
+          viewer.fitCameraToMesh(true);
           if (statTriangles) statTriangles.textContent = String(res.mesh.triangleCount);
           if (statVertices) statVertices.textContent = String(res.mesh.vertexCount);
         }
@@ -234,6 +299,7 @@ async function initApp() {
       } else {
         // Fault tolerant: DO NOT change viewer geometry!
         if (statusIndicator) statusIndicator.className = 'status-dot status-err';
+        if (brandMark) brandMark.innerHTML = renderControlMarkSvg(20, 'fault');
         let diagMsg = res.diagnostic;
         try {
           const parsed = JSON.parse(res.diagnostic);
@@ -249,6 +315,7 @@ async function initApp() {
       (window as any).__cadBusy = false;
       if (statusIndicator) statusIndicator.className = 'status-dot status-err';
       if (statusMessage) statusMessage.textContent = err.message || 'Evaluation error';
+      if (brandMark) brandMark.innerHTML = renderControlMarkSvg(20, 'fault');
       return { status: -1, diagnostic: err.message, mesh: null, vars: [], probes: {}, exports: [] };
     }
   };
@@ -292,10 +359,11 @@ async function initApp() {
     });
   }
 
-  // Collapse / Expand Toggles
+  // Collapse / Expand Toggles (Clean visibility: hidden is completely hidden, shown is cleanly shown)
   if (btnCollapse && codePane) {
     btnCollapse.addEventListener('click', () => {
       codePane.classList.add('collapsed');
+      if (paneSplitter) paneSplitter.classList.add('collapsed');
       if (btnExpand) btnExpand.style.display = 'block';
       viewer.handleResize();
     });
@@ -304,6 +372,7 @@ async function initApp() {
   if (btnExpand && codePane) {
     btnExpand.addEventListener('click', () => {
       codePane.classList.remove('collapsed');
+      if (paneSplitter) paneSplitter.classList.remove('collapsed');
       btnExpand.style.display = 'none';
       viewer.handleResize();
     });

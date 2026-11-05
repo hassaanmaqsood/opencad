@@ -16,6 +16,7 @@ export class MeshManager {
   public instancedMesh: THREE.InstancedMesh | null = null;
   public lodGroup: THREE.LOD | null = null;
   public diffGroup: THREE.Group | null = null;
+  public suppressSelectionVisuals: boolean = true;
 
   private currentBuffers: CadMeshRawBuffers | null = null;
   private currentSlice: CadTessellatedSolidSlice | null = null;
@@ -30,46 +31,39 @@ export class MeshManager {
     this.group = new THREE.Group();
     this.group.name = 'cad-model-root';
 
-    // 1. Solid Mesh Material (Sleek CAD slate/blue-gray)
-    const solidMaterial = new THREE.MeshStandardMaterial({
-      color: 0x768fa5,
-      roughness: 0.35,
-      metalness: 0.1,
-      polygonOffset: true,
-      polygonOffsetFactor: 1, // push slightly behind edge lines to prevent z-fighting
-      polygonOffsetUnits: 1,
+    // 1. Solid Mesh Material (ThreeJS MeshNormalMaterial with flatShading matching Fabify view-3d)
+    const solidMaterial = new THREE.MeshNormalMaterial({
       side: THREE.DoubleSide,
+      flatShading: true,
     });
     this.defaultSolidMaterial = solidMaterial;
 
     const solidGeometry = new THREE.BufferGeometry();
     this.solidMesh = new THREE.Mesh(solidGeometry, solidMaterial);
     this.solidMesh.name = 'cad-solid-mesh';
-    this.solidMesh.castShadow = true;
-    this.solidMesh.receiveShadow = true;
+    this.solidMesh.castShadow = false;
+    this.solidMesh.receiveShadow = false;
     this.group.add(this.solidMesh);
 
-    // 2. Feature / Sharp Edge Lines Material (Crisp dark CAD outlines)
+    // 2. Feature / Sharp Edge Lines Material (Avoid wireframes: hidden)
     const edgeMaterial = new THREE.LineBasicMaterial({
-      color: 0x1e293b,
-      linewidth: 2,
+      color: 0x14130f,
+      linewidth: 1,
       depthTest: true,
     });
 
     const edgeGeometry = new THREE.BufferGeometry();
     this.edgeLines = new THREE.LineSegments(edgeGeometry, edgeMaterial);
     this.edgeLines.name = 'cad-edge-lines';
+    this.edgeLines.visible = false;
     this.group.add(this.edgeLines);
 
-    // 3. Highlight Face Mesh Material (Translucent bright cyan/blue CAD selection overlay)
+    // 3. Highlight Face Mesh Material (Avoid selections: hidden)
     const highlightFaceMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00b4d8,
+      color: 0x7da3c9,
       transparent: true,
       opacity: 0.65,
       depthTest: true,
-      polygonOffset: true,
-      polygonOffsetFactor: -2, // pull in front of base mesh
-      polygonOffsetUnits: -2,
       side: THREE.DoubleSide,
     });
 
@@ -79,11 +73,10 @@ export class MeshManager {
     this.highlightFaceMesh.visible = false;
     this.group.add(this.highlightFaceMesh);
 
-    // 4. Highlight Edge Lines Material (Vibrant amber/gold CAD edge selection outline)
+    // 4. Highlight Edge Lines Material (Avoid selections: hidden)
     const highlightEdgeMaterial = new THREE.LineBasicMaterial({
-      color: 0xffb703,
-      linewidth: 4,
-      depthTest: false, // ensure selected edge is always visible
+      color: 0xff7a2e,
+      linewidth: 2,
     });
 
     const highlightEdgeGeometry = new THREE.BufferGeometry();
@@ -139,7 +132,8 @@ export class MeshManager {
       this.lodGroup = null;
     }
     this.solidMesh.visible = true;
-    this.edgeLines.visible = true;
+    this.solidMesh.material = this.defaultSolidMaterial;
+    this.edgeLines.visible = false;
 
     this.currentBuffers = buffers;
     this.currentSlice = null;
@@ -153,39 +147,30 @@ export class MeshManager {
     this.setHighlightedFace(null);
     this.setHighlightedEdge(null);
 
-    // Construct Solid BufferGeometry
-    const solidGeometry = new THREE.BufferGeometry();
-    solidGeometry.setAttribute(
+    // Construct Solid BufferGeometry (unshared/non-indexed with true facet normals to prevent pinwheels/blur)
+    const rawGeometry = new THREE.BufferGeometry();
+    rawGeometry.setAttribute(
       'position',
       new THREE.BufferAttribute(buffers.positions, 3)
     );
-    solidGeometry.setAttribute(
-      'normal',
-      new THREE.BufferAttribute(buffers.normals, 3)
-    );
-    solidGeometry.setIndex(new THREE.BufferAttribute(buffers.indices, 1));
+    rawGeometry.setIndex(new THREE.BufferAttribute(buffers.indices, 1));
 
-    // Construct custom faceId BufferAttribute on vertices
-    const vertexCount = buffers.positions.length / 3;
-    const vertexFaceIds = new Float32Array(vertexCount);
-    const triCount = buffers.indices.length / 3;
-
-    for (let t = 0; t < triCount; t++) {
-      const faceId = buffers.triangleToFaceId[t];
-      const i0 = buffers.indices[t * 3];
-      const i1 = buffers.indices[t * 3 + 1];
-      const i2 = buffers.indices[t * 3 + 2];
-      vertexFaceIds[i0] = faceId;
-      vertexFaceIds[i1] = faceId;
-      vertexFaceIds[i2] = faceId;
-    }
-    solidGeometry.setAttribute('faceId', new THREE.BufferAttribute(vertexFaceIds, 1));
+    const solidGeometry = rawGeometry.toNonIndexed();
+    solidGeometry.computeVertexNormals();
 
     solidGeometry.computeBoundingBox();
     solidGeometry.computeBoundingSphere();
 
     this.solidMesh.geometry.dispose();
     this.solidMesh.geometry = solidGeometry;
+
+    // Center model's bounding box at origin (0, 0, 0)
+    if (solidGeometry.boundingBox) {
+      const center = new THREE.Vector3();
+      solidGeometry.boundingBox.getCenter(center);
+      this.group.position.set(-center.x, -center.y, -center.z);
+      this.group.updateMatrixWorld(true);
+    }
 
     // Construct Edge Lines BufferGeometry
     const edgeGeometry = new THREE.BufferGeometry();
@@ -195,6 +180,7 @@ export class MeshManager {
     );
     this.edgeLines.geometry.dispose();
     this.edgeLines.geometry = edgeGeometry;
+    this.edgeLines.visible = false;
   }
 
   /**
@@ -211,7 +197,8 @@ export class MeshManager {
       this.lodGroup = null;
     }
     this.solidMesh.visible = true;
-    this.edgeLines.visible = true;
+    this.solidMesh.material = this.defaultSolidMaterial;
+    this.edgeLines.visible = false;
 
     this.currentSlice = slice;
     this.currentBuffers = null;
@@ -236,23 +223,30 @@ export class MeshManager {
     this.setHighlightedFace(null);
     this.setHighlightedEdge(null);
 
-    // Construct Solid BufferGeometry
-    const solidGeometry = new THREE.BufferGeometry();
-    solidGeometry.setAttribute(
+    // Construct Solid BufferGeometry (unshared/non-indexed with true facet normals to prevent pinwheels/blur)
+    const rawGeometry = new THREE.BufferGeometry();
+    rawGeometry.setAttribute(
       'position',
       new THREE.BufferAttribute(slice.positions, 3)
     );
-    solidGeometry.setAttribute(
-      'normal',
-      new THREE.BufferAttribute(slice.normals, 3)
-    );
-    solidGeometry.setIndex(new THREE.BufferAttribute(slice.indices, 1));
+    rawGeometry.setIndex(new THREE.BufferAttribute(slice.indices, 1));
+
+    const solidGeometry = rawGeometry.toNonIndexed();
+    solidGeometry.computeVertexNormals();
 
     solidGeometry.computeBoundingBox();
     solidGeometry.computeBoundingSphere();
 
     this.solidMesh.geometry.dispose();
     this.solidMesh.geometry = solidGeometry;
+
+    // Center model's bounding box at origin (0, 0, 0)
+    if (solidGeometry.boundingBox) {
+      const center = new THREE.Vector3();
+      solidGeometry.boundingBox.getCenter(center);
+      this.group.position.set(-center.x, -center.y, -center.z);
+      this.group.updateMatrixWorld(true);
+    }
 
     // Construct Edge Lines BufferGeometry
     const edgeGeometry = new THREE.BufferGeometry();
@@ -262,6 +256,7 @@ export class MeshManager {
     );
     this.edgeLines.geometry.dispose();
     this.edgeLines.geometry = edgeGeometry;
+    this.edgeLines.visible = false;
   }
 
   /**
@@ -315,7 +310,7 @@ export class MeshManager {
    * Supports both legacy faceId (number) and 64-bit persistent CadTopoId (bigint).
    */
   public setHighlightedFace(faceId: bigint | number | null): void {
-    if (faceId === null) {
+    if (this.suppressSelectionVisuals || faceId === null) {
       this.highlightFaceMesh.visible = false;
       return;
     }
@@ -385,7 +380,7 @@ export class MeshManager {
    * Supports both legacy edgeId (number) and 64-bit persistent CadTopoId (bigint).
    */
   public setHighlightedEdge(edgeId: bigint | number | null): void {
-    if (edgeId === null) {
+    if (this.suppressSelectionVisuals || edgeId === null) {
       this.highlightEdgeLines.visible = false;
       return;
     }

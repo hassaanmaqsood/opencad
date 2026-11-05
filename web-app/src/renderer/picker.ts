@@ -66,8 +66,10 @@ export class CadPicker {
   }
 
   private pickEdge(): SubShapeSelection {
-    const edgeIntersects = this.raycaster.intersectObject(this.meshManager.edgeLines);
+    const edgeIntersects: THREE.Intersection[] = [];
+    this.meshManager.edgeLines.raycast(this.raycaster, edgeIntersects);
     if (edgeIntersects.length > 0) {
+      edgeIntersects.sort((a, b) => a.distance - b.distance);
       const hit = edgeIntersects[0];
       const segmentIndex = hit.index !== undefined ? Math.floor(hit.index / 2) : 0;
       const topoId = this.meshManager.getEdgeTopoIdFromSegmentIndex(segmentIndex);

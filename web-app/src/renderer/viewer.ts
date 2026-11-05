@@ -57,28 +57,29 @@ export class CadViewer {
     });
     this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.setClearColor(0x181a1f, 1.0); // CAD dark graphite background
+    this.renderer.setClearColor(0x121316, 1.0); // Neutral dark slate canvas background
 
     // 2. Initialize Scene
     this.scene = new THREE.Scene();
 
-    // 3. Initialize Camera (Isometric 3D CAD view)
+    // 3. Initialize Camera (Isometric 3D CAD view with +Z up, matching Fabify view-3d)
     const aspect = this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight);
-    this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 2000);
-    this.camera.position.set(100, 100, 120);
-    this.camera.lookAt(0, 0, 8);
+    this.camera = new THREE.PerspectiveCamera(35, aspect, 0.01, 2000);
+    this.camera.up.set(0, 0, 1);
+    this.camera.position.set(100, 100, 100);
+    this.camera.lookAt(0, 0, 0);
 
     // 4. Initialize Orbit Controls
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.target.set(0, 0, 8);
+    this.controls.target.set(0, 0, 0);
 
     // 5. Lighting Setup (Multi-point balanced studio lighting)
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
     this.scene.add(ambientLight);
 
-    const hemiLight = new THREE.HemisphereLight(0xe2e8f0, 0x1e293b, 0.45);
+    const hemiLight = new THREE.HemisphereLight(0xE6EDF3, 0x121316, 0.45);
     hemiLight.position.set(0, 20, 0);
     this.scene.add(hemiLight);
 
@@ -86,7 +87,7 @@ export class CadViewer {
     keyLight.position.set(10, 15, 12);
     this.scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.6);
+    const fillLight = new THREE.DirectionalLight(0x8B949E, 0.5);
     fillLight.position.set(-10, 10, -10);
     this.scene.add(fillLight);
 
@@ -94,19 +95,7 @@ export class CadViewer {
     backLight.position.set(0, -10, -10);
     this.scene.add(backLight);
 
-    // 6. CAD Floor Grid & Orientation Helpers
-    const gridHelper = new THREE.GridHelper(20, 40, 0x3b82f6, 0x334155);
-    gridHelper.position.y = -0.001; // prevent z-fighting
-    (gridHelper.material as THREE.Material).transparent = true;
-    (gridHelper.material as THREE.Material).opacity = 0.4;
-    this.scene.add(gridHelper);
-
-    const axesHelper = new THREE.AxesHelper(2.5);
-    (axesHelper.material as THREE.Material).depthTest = false;
-    axesHelper.renderOrder = 1;
-    this.scene.add(axesHelper);
-
-    // 7. Initialize MeshManager & Picker
+    // 6. CAD Model Root MeshManager & Picker (No floor grid; clean, elegant normal rendering)
     this.meshManager = new MeshManager();
     this.scene.add(this.meshManager.group);
 
@@ -203,11 +192,13 @@ export class CadViewer {
 
   public setGeometry(buffers: CadMeshRawBuffers): void {
     this.meshManager.updateGeometry(buffers);
+    this.fitCameraToMesh(true);
     this.setSelection({ type: 'none' });
   }
 
   public setGeometryFromSlice(slice: CadTessellatedSolidSlice): void {
     this.meshManager.updateFromSlice(slice);
+    this.fitCameraToMesh(true);
     this.setSelection({ type: 'none' });
   }
 
@@ -279,24 +270,39 @@ export class CadViewer {
 
   private hasInitialCameraFit: boolean = false;
 
-  public fitCameraToMesh(force: boolean = false): void {
-    if (!this.meshManager.solidMesh.geometry) return;
+  public fitCameraToMesh(force: boolean = true): void {
     const geom = this.meshManager.solidMesh.geometry;
-    geom.computeBoundingSphere();
-    const sphere = geom.boundingSphere;
-    if (!sphere || sphere.radius <= 0) return;
+    if (!geom || !geom.attributes.position || geom.attributes.position.count === 0) return;
 
     if (!force && this.hasInitialCameraFit) return;
 
-    const center = sphere.center;
-    const radius = Math.max(sphere.radius, 10);
-    const fov = this.camera.fov * (Math.PI / 180);
-    const dist = (radius / Math.sin(fov / 2)) * 1.35;
+    geom.computeBoundingBox();
+    const bbox = geom.boundingBox;
+    if (!bbox) return;
 
-    const dir = new THREE.Vector3(1.2, 1.2, 1.0).normalize();
-    this.camera.position.copy(center).addScaledVector(dir, dist);
-    this.controls.target.copy(center);
-    this.camera.lookAt(center);
+    const center = new THREE.Vector3();
+    bbox.getCenter(center);
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+
+    // Compute bounding box diagonal: r = sqrt(x^2 + y^2 + z^2)
+    const diag = Math.sqrt(size.x * size.x + size.y * size.y + size.z * size.z);
+    if (diag <= 0) return;
+
+    // Center model's bounding box at origin (0, 0, 0)
+    this.meshManager.group.position.set(-center.x, -center.y, -center.z);
+    this.meshManager.group.updateMatrixWorld(true);
+
+    // Constant relative ratio of bounding box diagonal (Fabify view-3d: d = (diag / 2) * tan(pi / 2.65))
+    const d = (diag / 2) * Math.tan(Math.PI / 2.65);
+    const camDist = d * 1.4; // constant relative ratio ~3.0x - 3.5x diagonal
+
+    this.camera.up.set(0, 0, 1);
+    this.camera.position.set(camDist, camDist, camDist);
+    this.controls.target.set(0, 0, 0);
+    this.camera.lookAt(0, 0, 0);
+    this.camera.near = Math.max(0.01, camDist / 1000);
+    this.camera.far = Math.max(2000, camDist * 8);
     this.controls.update();
     this.camera.updateProjectionMatrix();
 
@@ -308,14 +314,18 @@ export class CadViewer {
     const originalTarget = this.controls.target.clone();
 
     if (viewAngle === 'front') {
-      this.camera.position.set(0, 0, 150);
+      this.camera.position.set(0, -150, 0);
+      this.camera.up.set(0, 0, 1);
       this.camera.lookAt(0, 0, 0);
     } else if (viewAngle === 'top') {
-      this.camera.position.set(0, 150, 0);
+      this.camera.position.set(0, 0, 150);
+      this.camera.up.set(0, 1, 0);
       this.camera.lookAt(0, 0, 0);
     } else if (viewAngle === 'isometric') {
-      this.camera.position.set(100, 100, 120);
-      this.camera.lookAt(0, 0, 8);
+      const d = 120;
+      this.camera.up.set(0, 0, 1);
+      this.camera.position.set(d, d, d);
+      this.camera.lookAt(0, 0, 0);
     }
     this.camera.updateProjectionMatrix();
     this.renderer.render(this.scene, this.camera);

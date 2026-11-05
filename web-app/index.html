@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpenCAD Studio & Viewport</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg width='32' height='32' viewBox='0 0 32 32' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M 16 4.5 L 26.5 10.5 V 21.5 L 16 27.5 L 5.5 21.5 V 10.5 Z' stroke='%23E6EDF3' stroke-width='1.6' stroke-linejoin='round'/><path d='M 16 4.5 V 16 M 16 16 L 5.5 21.5 M 16 16 L 26.5 21.5' stroke='%23E6EDF3' stroke-width='1.3' stroke-linejoin='round'/><path d='M 10 7.8 Q 16 11.2 22 7.8' stroke='%238B949E' stroke-width='1' fill='none'/><path d='M 5.5 15.8 Q 11 18.8 16 16' stroke='%238B949E' stroke-width='1' fill='none'/><path d='M 16 16 Q 21 13.2 26.5 15.8' stroke='%238B949E' stroke-width='1' fill='none'/><circle cx='16' cy='16' r='2.2' fill='%233FB950'/></svg>" />
     <script src="./coi-serviceworker.js"></script>
   </head>
   <body>
@@ -13,7 +16,7 @@
       <section id="code-pane" class="code-pane" data-testid="code-pane">
         <header class="pane-header">
           <div class="header-brand">
-            <span class="brand-icon">📐</span>
+            <span class="brand-icon" id="brand-mark"></span>
             <span class="brand-name">OpenCAD</span>
             <span class="brand-badge">CDML v1.0</span>
           </div>
