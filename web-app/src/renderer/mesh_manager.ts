@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   CadMeshRawBuffers,
   CadTessellatedSolidSlice,
@@ -31,10 +32,10 @@ export class MeshManager {
     this.group = new THREE.Group();
     this.group.name = 'cad-model-root';
 
-    // 1. Solid Mesh Material (ThreeJS MeshNormalMaterial with flatShading matching Fabify view-3d)
+    // 1. Solid Mesh Material (ThreeJS MeshNormalMaterial matching Fabify view-3d)
     const solidMaterial = new THREE.MeshNormalMaterial({
       side: THREE.DoubleSide,
-      flatShading: true,
+      flatShading: false,
     });
     this.defaultSolidMaterial = solidMaterial;
 
@@ -147,17 +148,15 @@ export class MeshManager {
     this.setHighlightedFace(null);
     this.setHighlightedEdge(null);
 
-    // Construct Solid BufferGeometry (unshared/non-indexed with true facet normals to prevent pinwheels/blur)
-    const rawGeometry = new THREE.BufferGeometry();
-    rawGeometry.setAttribute(
+    // Construct Solid BufferGeometry with crisp creased normals for sharp CAD features
+    const baseGeometry = new THREE.BufferGeometry();
+    baseGeometry.setAttribute(
       'position',
       new THREE.BufferAttribute(buffers.positions, 3)
     );
-    rawGeometry.setIndex(new THREE.BufferAttribute(buffers.indices, 1));
+    baseGeometry.setIndex(new THREE.BufferAttribute(buffers.indices, 1));
 
-    const solidGeometry = rawGeometry.toNonIndexed();
-    solidGeometry.computeVertexNormals();
-
+    const solidGeometry = toCreasedNormals(baseGeometry, (50 * Math.PI) / 180);
     solidGeometry.computeBoundingBox();
     solidGeometry.computeBoundingSphere();
 
@@ -172,15 +171,17 @@ export class MeshManager {
       this.group.updateMatrixWorld(true);
     }
 
-    // Construct Edge Lines BufferGeometry
-    const edgeGeometry = new THREE.BufferGeometry();
-    edgeGeometry.setAttribute(
-      'position',
-      new THREE.BufferAttribute(buffers.edgeVertices, 3)
-    );
-    this.edgeLines.geometry.dispose();
-    this.edgeLines.geometry = edgeGeometry;
+    // Keep wireframes hidden (Avoid wireframes & selections per user instruction)
     this.edgeLines.visible = false;
+  }
+
+  public toggleWireframe(): boolean {
+    if (this.solidMesh && this.solidMesh.material) {
+      const mat = this.solidMesh.material as THREE.MeshNormalMaterial;
+      mat.wireframe = !mat.wireframe;
+      return mat.wireframe;
+    }
+    return false;
   }
 
   /**
@@ -223,17 +224,16 @@ export class MeshManager {
     this.setHighlightedFace(null);
     this.setHighlightedEdge(null);
 
-    // Construct Solid BufferGeometry (unshared/non-indexed with true facet normals to prevent pinwheels/blur)
-    const rawGeometry = new THREE.BufferGeometry();
-    rawGeometry.setAttribute(
+    // 1. Construct Base Indexed BufferGeometry
+    const baseGeometry = new THREE.BufferGeometry();
+    baseGeometry.setAttribute(
       'position',
       new THREE.BufferAttribute(slice.positions, 3)
     );
-    rawGeometry.setIndex(new THREE.BufferAttribute(slice.indices, 1));
+    baseGeometry.setIndex(new THREE.BufferAttribute(slice.indices, 1));
 
-    const solidGeometry = rawGeometry.toNonIndexed();
-    solidGeometry.computeVertexNormals();
-
+    // 2. Generate Crease-Aware Normals (30-degree threshold)
+    const solidGeometry = toCreasedNormals(baseGeometry, (50 * Math.PI) / 180);
     solidGeometry.computeBoundingBox();
     solidGeometry.computeBoundingSphere();
 
@@ -248,14 +248,7 @@ export class MeshManager {
       this.group.updateMatrixWorld(true);
     }
 
-    // Construct Edge Lines BufferGeometry
-    const edgeGeometry = new THREE.BufferGeometry();
-    edgeGeometry.setAttribute(
-      'position',
-      new THREE.BufferAttribute(slice.edgePolylines, 3)
-    );
-    this.edgeLines.geometry.dispose();
-    this.edgeLines.geometry = edgeGeometry;
+    // 3. Keep wireframes hidden (Avoid wireframes & selections per user instruction)
     this.edgeLines.visible = false;
   }
 

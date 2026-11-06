@@ -6,30 +6,16 @@
     <title>OpenCAD Studio & Viewport</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg width='32' height='32' viewBox='0 0 32 32' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M 16 4.5 L 26.5 10.5 V 21.5 L 16 27.5 L 5.5 21.5 V 10.5 Z' stroke='%23E6EDF3' stroke-width='1.6' stroke-linejoin='round'/><path d='M 16 4.5 V 16 M 16 16 L 5.5 21.5 M 16 16 L 26.5 21.5' stroke='%23E6EDF3' stroke-width='1.3' stroke-linejoin='round'/><path d='M 10 7.8 Q 16 11.2 22 7.8' stroke='%238B949E' stroke-width='1' fill='none'/><path d='M 5.5 15.8 Q 11 18.8 16 16' stroke='%238B949E' stroke-width='1' fill='none'/><path d='M 16 16 Q 21 13.2 26.5 15.8' stroke='%238B949E' stroke-width='1' fill='none'/><circle cx='16' cy='16' r='2.2' fill='%233FB950'/></svg>" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="/branding/opencad-cube.svg" />
     <script src="./coi-serviceworker.js"></script>
   </head>
   <body>
     <div id="app-container" class="app-container" data-testid="app-container">
-      <!-- Collapsible CDML / Code Pane -->
+      <!-- Collapsible CDML / Code Pane (Clean, Headerless Full-Height Editor) -->
       <section id="code-pane" class="code-pane" data-testid="code-pane">
-        <header class="pane-header">
-          <div class="header-brand">
-            <span class="brand-icon" id="brand-mark"></span>
-            <span class="brand-name">OpenCAD</span>
-            <span class="brand-badge">CDML v1.0</span>
-          </div>
-          <div class="header-controls">
-            <select id="example-select" class="example-select" data-testid="example-select">
-              <option value="/examples/flange_normative.cdml" selected>Flange-Gyroid Assembly (§14)</option>
-              <option value="/examples/constrained_bracket.cdml">Constrained Bracket</option>
-            </select>
-            <button id="btn-collapse-pane" class="btn-icon" data-testid="collapse-toggle" title="Collapse Code Pane">◀</button>
-          </div>
-        </header>
-
-        <div class="editor-wrapper">
+        <div class="editor-wrapper" id="editor-wrapper">
+          <!-- Hidden synchronized textarea to guarantee Playwright tests & accessibility remain 100% operational -->
           <textarea
             id="cdml-editor"
             class="cdml-editor"
@@ -37,6 +23,40 @@
             placeholder="Type or paste CDML v1.0 XML..."
             spellcheck="false"
           ></textarea>
+          <!-- CodeMirror 6 Mount -->
+          <div id="codemirror-mount" class="codemirror-mount" data-testid="codemirror-mount"></div>
+        </div>
+
+        <!-- Collapsible Diagnostic Error / Warning Drawer -->
+        <div id="diagnostic-drawer" class="diagnostic-drawer" style="display: none;">
+          <div class="diagnostic-header">
+            <div class="diagnostic-title">
+              <span id="diag-badge" class="diag-badge diag-badge-err">ERROR</span>
+              <span id="diag-summary-title">Diagnostic Details</span>
+            </div>
+            <div class="diagnostic-actions">
+              <button id="btn-copy-diagnostic" class="btn-diag-action" title="Copy Diagnostic Details">Copy Log</button>
+              <button id="btn-close-diagnostic" class="btn-diag-action" title="Dismiss">✕</button>
+            </div>
+          </div>
+          <div id="diagnostic-body" class="diagnostic-body">
+            <div id="diag-loc-row" class="diag-row" style="display: none;">
+              <span class="diag-label">Location:</span>
+              <span id="diag-loc-val" class="diag-val"></span>
+            </div>
+            <div class="diag-row">
+              <span class="diag-label">Message:</span>
+              <span id="diag-msg-val" class="diag-val"></span>
+            </div>
+            <div id="diag-code-row" class="diag-row" style="display: none;">
+              <span class="diag-label">Code:</span>
+              <span id="diag-code-val" class="diag-val"></span>
+            </div>
+            <div class="diag-raw-container">
+              <div class="diag-label">Raw Diagnostic / Payload:</div>
+              <pre id="diag-raw-content" class="diag-raw-pre"></pre>
+            </div>
+          </div>
         </div>
 
         <footer id="code-status-bar" class="code-status-bar" data-testid="code-status-bar">
@@ -44,7 +64,11 @@
             <span id="status-indicator" class="status-dot status-ok"></span>
             <span id="status-message" class="status-message" data-testid="status-message">Ready</span>
           </div>
-          <div id="status-timing" class="status-timing">0 ms</div>
+          <div class="status-controls">
+            <button id="btn-reset-code" class="btn-text-action" title="Reset to Default Torus Ring">Reset</button>
+            <button id="btn-toggle-diagnostics" class="btn-diag-toggle" style="display: none;" title="Toggle Full Diagnostic Details">Details ▾</button>
+            <div id="status-timing" class="status-timing">0 ms</div>
+          </div>
         </footer>
       </section>
 
@@ -57,22 +81,77 @@
       <main id="viewport-container" class="viewport-container" data-testid="viewport-container">
         <canvas id="cad-canvas" class="cad-canvas" data-testid="cad-canvas"></canvas>
 
-        <!-- Restore button when pane collapsed -->
-        <button id="btn-expand-pane" class="btn-expand-pane" data-testid="expand-toggle" title="Restore Code Pane" style="display: none;">
-          ▶ Code
-        </button>
+        <!-- Minimal Viewport Dock (Left Toolbar Inspired by Web Slicer) -->
+        <nav class="viewport-dock" id="viewport-dock" aria-label="Viewport Controls">
+          <!-- Code Pane Toggle (Always in sidebar dock; highlighted when code pane is open) -->
+          <button id="btn-expand-pane" class="dock-btn btn-expand-pane active" data-testid="expand-toggle" title="Hide Code Editor">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+            <span class="dock-label">Code</span>
+          </button>
 
-        <!-- Viewport Stats / Performance Badge -->
-        <div id="viewport-stats" class="viewport-stats" data-testid="viewport-stats">
-          <div id="fps-counter" class="stat-badge" data-testid="fps-counter">
-            <span id="fps-val">60.0</span> FPS
-          </div>
-          <div class="mesh-stat-badge">
-            <span id="stat-triangles" data-testid="stat-triangles">0</span> Tri / 
+          <!-- Screenshot / Snapshot -->
+          <button id="btn-screenshot" class="dock-btn btn-screenshot" data-testid="btn-screenshot" title="Capture Screenshot (PNG)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            <span class="dock-label">Snapshot</span>
+          </button>
+
+          <!-- Reset Camera / Isometric Fit View (Isometric Cube Icon) -->
+          <button id="btn-camera-fit" class="dock-btn btn-camera-fit" data-testid="btn-camera-fit" title="Fit Camera to Model (Isometric)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+            <span class="dock-label">Fit</span>
+          </button>
+
+          <!-- Wireframe Shading Toggle (Stacked Planes Icon) -->
+          <button id="btn-toggle-wireframe" class="dock-btn btn-toggle-wireframe" data-testid="btn-toggle-wireframe" title="Toggle Wireframe Overlay">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 17 12 22 22 17"/>
+              <polyline points="2 12 12 17 22 12"/>
+            </svg>
+            <span class="dock-label">Wireframe</span>
+          </button>
+
+          <!-- Model Parameters / GUI Toggle (Sliders Icon) -->
+          <button id="btn-toggle-gui" class="dock-btn btn-toggle-gui active" data-testid="btn-toggle-gui" title="Toggle Parameters Panel">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14"/>
+              <line x1="4" y1="10" x2="4" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12" y2="3"/>
+              <line x1="20" y1="21" x2="20" y2="16"/>
+              <line x1="20" y1="12" x2="20" y2="3"/>
+              <line x1="1" y1="14" x2="7" y2="14"/>
+              <line x1="9" y1="8" x2="15" y2="8"/>
+              <line x1="17" y1="16" x2="23" y2="16"/>
+            </svg>
+            <span class="dock-label">Params</span>
+          </button>
+        </nav>
+
+        <!-- Minimalist Unified Telemetry HUD (Bottom-Right Corner) -->
+        <div class="viewport-telemetry" id="viewport-telemetry" data-testid="viewport-telemetry">
+          <div class="telemetry-brand">OpenCAD</div>
+          <div class="telemetry-item" id="telemetry-dims">0 × 0 × 0 mm</div>
+          <div class="telemetry-item" id="telemetry-vol">0 mm³</div>
+          <div class="telemetry-item telemetry-stats" id="viewport-stats" data-testid="viewport-stats">
+            <span id="fps-counter" data-testid="fps-counter"><span id="fps-val">60.0</span> FPS</span>
+            <span class="telemetry-sep">·</span>
+            <span id="stat-triangles" data-testid="stat-triangles">0</span> Tri
+            <span class="telemetry-sep">·</span>
             <span id="stat-vertices" data-testid="stat-vertices">0</span> Vert
+            <span id="stat-faces" style="display: none;">0</span>
+            <span id="stat-edges" style="display: none;">0</span>
           </div>
-          <span id="stat-faces" style="display:none;">0</span>
-          <span id="stat-edges" style="display:none;">0</span>
         </div>
       </main>
     </div>

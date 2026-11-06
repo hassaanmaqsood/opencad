@@ -39,10 +39,10 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
     const initialTriangles = await page.evaluate(() => (window as any).__cadViewer.meshManager.getTriangleCount());
     expect(initialTriangles).toBeGreaterThan(0);
 
-    // 4. Collapse Code Pane via collapse toggle button
-    const collapseBtn = page.locator('[data-testid="collapse-toggle"]');
-    await expect(collapseBtn).toBeVisible();
-    await collapseBtn.click();
+    // 4. Collapse Code Pane via code toggle button in dock
+    const codeToggleBtn = page.locator('[data-testid="expand-toggle"]');
+    await expect(codeToggleBtn).toBeVisible();
+    await codeToggleBtn.click();
 
     // Verify Code Pane is collapsed
     await expect(codePane).toHaveClass(/collapsed/);
@@ -58,12 +58,8 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
     const expandedVpBox = await viewportContainer.boundingBox();
     expect(expandedVpBox!.width).toBeGreaterThanOrEqual(1270);
 
-    // Restore button is now visible
-    const expandBtn = page.locator('[data-testid="expand-toggle"]');
-    await expect(expandBtn).toBeVisible();
-
-    // 5. Expand Code Pane back
-    await expandBtn.click();
+    // 5. Expand Code Pane back via code toggle button in dock
+    await codeToggleBtn.click();
     await expect(codePane).not.toHaveClass(/collapsed/);
     await expect(codePane).toBeVisible();
 
@@ -101,9 +97,9 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
     expect(vpBox!.height).toBeGreaterThan(200);
     expect(codeBox!.height).toBeGreaterThan(100);
 
-    // 3. Collapse Code Pane in Mobile view
-    const collapseBtn = page.locator('[data-testid="collapse-toggle"]');
-    await collapseBtn.click();
+    // 3. Collapse Code Pane in Mobile view via code toggle button in dock
+    const codeToggleBtn = page.locator('[data-testid="expand-toggle"]');
+    await codeToggleBtn.click();
 
     await expect(codePane).toHaveClass(/collapsed/);
     await page.waitForFunction(() => {
@@ -115,15 +111,13 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
     expect(expandedVpBox!.height).toBeGreaterThanOrEqual(800);
 
     // 4. Restore Code Pane
-    const expandBtn = page.locator('[data-testid="expand-toggle"]');
-    await expect(expandBtn).toBeVisible();
-    await expandBtn.click();
+    await codeToggleBtn.click();
     await expect(codePane).not.toHaveClass(/collapsed/);
   });
 
   test('Fault-Tolerant Live CDML Editing: retains valid mesh when invalid assert is typed', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/');
+    await page.goto('/?cdml=/examples/flange_normative.cdml');
 
     await expect(page.locator('#cad-canvas')).toBeVisible();
     await page.waitForFunction(() => {
@@ -209,7 +203,7 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
     }, { timeout: 15000 });
 
     // 1. lil-gui IS in the DOM
-    const lilGui = page.locator('.lil-gui');
+    const lilGui = page.locator('.lil-gui').first();
     await expect(lilGui).toBeVisible();
 
     // 2. Only requested vars exist in Parameters folder
@@ -242,7 +236,7 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
 
   test('Live Reactive Geometry Updates: changing text/CDML or slider updates real 3D mesh dimensions without fake geometry', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/');
+    await page.goto('/?cdml=/examples/flange_normative.cdml');
 
     await expect(page.locator('#cad-canvas')).toBeVisible();
     await page.waitForFunction(() => {
@@ -399,6 +393,88 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
     });
     expect(Math.abs(dims.w - 70.0)).toBeLessThan(0.5);
     expect(Math.abs(dims.h - 25.0)).toBeLessThan(0.5);
+  });
+
+  test('Studio Enhancements: CodeMirror, Default Torus Ring, Public/Private Vars in lil-gui, Verbose Diagnostics Drawer, Screenshot Capture', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/');
+
+    await expect(page.locator('#cad-canvas')).toBeVisible();
+
+    // 1. Verify CodeMirror is mounted & active
+    const cmEditor = page.locator('.cm-editor');
+    await expect(cmEditor).toBeVisible();
+    await expect(page.locator('.cm-gutters')).toBeVisible();
+
+    // 2. Verify Default Model is the Twisted Torus Ring with flat build base
+    const initialCode = await page.locator('#cdml-editor').inputValue();
+    expect(initialCode).toContain('implicit id="logo_torus"');
+    expect(initialCode).toContain('id="R"');
+    expect(initialCode).toContain('id="a"');
+    expect(initialCode).toContain('id="z_c"');
+
+    // Wait for initial torus render
+    await page.waitForFunction(() => {
+      const viewer = (window as any).__cadViewer;
+      return viewer?.meshManager?.getTriangleCount() > 0;
+    }, { timeout: 15000 });
+
+    // 3. Verify lil-gui reflects official Three.js addon with public variables
+    const lilGui = page.locator('.lil-gui').first();
+    await expect(lilGui).toBeVisible();
+    await expect(page.locator('[data-testid="lil-param-R"]')).toBeVisible();
+    await expect(page.locator('[data-testid="lil-param-a"]')).toBeVisible();
+    await expect(page.locator('[data-testid="lil-param-z_c"]')).toBeVisible();
+
+    // 4. Test Public vs Private Variables: Private vars must NOT appear in lil-gui
+    const cdmlWithPrivateVars = initialCode.replace(
+      '<var id="z_c" value="8.5"  unit="mm" min="5.0"  max="20.0" public="true"/>',
+      `<var id="z_c" value="8.5"  unit="mm" min="5.0"  max="20.0" public="true"/>
+    <var id="_internal_seed" value="42.0" unit="mm"/>
+    <var id="secret_clearance" value="1.5" unit="mm" private="true"/>`
+    );
+    await page.locator('#cdml-editor').fill(cdmlWithPrivateVars);
+
+    // Wait for re-eval
+    await page.waitForTimeout(500);
+    // Public vars must exist
+    await expect(page.locator('[data-testid="lil-param-R"]')).toBeVisible();
+    // Private variables (prefixed with _ or private="true") must NOT exist in lil-gui
+    await expect(page.locator('[data-testid="lil-param-_internal_seed"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="lil-param-secret_clearance"]')).toHaveCount(0);
+
+    // 5. Test Verbose Diagnostic Error & Details Drawer
+    const cdmlWithFailingAssert = cdmlWithPrivateVars.replace(
+      'error="Tube width is too large and closes the center hole"/>',
+      'error="Tube width is too large and closes the center hole"/>\n    <assert id="stress_limit" expr="-5.0" error="Stress limit exceeded on primary manifold"/>'
+    );
+    await page.locator('#cdml-editor').fill(cdmlWithFailingAssert);
+
+    // Expect verbose error message in status bar
+    const statusMsg = page.locator('[data-testid="status-message"]');
+    await expect(statusMsg).toContainText(/ERR_ASSERT_VIOLATED|0x0203/i, { timeout: 10000 });
+    await expect(statusMsg).toContainText(/Stress limit exceeded on primary manifold/i);
+
+    // Diagnostic Details Drawer Toggle
+    const detailsToggle = page.locator('#btn-toggle-diagnostics');
+    await expect(detailsToggle).toBeVisible();
+    await detailsToggle.click();
+
+    // Diagnostic drawer is now displayed
+    const diagDrawer = page.locator('#diagnostic-drawer');
+    await expect(diagDrawer).toBeVisible();
+    await expect(page.locator('#diag-msg-val')).toContainText('Stress limit exceeded on primary manifold');
+    await expect(page.locator('#diag-code-val')).toContainText('ERR_ASSERT_VIOLATED');
+
+    // 6. Test Screenshot Action
+    const screenshotBtn = page.locator('#btn-screenshot');
+    await expect(screenshotBtn).toBeVisible();
+
+    // 7. Test Reset Button: Restores original torus
+    const resetBtn = page.locator('#btn-reset-code');
+    await expect(resetBtn).toBeVisible();
+    await resetBtn.click();
+    await expect(page.locator('#cdml-editor')).toHaveValue(initialCode);
   });
 
 });

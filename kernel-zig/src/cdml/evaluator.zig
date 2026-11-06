@@ -150,6 +150,15 @@ pub const DocumentEvaluator = struct {
         self.asserts.deinit(self.allocator);
         self.field_slots.deinit();
         self.probes.deinit();
+        var it_sol = self.solids.valueIterator();
+        while (it_sol.next()) |sh| {
+            const h = sh.*;
+            if ((h >> 62) == 0b10) {
+                implicit_field.freeImplicitSolid(h);
+            } else {
+                surface_brep.solid_free(h);
+            }
+        }
         self.solids.deinit();
         self.var_indices.deinit();
         self.var_values.deinit(self.allocator);
@@ -591,12 +600,17 @@ pub fn executeBodyAndExports(ev: *DocumentEvaluator) u32 {
             } else if (std.mem.eql(u8, child.tag, "implicit")) {
                 const solid_id = child.getAttr("id") orelse "implicit";
                 if (ev.solids.get(solid_id)) |old_h| {
-                    surface_brep.solid_free(old_h);
+                    implicit_field.freeImplicitSolid(old_h);
                 }
                 const h = constructImplicitSolid(ev, child) catch {
-                    setDiagnostic(types.ERR_IMPLICIT_GRAD_ZERO, solid_id, "Implicit field evaluation or gradient failed", child.line);
+                    setDiagnostic(types.ERR_IMPLICIT_GRAD_ZERO, solid_id, "[CAD Kernel / Expression Error] Implicit field zero-gradient or NaN on zero isosurface", child.line);
                     return types.ERR_IMPLICIT_GRAD_ZERO;
                 };
+                if (implicit_field.last_domain_clipped_corners > 0) {
+                    setDiagnostic(types.CDML_OK, solid_id, "[User CDML Domain Notice] Geometry extends beyond <domain> bounds and was capped at the domain box; enlarge xmin..xmax/ymin..ymax/zmin..zmax if unintended.", child.line);
+                } else if (implicit_field.last_singularities_filtered > 0) {
+                    setDiagnostic(types.CDML_OK, solid_id, "[User CDML Expression Notice] Filtered removable coordinate singularity (e.g. 0/0 on axis) during implicit evaluation.", child.line);
+                }
                 ev.solids.put(solid_id, h) catch {};
                 ev.active_solid_h = h;
             } else if (std.mem.eql(u8, child.tag, "csg")) {
@@ -1430,8 +1444,8 @@ fn constructImplicitSolid(ev: *DocumentEvaluator, node: *const XmlNode) !u64 {
         if (d_node.getAttr("ymax")) |s| domain_bbox[4] = ev.evaluateExpression(s, .residual) catch 45.0;
         if (d_node.getAttr("zmax")) |s| domain_bbox[5] = ev.evaluateExpression(s, .residual) catch 16.0;
         if (d_node.getAttr("octree-depth")) |s| {
-            const d_val = std.fmt.parseInt(u32, s, 10) catch 4;
-            parsed_depth = if (d_val == 5) 5 else @intCast(@min(@max(d_val, 2), 4));
+            const d_val = std.fmt.parseInt(u32, s, 10) catch 5;
+            parsed_depth = if (d_val == 5) 5 else @intCast(std.math.clamp(d_val, 2, 4));
         }
         if (d_node.getAttr("qef-reg")) |s| {
             qef_reg = std.fmt.parseFloat(f64, s) catch 1e-4;

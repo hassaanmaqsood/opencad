@@ -1,9 +1,13 @@
 /**
  * @file lil_controller.ts
- * 100% Code-Configured Floating GUI Controller for OpenCAD.
- * Provides a lightweight, 260px wide floating dark-theme panel matching lil-gui ergonomics.
- * Replaces all GUI modeling chrome with a declarative controller driven entirely by Code-CAD / CDML config.
+ * 100% Official Three.js lil-gui Addon Controller for OpenCAD.
+ * Powered by 'three/examples/jsm/libs/lil-gui.module.min.js'.
+ * Provides high-precision floating parameter controls, dynamic probes,
+ * and direct export actions driven by Code-CAD / CDML config.
  */
+
+// @ts-ignore
+import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 export interface LilParamDef {
   value: number | boolean | string;
@@ -12,6 +16,7 @@ export interface LilParamDef {
   step?: number;
   unit?: string;
   label?: string;
+  isPublic?: boolean;
 }
 
 export interface LilControllerConfig {
@@ -35,15 +40,10 @@ export interface LilControllerConfig {
 export class LilController {
   private container: HTMLElement;
   private config: LilControllerConfig;
-  private rootEl: HTMLElement;
+  private gui: any = null;
   private params: Record<string, any> = {};
-  private folderStates: Record<string, boolean> = {
-    parameters: true,
-    probes: true,
-    telemetry: true,
-    lenses: true,
-    actions: true,
-  };
+  private probeState: Record<string, any> = {};
+  private paramControllers: Record<string, any> = {};
 
   constructor(parent: HTMLElement | string, config: LilControllerConfig = {}) {
     this.container = typeof parent === 'string'
@@ -63,13 +63,145 @@ export class LilController {
       }
     }
 
-    this.rootEl = document.createElement('div');
-    this.rootEl.className = 'lil-gui lil-controller';
-    this.rootEl.setAttribute('data-testid', 'lil-controller');
-
     if (this.config.gui !== false) {
-      this.container.appendChild(this.rootEl);
-      this.render();
+      this.buildGui();
+    }
+  }
+
+  private buildGui(): void {
+    if (this.gui) {
+      this.gui.destroy();
+      this.gui = null;
+    }
+
+    this.paramControllers = {};
+    this.probeState = {};
+
+    // Instantiate official Three.js lil-gui addon
+    this.gui = new GUI({
+      container: this.container,
+      title: this.config.title || 'OpenCAD Controller',
+      autoPlace: false,
+    });
+    this.gui.open();
+
+    // Ensure DOM test-ids and custom styles match OpenCAD specifications
+    this.gui.domElement.setAttribute('data-testid', 'lil-controller');
+    this.gui.domElement.classList.add('lil-controller');
+
+    // 1. Parameters Folder (Public variables only!)
+    const showSliders = this.config.sliders !== false;
+    let paramEntries = Object.entries(this.config.params || {});
+
+    // Filter public variables:
+    // Exclude variables that start with '_' or have isPublic === false
+    paramEntries = paramEntries.filter(([k, rawVal]) => {
+      if (k.startsWith('_')) return false;
+      if (typeof rawVal === 'object' && rawVal !== null && 'isPublic' in rawVal && (rawVal as any).isPublic === false) {
+        return false;
+      }
+      return true;
+    });
+
+    if (this.config.vars && this.config.vars.length > 0) {
+      const allowedVars = new Set(this.config.vars);
+      paramEntries = paramEntries.filter(([k]) => allowedVars.has(k));
+    }
+
+    if (showSliders && paramEntries.length > 0) {
+      const paramFolder = this.gui.addFolder('Parameters');
+      paramFolder.open();
+      paramFolder.domElement.setAttribute('data-testid', 'lil-folder-parameters');
+
+      for (const [key, rawVal] of paramEntries) {
+        const def: LilParamDef = typeof rawVal === 'object' && rawVal !== null && 'value' in rawVal
+          ? rawVal as LilParamDef
+          : { value: rawVal };
+
+        const val = this.params[key] ?? def.value;
+        this.params[key] = val;
+
+        const min = def.min ?? (Number(val) < 0 ? Number(val) * 2 : 0);
+        const max = def.max ?? (Number(val) > 100 ? Number(val) * 2 : (Number(val) === 0 ? 100 : Number(val) * 2));
+        const step = def.step ?? (max - min <= 10 ? 0.1 : 1);
+
+        const ctrl = paramFolder.add(this.params, key, min, max, step);
+        ctrl.name(def.label || key);
+        ctrl.domElement.setAttribute('data-testid', `lil-param-${key}`);
+
+        // Annotate inputs for Playwright automated tests
+        const numInput = ctrl.domElement.querySelector('input:not([type="range"])');
+        if (numInput) {
+          numInput.setAttribute('data-testid', `lil-param-input-${key}`);
+        }
+        const slider = ctrl.domElement.querySelector('input[type="range"]');
+        if (slider) {
+          slider.setAttribute('data-testid', `lil-param-slider-${key}`);
+        }
+
+        ctrl.onChange((newVal: any) => {
+          this.params[key] = newVal;
+          this.config.onParamChange?.(key, newVal);
+        });
+
+        this.paramControllers[key] = ctrl;
+      }
+    }
+
+    // 2. Probes Live Monitors Folder
+    const probeKeys = this.config.probes;
+    if (probeKeys && probeKeys.length > 0) {
+      const probeFolder = this.gui.addFolder('Probes & Quantities');
+      probeFolder.open();
+      probeFolder.domElement.setAttribute('data-testid', 'lil-folder-probes');
+
+      for (const pid of probeKeys) {
+        const rawVal = this.config.probeValues?.[pid];
+        this.probeState[pid] = typeof rawVal === 'number' ? rawVal.toFixed(2) : (rawVal !== undefined ? String(rawVal) : '—');
+
+        const pCtrl = probeFolder.add(this.probeState, pid).listen().disable();
+        pCtrl.name(pid);
+        pCtrl.domElement.setAttribute('data-testid', `lil-probe-${pid}`);
+
+        const displayEl = pCtrl.domElement.querySelector('.widget, input') || pCtrl.domElement;
+        displayEl.classList.add('lil-stat-value');
+      }
+    }
+
+    // 3. Telemetry Folder (if specified)
+    if (this.config.telemetry && Object.keys(this.config.telemetry).length > 0) {
+      const telFolder = this.gui.addFolder('Telemetry');
+      telFolder.open();
+      telFolder.domElement.setAttribute('data-testid', 'lil-folder-telemetry');
+      for (const tk of Object.keys(this.config.telemetry)) {
+        const tCtrl = telFolder.add(this.config.telemetry, tk).listen().disable();
+        tCtrl.name(tk);
+      }
+    }
+
+    // 4. Actions & Exports Folder
+    const hasExports = (this.config.exports && this.config.exports.length > 0) || (this.config.actions && this.config.actions.length > 0);
+    if (hasExports) {
+      const actionFolder = this.gui.addFolder('Exports');
+      actionFolder.open();
+      actionFolder.domElement.setAttribute('data-testid', 'lil-folder-actions');
+
+      const reqExports = this.config.exports || this.config.actions || ['step', 'stl'];
+      for (const exp of reqExports) {
+        const cleanExp = exp.toLowerCase().replace(/^export/, '');
+        const actionObj = {
+          [cleanExp]: () => {
+            this.config.onAction?.(cleanExp);
+          },
+        };
+
+        const actCtrl = actionFolder.add(actionObj, cleanExp).name(`Export ${cleanExp.toUpperCase()}`);
+        const btn = actCtrl.domElement.querySelector('button, .name') || actCtrl.domElement;
+        btn.setAttribute('data-testid', `lil-action-${cleanExp}`);
+        if (exp !== cleanExp) {
+          btn.setAttribute('data-testid-full', `lil-action-${exp}`);
+        }
+      }
     }
   }
 
@@ -86,36 +218,37 @@ export class LilController {
       return;
     }
 
-    if (!this.rootEl.parentElement) {
-      this.container.appendChild(this.rootEl);
-    }
-    this.render();
+    this.buildGui();
   }
 
   public updateProbes(probes: Record<string, number | string>): void {
     this.config.probeValues = { ...(this.config.probeValues || {}), ...probes };
     for (const [k, v] of Object.entries(probes)) {
-      const el = this.rootEl.querySelector(`[data-testid="lil-probe-${k}"] .lil-stat-value`) as HTMLElement | null;
+      const formatted = typeof v === 'number' ? v.toFixed(2) : String(v);
+      this.probeState[k] = formatted;
+      const el = this.gui?.domElement?.querySelector(`[data-testid="lil-probe-${k}"] .lil-stat-value, [data-testid="lil-probe-${k}"] input`) as HTMLInputElement | HTMLElement | null;
       if (el) {
-        el.textContent = typeof v === 'number' ? v.toFixed(2) : String(v);
+        if ('value' in el) {
+          (el as HTMLInputElement).value = formatted;
+        } else {
+          el.textContent = formatted;
+        }
       }
     }
   }
 
   public updateTelemetry(telemetry: Record<string, string | number>): void {
     this.config.telemetry = { ...(this.config.telemetry || {}), ...telemetry };
-    const telFolder = this.rootEl.querySelector('[data-testid="lil-folder-telemetry"] .lil-folder-children');
-    if (telFolder) {
-      telFolder.innerHTML = this.renderTelemetryRows();
+    if (this.gui) {
+      this.buildGui();
     }
   }
 
   public setParam(name: string, value: any): void {
     this.params[name] = value;
-    const input = this.rootEl.querySelector(`[data-testid="lil-param-input-${name}"]`) as HTMLInputElement | null;
-    const slider = this.rootEl.querySelector(`[data-testid="lil-param-slider-${name}"]`) as HTMLInputElement | null;
-    if (input) input.value = String(value);
-    if (slider) slider.value = String(value);
+    if (this.paramControllers[name]) {
+      this.paramControllers[name].setValue(value);
+    }
   }
 
   public getParams(): Record<string, any> {
@@ -123,248 +256,21 @@ export class LilController {
   }
 
   public getRootElement(): HTMLElement {
-    return this.rootEl;
+    return this.gui ? this.gui.domElement : this.container;
   }
 
   public show(): void {
-    this.rootEl.style.display = 'block';
+    if (this.gui) this.gui.show();
   }
 
   public hide(): void {
-    this.rootEl.style.display = 'none';
+    if (this.gui) this.gui.hide();
   }
 
   public destroy(): void {
-    this.rootEl.remove();
-  }
-
-  private toggleFolder(folderId: string): void {
-    this.folderStates[folderId] = !this.folderStates[folderId];
-    const folder = this.rootEl.querySelector(`[data-testid="lil-folder-${folderId}"]`);
-    if (folder) {
-      const children = folder.querySelector('.lil-folder-children') as HTMLElement | null;
-      if (children) {
-        children.style.display = this.folderStates[folderId] ? 'flex' : 'none';
-      }
-      const chevron = folder.querySelector('.lil-chevron');
-      if (chevron) {
-        chevron.textContent = this.folderStates[folderId] ? '▼' : '▶';
-      }
+    if (this.gui) {
+      this.gui.destroy();
+      this.gui = null;
     }
-  }
-
-  private render(): void {
-    this.rootEl.innerHTML = '';
-
-    // Title Bar
-    const titleBar = document.createElement('div');
-    titleBar.className = 'lil-titlebar';
-    titleBar.innerHTML = `
-      <div class="lil-title"><span class="lil-dot"></span>${this.config.title || 'OpenCAD Controller'}</div>
-      <div class="lil-close" title="Collapse Controller">−</div>
-    `;
-    titleBar.querySelector('.lil-close')?.addEventListener('click', () => {
-      const isCollapsed = this.rootEl.classList.toggle('lil-collapsed');
-      const closeBtn = titleBar.querySelector('.lil-close');
-      if (closeBtn) closeBtn.textContent = isCollapsed ? '+' : '−';
-    });
-    this.rootEl.appendChild(titleBar);
-
-    // 1. Parameters Folder (if sliders enabled and params defined)
-    const showSliders = this.config.sliders !== false;
-    let paramEntries = Object.entries(this.config.params || {});
-    if (this.config.vars && this.config.vars.length > 0) {
-      const allowedVars = new Set(this.config.vars);
-      paramEntries = paramEntries.filter(([k]) => allowedVars.has(k));
-    }
-
-    if (showSliders && paramEntries.length > 0) {
-      this.rootEl.appendChild(this.createParametersFolder(paramEntries));
-    }
-
-    // 2. Probes Live Monitors Folder
-    const probeKeys = this.config.probes;
-    if (probeKeys && probeKeys.length > 0) {
-      this.rootEl.appendChild(this.createProbesFolder(probeKeys));
-    }
-
-    // 3. Actions & Exports Folder
-    const hasExports = (this.config.exports && this.config.exports.length > 0) || (this.config.actions && this.config.actions.length > 0);
-    if (hasExports) {
-      this.rootEl.appendChild(this.createActionsFolder());
-    }
-  }
-
-  private createParametersFolder(paramEntries: [string, any][]): HTMLElement {
-    const folder = document.createElement('div');
-    folder.className = 'lil-folder';
-    folder.setAttribute('data-testid', 'lil-folder-parameters');
-
-    const isOpen = this.folderStates.parameters;
-    const header = document.createElement('div');
-    header.className = 'lil-folder-header';
-    header.innerHTML = `<span class="lil-chevron">${isOpen ? '▼' : '▶'}</span> Parameters`;
-    header.addEventListener('click', () => this.toggleFolder('parameters'));
-    folder.appendChild(header);
-
-    const children = document.createElement('div');
-    children.className = 'lil-folder-children';
-    children.style.display = isOpen ? 'flex' : 'none';
-
-    for (const [key, rawVal] of paramEntries) {
-      const def: LilParamDef = typeof rawVal === 'object' && rawVal !== null && 'value' in rawVal
-        ? rawVal as LilParamDef
-        : { value: rawVal };
-
-      const row = document.createElement('div');
-      row.className = 'lil-param-row';
-      row.setAttribute('data-testid', `lil-param-${key}`);
-
-      const label = document.createElement('label');
-      label.className = 'lil-param-label';
-      label.textContent = def.label || key;
-      row.appendChild(label);
-
-      const val = this.params[key] ?? def.value;
-
-      const controlWrap = document.createElement('div');
-      controlWrap.className = 'lil-number-wrap';
-
-      const min = def.min ?? (Number(val) < 0 ? Number(val) * 2 : 0);
-      const max = def.max ?? (Number(val) > 100 ? Number(val) * 2 : 100);
-      const step = def.step ?? (max - min <= 10 ? 0.1 : 1);
-
-      const slider = document.createElement('input');
-      slider.type = 'range';
-      slider.className = 'lil-slider';
-      slider.min = String(min);
-      slider.max = String(max);
-      slider.step = String(step);
-      slider.value = String(val);
-      slider.setAttribute('data-testid', `lil-param-slider-${key}`);
-
-      const numInput = document.createElement('input');
-      numInput.type = 'number';
-      numInput.className = 'lil-number-input';
-      numInput.min = String(min);
-      numInput.max = String(max);
-      numInput.step = String(step);
-      numInput.value = String(val);
-      numInput.setAttribute('data-testid', `lil-param-input-${key}`);
-
-      slider.addEventListener('input', () => {
-        const num = parseFloat(slider.value);
-        numInput.value = slider.value;
-        this.params[key] = num;
-        this.config.onParamChange?.(key, num);
-      });
-
-      numInput.addEventListener('change', () => {
-        const num = parseFloat(numInput.value);
-        slider.value = numInput.value;
-        this.params[key] = num;
-        this.config.onParamChange?.(key, num);
-      });
-
-      controlWrap.appendChild(slider);
-      controlWrap.appendChild(numInput);
-      row.appendChild(controlWrap);
-      children.appendChild(row);
-    }
-
-    folder.appendChild(children);
-    return folder;
-  }
-
-  private createProbesFolder(probeKeys: string[]): HTMLElement {
-    const folder = document.createElement('div');
-    folder.className = 'lil-folder';
-    folder.setAttribute('data-testid', 'lil-folder-probes');
-
-    const isOpen = this.folderStates.probes;
-    const header = document.createElement('div');
-    header.className = 'lil-folder-header';
-    header.innerHTML = `<span class="lil-chevron">${isOpen ? '▼' : '▶'}</span> Probes & Quantities`;
-    header.addEventListener('click', () => this.toggleFolder('probes'));
-    folder.appendChild(header);
-
-    const children = document.createElement('div');
-    children.className = 'lil-folder-children';
-    children.style.display = isOpen ? 'flex' : 'none';
-
-    for (const pid of probeKeys) {
-      const row = document.createElement('div');
-      row.className = 'lil-param-row lil-probe-row';
-      row.setAttribute('data-testid', `lil-probe-${pid}`);
-
-      const label = document.createElement('label');
-      label.className = 'lil-param-label';
-      label.textContent = pid;
-
-      const valSpan = document.createElement('span');
-      valSpan.className = 'lil-stat-value';
-      const rawVal = this.config.probeValues?.[pid];
-      valSpan.textContent = typeof rawVal === 'number' ? rawVal.toFixed(2) : (rawVal ? String(rawVal) : '—');
-
-      row.appendChild(label);
-      row.appendChild(valSpan);
-      children.appendChild(row);
-    }
-
-    folder.appendChild(children);
-    return folder;
-  }
-
-  private createActionsFolder(): HTMLElement {
-    const folder = document.createElement('div');
-    folder.className = 'lil-folder';
-    folder.setAttribute('data-testid', 'lil-folder-actions');
-
-    const isOpen = this.folderStates.actions;
-    const header = document.createElement('div');
-    header.className = 'lil-folder-header';
-    header.innerHTML = `<span class="lil-chevron">${isOpen ? '▼' : '▶'}</span> Exports`;
-    header.addEventListener('click', () => this.toggleFolder('actions'));
-    folder.appendChild(header);
-
-    const children = document.createElement('div');
-    children.className = 'lil-folder-children';
-    children.style.display = isOpen ? 'flex' : 'none';
-
-    const reqExports = this.config.exports || this.config.actions || ['step', 'stl'];
-    const lowerReqs = reqExports.map(e => e.toLowerCase().replace(/^export/, ''));
-
-    for (const exp of lowerReqs) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'lil-action-btn';
-      btn.setAttribute('data-testid', `lil-action-${exp}`);
-      btn.textContent = `Export ${exp.toUpperCase()}`;
-
-      btn.addEventListener('click', () => {
-        btn.classList.add('lil-btn-clicked');
-        setTimeout(() => btn.classList.remove('lil-btn-clicked'), 200);
-        this.config.onAction?.(exp);
-      });
-
-      children.appendChild(btn);
-    }
-
-    folder.appendChild(children);
-    return folder;
-  }
-
-  private renderTelemetryRows(): string {
-    const tel = this.config.telemetry || {};
-    let html = '';
-    for (const [k, v] of Object.entries(tel)) {
-      html += `
-        <div class="lil-telemetry-row">
-          <span class="lil-telemetry-key">${k}</span>
-          <span class="lil-telemetry-val">${v}</span>
-        </div>
-      `;
-    }
-    return html;
   }
 }

@@ -24,10 +24,10 @@
   --state-offline: #6E7681;
   --state-linked: #58A6FF;
 
-  /* Typography */
-  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
+  /* Typography: High-Precision Google Fonts */
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', SFMono-Regular, Menlo, monospace;
 
   /* Corner Radii */
   --radius-sm: 4px;
@@ -125,7 +125,7 @@ html, body {
   }
 
   #code-pane {
-    width: 480px;
+    width: clamp(280px, 42vw, 480px);
     min-width: 260px;
     max-width: 75vw;
     height: 100%;
@@ -308,52 +308,208 @@ html, body {
   background: var(--paper);
 }
 
-.cdml-editor {
-  width: 100%;
-  height: 100%;
-  padding: 14px;
+.btn-text-action {
   background: transparent;
-  color: var(--ink);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
-  border: none;
-  outline: none;
-  resize: none;
-  white-space: pre;
-  overflow: auto;
-  user-select: text;
-  tab-size: 2;
-  caret-color: var(--accent);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.cdml-editor::selection {
-  background: var(--accent-subtle);
+.btn-text-action:hover {
+  background: var(--surface-hover);
   color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.editor-wrapper {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Underlying sync textarea (kept attached & visible for full Playwright/DOM test compatibility) */
+.cdml-editor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.001;
+  z-index: 0;
+  pointer-events: auto;
+  border: none;
+  resize: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+}
+
+/* CodeMirror 6 Active Highlighting Editor Container */
+.codemirror-mount {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cm-editor {
+  height: 100%;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background-color: var(--paper) !important;
+}
+
+.cm-scroller {
+  font-family: var(--font-mono);
+  overflow: auto;
+  line-height: 1.5;
+}
+
+.cm-focused {
+  outline: none !important;
+}
+
+.cm-gutters {
+  background-color: var(--surface) !important;
+  border-right: 1px solid var(--line) !important;
+  color: var(--ink-3) !important;
+}
+
+/* Diagnostic Details Drawer (Collapsible & Expandable) */
+.diagnostic-drawer {
+  background: #141113;
+  border-top: 1px solid #7F1D1D;
+  border-bottom: 1px solid #7F1D1D;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.diagnostic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  padding-bottom: 6px;
+}
+
+.diagnostic-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diag-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.diag-badge-err {
+  background: #EF4444;
+  color: #FFFFFF;
+}
+
+.diagnostic-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-diag-action {
+  background: #1F2937;
+  border: 1px solid #374151;
+  color: #E5E7EB;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-diag-action:hover {
+  background: #374151;
+  color: #FFFFFF;
+}
+
+.diag-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.diag-label {
+  color: var(--ink-3);
+  min-width: 65px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.diag-val {
+  color: #FCA5A5;
+  word-break: break-all;
+}
+
+.diag-raw-container {
+  margin-top: 6px;
+}
+
+.diag-raw-pre {
+  background: #0B0A0C;
+  border: 1px solid #2D1515;
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: #FECACA;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-top: 4px;
+  max-height: 120px;
 }
 
 /* Status Bar */
 .code-status-bar {
-  height: 28px;
   min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 4px 12px;
   background: var(--surface);
   border-top: 1px solid var(--line);
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--ink-2);
+  gap: 8px;
 }
 
 .status-indicator-wrapper {
   display: flex;
   align-items: center;
   gap: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 /* Status Carrier: 6x6 smooth circle */
@@ -379,12 +535,42 @@ html, body {
 }
 
 .status-message {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.status-message:hover {
+  color: var(--accent);
+}
+
+.status-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-diag-toggle {
+  background: #7F1D1D;
+  border: 1px solid #B91C1C;
+  color: #FEE2E2;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-diag-toggle:hover {
+  background: #991B1B;
+  color: #FFFFFF;
 }
 
 .status-timing {
@@ -447,71 +633,114 @@ html, body {
   display: block;
 }
 
-.btn-expand-pane {
+/* Minimalist Viewport Dock (Vertically Centered on Left Edge) */
+.viewport-dock {
   position: absolute;
-  top: 14px;
+  top: 50%;
+  transform: translateY(-50%);
   left: 14px;
+  right: auto;
   z-index: 100;
-  background: rgba(26, 29, 33, 0.88);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(18, 20, 24, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
-  color: var(--ink);
-  padding: 6px 12px;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  transition: all 0.15s ease;
+  padding: 5px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  user-select: none;
 }
 
-.btn-expand-pane:hover {
-  background: var(--surface-hover);
-  border-color: var(--line-strong);
-  color: var(--ink);
-}
-
-/* Minimalist Frosted HUD Pill for Viewport Stats */
-.viewport-stats {
-  position: absolute;
-  bottom: 14px;
-  left: 14px;
-  z-index: 50;
+.dock-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 12px;
-  background: rgba(22, 25, 29, 0.82);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-md);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  pointer-events: none;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-2);
-}
-
-.stat-badge,
-.mesh-stat-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  cursor: pointer;
   padding: 0;
-  font-size: 11px;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.dock-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.dock-btn:active {
+  transform: scale(0.96);
+}
+
+.dock-btn.active {
+  background: rgba(56, 139, 253, 0.2);
+  color: #58A6FF;
+  border-color: rgba(56, 139, 253, 0.45);
+}
+
+.dock-btn.active:hover {
+  background: rgba(56, 139, 253, 0.32);
+  color: #79B8FF;
+  border-color: rgba(56, 139, 253, 0.6);
+}
+
+.dock-label {
+  display: none;
+}
+
+/* Minimalist Unified Telemetry Display (Bottom-Right Corner matching OpenCAD specs) */
+.viewport-telemetry {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  left: auto;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
   font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  pointer-events: none;
+  user-select: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.telemetry-brand {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.telemetry-item {
+  font-size: 10.5px;
   color: var(--ink-2);
 }
 
-.stat-badge span,
-.mesh-stat-badge span {
-  color: var(--ink);
-  font-weight: 500;
+.telemetry-stats {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--ink-2);
+  margin-top: 1px;
+}
+
+.telemetry-sep {
+  opacity: 0.4;
+  margin: 0 1px;
 }
 
 /* ========================================================================== */
@@ -536,27 +765,104 @@ body.embed-mode #viewport-container {
 /* ========================================================================== */
 /* Minimalist Floating lil-gui / lil-controller Inspector                     */
 /* ========================================================================== */
-.lil-gui,
-.lil-controller {
-  position: fixed;
+.lil-gui.root,
+.lil-controller.root {
+  position: absolute;
   top: 14px;
   right: 14px;
-  width: 270px;
-  max-height: calc(100vh - 28px);
+  left: auto;
+  width: 280px;
+  max-height: calc(100% - 130px);
   overflow-y: auto;
   overflow-x: hidden;
-  background: rgba(22, 25, 29, 0.88) !important;
+  background: rgba(22, 25, 29, 0.94) !important;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   border-radius: var(--radius-md) !important;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink);
   z-index: 1000;
   box-sizing: border-box;
   user-select: none;
+
+  --background-color: rgba(22, 25, 29, 0.94);
+  --text-color: #E6EDF3;
+  --title-background-color: rgba(30, 35, 42, 0.95);
+  --title-text-color: #F0F6FC;
+  --widget-color: #21262D;
+  --hover-color: #30363D;
+  --focus-color: #388BFD;
+  --number-color: #79C0FF;
+  --string-color: #7EE787;
+  --font-family: var(--font-sans);
+  --font-family-mono: var(--font-mono);
+  --font-size: 11px;
+  --input-font-size: 11px;
+  --padding: 5px;
+  --spacing: 5px;
+  --widget-height: 22px;
+  --name-width: 44%;
+}
+
+/* Important: Nested lil-gui elements are folders! They must remain in normal vertical flow! */
+.lil-gui:not(.root) {
+  position: static !important;
+  width: 100% !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  max-height: none !important;
+  overflow: visible !important;
+  top: auto !important;
+  right: auto !important;
+}
+
+@media (max-width: 860px) {
+  .lil-gui.root,
+  .lil-controller.root {
+    width: 230px;
+    right: 8px;
+    left: auto;
+    top: 8px;
+    max-height: calc(100% - 110px);
+  }
+
+  .viewport-dock {
+    left: 8px;
+    right: auto;
+  }
+
+  .viewport-telemetry {
+    right: 8px;
+    left: auto;
+    bottom: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .lil-gui.root,
+  .lil-controller.root {
+    width: 200px;
+    right: 8px;
+    left: auto;
+    top: 8px;
+    max-height: calc(100% - 110px);
+  }
+
+  .viewport-dock {
+    left: 6px;
+    right: auto;
+  }
+
+  .viewport-telemetry {
+    right: 8px;
+    left: auto;
+    bottom: 6px;
+  }
 }
 
 .lil-controller.lil-collapsed .lil-folder {

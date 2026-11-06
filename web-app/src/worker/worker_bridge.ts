@@ -320,50 +320,125 @@ export class CadWorkerBridge {
         this.pendingAssemblyRequests.delete(requestId);
         pendingAssembly.reject(new Error(data.error || 'Worker assembly error'));
       }
+      const pendingCdmlEval = this.pendingCdmlEvalRequests.get(requestId);
+      if (pendingCdmlEval) {
+        this.pendingCdmlEvalRequests.delete(requestId);
+        pendingCdmlEval.reject(new Error(data.error || 'Worker CDML eval error'));
+      }
+      const pendingCdmlVar = this.pendingCdmlVarRequests.get(requestId);
+      if (pendingCdmlVar) {
+        this.pendingCdmlVarRequests.delete(requestId);
+        pendingCdmlVar.reject(new Error(data.error || 'Worker CDML var error'));
+      }
+      const pendingCdmlStep = this.pendingCdmlStepRequests.get(requestId);
+      if (pendingCdmlStep) {
+        this.pendingCdmlStepRequests.delete(requestId);
+        pendingCdmlStep.reject(new Error(data.error || 'Worker CDML step export error'));
+      }
+      const pendingCdmlStl = this.pendingCdmlStlRequests.get(requestId);
+      if (pendingCdmlStl) {
+        this.pendingCdmlStlRequests.delete(requestId);
+        pendingCdmlStl.reject(new Error(data.error || 'Worker CDML stl export error'));
+      }
+    }
+
+    if (data.type === 'WORKER_INTERNAL_ERROR') {
+      const requestId = data.requestId;
+      const errorMsg = data.error || 'Worker internal error';
+      console.error(`[WorkerBridge] Internal worker error for request ${requestId} (${data.originalType}):`, errorMsg);
+      const err = new Error(errorMsg);
+
+      const pendingCdmlEval = this.pendingCdmlEvalRequests.get(requestId);
+      if (pendingCdmlEval) {
+        this.pendingCdmlEvalRequests.delete(requestId);
+        pendingCdmlEval.reject(err);
+      }
+      const pendingCdmlVar = this.pendingCdmlVarRequests.get(requestId);
+      if (pendingCdmlVar) {
+        this.pendingCdmlVarRequests.delete(requestId);
+        pendingCdmlVar.reject(err);
+      }
+      const pendingCdmlStep = this.pendingCdmlStepRequests.get(requestId);
+      if (pendingCdmlStep) {
+        this.pendingCdmlStepRequests.delete(requestId);
+        pendingCdmlStep.reject(err);
+      }
+      const pendingCdmlStl = this.pendingCdmlStlRequests.get(requestId);
+      if (pendingCdmlStl) {
+        this.pendingCdmlStlRequests.delete(requestId);
+        pendingCdmlStl.reject(err);
+      }
+      const pendingReq = this.pendingRequests.get(requestId);
+      if (pendingReq) {
+        this.pendingRequests.delete(requestId);
+        pendingReq.reject(err);
+      }
     }
   }
 
   private handleError(e: ErrorEvent) {
-    console.error('CAD Worker error:', e);
+    const errorDetails =
+      e.message ||
+      (e.error ? (e.error.stack || e.error.message || String(e.error)) : '') ||
+      (typeof e === 'object' && e ? `${e.type || 'ErrorEvent'} at ${e.filename || 'cad.worker'}:${e.lineno || 0}:${e.colno || 0}` : String(e));
+    console.error(`CAD Worker error: ${errorDetails} [at ${e.filename || 'cad.worker'}:${e.lineno || 0}:${e.colno || 0}]`, e.error || e);
+    const errObj = new Error(`Worker encountered error: ${errorDetails}`);
+
     for (const [id, req] of this.pendingRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingRequests.delete(id);
     }
     for (const [id, req] of this.pendingSketchRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingSketchRequests.delete(id);
     }
     for (const [id, req] of this.pendingDagRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingDagRequests.delete(id);
     }
     for (const [id, req] of this.pendingExportStepRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingExportStepRequests.delete(id);
     }
     for (const [id, req] of this.pendingExportStlRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingExportStlRequests.delete(id);
     }
     for (const [id, req] of this.pendingAssemblyRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingAssemblyRequests.delete(id);
     }
     for (const [id, req] of this.pendingAstCountRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingAstCountRequests.delete(id);
     }
     for (const [id, req] of this.pendingAstFormatRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingAstFormatRequests.delete(id);
     }
     for (const [id, req] of this.pendingAstMergeRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingAstMergeRequests.delete(id);
     }
     for (const [id, req] of this.pendingVisualDiffRequests.entries()) {
-      req.reject(new Error(`Worker encountered error: ${e.message}`));
+      req.reject(errObj);
       this.pendingVisualDiffRequests.delete(id);
+    }
+    for (const [id, req] of this.pendingCdmlEvalRequests.entries()) {
+      req.reject(errObj);
+      this.pendingCdmlEvalRequests.delete(id);
+    }
+    for (const [id, req] of this.pendingCdmlVarRequests.entries()) {
+      req.reject(errObj);
+      this.pendingCdmlVarRequests.delete(id);
+    }
+    for (const [id, req] of this.pendingCdmlStepRequests.entries()) {
+      req.reject(errObj);
+      this.pendingCdmlStepRequests.delete(id);
+    }
+    for (const [id, req] of this.pendingCdmlStlRequests.entries()) {
+      req.reject(errObj);
+      this.pendingCdmlStlRequests.delete(id);
     }
   }
 
@@ -607,7 +682,7 @@ export class CadWorkerBridge {
     status: number;
     diagnostic: string;
     mesh: any;
-    vars: Array<{ id: string; value: number; min?: number; max?: number; unit?: string }>;
+    vars: Array<{ id: string; value: number; min?: number; max?: number; unit?: string; isPublic?: boolean }>;
     probes: Record<string, number>;
     exports: string[];
   }> {

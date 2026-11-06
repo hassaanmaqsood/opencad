@@ -1,4 +1,7 @@
 import './style.css';
+import { EditorView, basicSetup } from 'codemirror';
+import { xml } from '@codemirror/lang-xml';
+import { oneDark } from '@codemirror/theme-one-dark';
 import { CadViewer } from './renderer/viewer';
 import { CadWorkerBridge } from './worker/worker_bridge';
 import { LilController } from './ui/lil_controller';
@@ -14,6 +17,7 @@ declare global {
     __exportStep?: () => Promise<string>;
     __exportStl?: (binary?: boolean) => Promise<Uint8Array | string>;
     LilController?: typeof LilController;
+    __cadEditorView?: EditorView | null;
   }
 }
 
@@ -21,12 +25,10 @@ declare global {
 window.LilController = LilController;
 
 /**
- * OpenCAD Abstract Identity Mark
- * Inspired by nTop (continuous topological manifold) & MATLAB (mathematical level-set contours).
- * Abstractly conveys OpenCAD's core function:
- * - Parametric B-Rep boundary modeling
- * - Continuous field iso-contours / level sets
- * - Central constraint solver origin node with dynamic live kernel health status
+ * OpenCAD Official Identity Mark: Simple Isometric Cube
+ * - Isometric projection with illuminated top face, mid-tone left face, and shadow right face
+ * - Outer precision technical contour
+ * - Central constraint solver origin node reactive to kernel state
  */
 export function renderOpenCadLogoSvg(
   size: number,
@@ -39,39 +41,36 @@ export function renderOpenCadLogoSvg(
   else if (statusState === 'linked') originColor = 'var(--state-linked, #58A6FF)';
   else if (statusState === 'neutral') originColor = 'var(--ink, #E6EDF3)';
 
-  const strokeWidth = Math.max(1, (size / 32) * 1.5).toFixed(1);
-  const thinWidth = Math.max(0.75, (size / 32) * 1.0).toFixed(1);
-
-  if (size < 16) {
-    // Crisp degradation for micro / favicon sizes (< 16px)
-    return `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-      <path d="M 8 2.2 L 13.5 5.2 V 10.8 L 8 13.8 L 2.5 10.8 V 5.2 Z" stroke="var(--ink, #E6EDF3)" stroke-width="1.2" stroke-linejoin="round" />
-      <path d="M 8 2.2 V 8 M 8 8 L 2.5 10.8 M 8 8 L 13.5 10.8" stroke="var(--ink, #E6EDF3)" stroke-width="1.0" stroke-linejoin="round" />
-      <circle cx="8" cy="8" r="1.8" fill="${originColor}" />
+  if (size < 24) {
+    // Streamlined high-contrast blueprint isometric cube for compact UI / favicon
+    return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+      <polygon points="50,16 82,34.5 50,53 18,34.5" fill="#2563EB" stroke="#60A5FA" stroke-width="3" stroke-linejoin="round"/>
+      <polygon points="18,34.5 50,53 50,90 18,71.5" fill="#1D4ED8" stroke="#3B82F6" stroke-width="3" stroke-linejoin="round"/>
+      <polygon points="50,53 82,34.5 82,71.5 50,90" fill="#1E3A8A" stroke="#2563EB" stroke-width="3" stroke-linejoin="round"/>
+      <polygon points="50,16 82,34.5 82,71.5 50,90 18,71.5 18,34.5" fill="none" stroke="#93C5FD" stroke-width="3.5" stroke-linejoin="round"/>
+      <circle cx="50" cy="53" r="4.5" fill="${originColor}" stroke="#071426" stroke-width="1.5"/>
     </svg>`;
   }
 
-  return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-    <!-- Isometric Parametric B-Rep Shell (Clean Minimalist Manifold) -->
-    <path d="M 16 4.5 L 26.5 10.5 V 21.5 L 16 27.5 L 5.5 21.5 V 10.5 Z" 
-          stroke="var(--ink, #E6EDF3)" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" />
-    
-    <!-- Coordinate Origin Creases (Parametric Reference Axes) -->
-    <path d="M 16 4.5 V 16 M 16 16 L 5.5 21.5 M 16 16 L 26.5 21.5" 
-          stroke="var(--ink, #E6EDF3)" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" />
-    
-    <!-- Mathematical Iso-Contour Field Lines (MATLAB Eigenmode + nTop Continuous Field) -->
-    <!-- Top Face Level-Set -->
-    <path d="M 10 7.8 Q 16 11.2 22 7.8" 
-          stroke="var(--ink-2, #8B949E)" stroke-width="${thinWidth}" stroke-linecap="round" fill="none" />
-    <!-- Swept Lateral Field Contours -->
-    <path d="M 5.5 15.8 Q 11 18.8 16 16" 
-          stroke="var(--ink-2, #8B949E)" stroke-width="${thinWidth}" stroke-linecap="round" fill="none" />
-    <path d="M 16 16 Q 21 13.2 26.5 15.8" 
-          stroke="var(--ink-2, #8B949E)" stroke-width="${thinWidth}" stroke-linecap="round" fill="none" />
-    
-    <!-- Central Solver Convergence / Origin Node (Dynamic Live Health Core) -->
-    <circle cx="16" cy="16" r="2.2" fill="${originColor}" />
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+    <!-- OpenCAD Simple Isometric Cube Logo Mark -->
+    <defs>
+      <radialGradient id="cubeGlow_${size}" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#1E3A8A" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#0A192F" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle cx="50" cy="53" r="42" fill="url(#cubeGlow_${size})"/>
+    <!-- Top Face (Illuminated) -->
+    <polygon points="50,16 82,34.5 50,53 18,34.5" fill="#2563EB" stroke="#60A5FA" stroke-width="2.2" stroke-linejoin="round"/>
+    <!-- Left Face (Mid-tone) -->
+    <polygon points="18,34.5 50,53 50,90 18,71.5" fill="#1D4ED8" stroke="#3B82F6" stroke-width="2.2" stroke-linejoin="round"/>
+    <!-- Right Face (Shadow) -->
+    <polygon points="50,53 82,34.5 82,71.5 50,90" fill="#1E3A8A" stroke="#2563EB" stroke-width="2.2" stroke-linejoin="round"/>
+    <!-- Outer Contour -->
+    <polygon points="50,16 82,34.5 82,71.5 50,90 18,71.5 18,34.5" fill="none" stroke="#93C5FD" stroke-width="2.8" stroke-linejoin="round"/>
+    <!-- Central Origin Node -->
+    <circle cx="50" cy="53" r="3.5" fill="${originColor}" stroke="#071426" stroke-width="1.2"/>
   </svg>`;
 }
 
@@ -93,124 +92,70 @@ const BUILTIN_IMPORTS: Record<string, string> = {
 </cdml>`,
 };
 
-function getStarterCdml(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
+/**
+ * OpenCAD Default Toroidal Prism Model:
+ * Twisted Toroidal Ring with Support-Free Flat Base for 3D Printing.
+ */
+export const DEFAULT_TORUS_CDML = `<?xml version="1.0" encoding="UTF-8"?>
 <cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
-  <imports>
-    <import src="lib/materials.cdml"/>
-    <import src="lib/fasteners.cdml" prefix="fs"/>
-  </imports>
+
   <defs>
-    <var id="flange_w"    value="90.0"  unit="mm" min="60.0" max="150.0"/>
-    <var id="flange_h"    value="16.0"  unit="mm" min="8.0"  max="40.0"/>
-    <var id="bore_r"      value="15.0"  unit="mm" min="8.0"  max="25.0"/>
-    <var id="wall_margin" value="3.0"   unit="mm" min="1.5"  max="6.0"/>
-    <var id="fillet_r"    value="4.0"   unit="mm" min="0.5"  max="10.0"/>
-    <var id="period"      value="9.0"   unit="mm"/>
+    <!-- Major radius R, tube half-width a, and vertical center offset z_c -->
+    <var id="R"   value="24.0" unit="mm" min="15.0" max="50.0" public="true"/>
+    <var id="a"   value="7.5"  unit="mm" min="3.0"  max="14.0" public="true"/>
+    <var id="z_c" value="8.5"  unit="mm" min="5.0"  max="20.0" public="true"/>
 
-    <expr id="half_w"   expr="flange_w / 2"/>
-    <expr id="infill_r" expr="bore_r + wall_margin"/>
-
-    <field-slot id="stress_field" slot="0"
-                semantic="stress"
-                grid-x="64" grid-y="64" grid-z="24"
-                default="40.0"/>
-
-    <assert id="bore_clearance"
-      expr="half_w - bore_r - wall_margin - 5.0"
-      error="bore plus wall margin exceeds half flange width"/>
-    <assert id="wall_positive"
-      expr="flange_w * 0.5 - bore_r - wall_margin"
-      error="no material between bore and edge"/>
+    <assert id="hole_open"
+      expr="R - 1.4142 * a - 4.0"
+      error="Tube width is too large and closes the center hole"/>
   </defs>
+
   <body>
-    <chart id="chart_xy">
-      <vars>
-        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
-        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
-        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
-      </vars>
-      <constraints>
-        <residual id="unit_e2"  expr="dot(e2, e2) - 1.0"/>
-        <residual id="ortho"    expr="dot(e1, e2)"/>
-        <residual id="planar_z" expr="dot(e2, vec3(0, 0, 1))"/>
-      </constraints>
-    </chart>
-    <sketch id="sk_flange" chart="chart_xy" max-iter="100">
-      <vars>
-        <point2d id="v0" u="-45.0" v="-45.0"/>
-        <point2d id="v1" u=" 45.0" v="-45.0"/>
-        <point2d id="v2" u=" 45.0" v=" 45.0"/>
-        <point2d id="v3" u="-45.0" v=" 45.0"/>
-      </vars>
-      <wire id="wire_outer" closed="true" role="outer">
-        <curve id="seg_bot" degree="1" ctrl="v0 v1" weights="1.0 1.0" knots="0 0 1 1"/>
-        <curve id="seg_rgt" degree="1" ctrl="v1 v2" weights="1.0 1.0" knots="0 0 1 1"/>
-        <curve id="seg_top" degree="1" ctrl="v2 v3" weights="1.0 1.0" knots="0 0 1 1"/>
-        <curve id="seg_lft" degree="1" ctrl="v3 v0" weights="1.0 1.0" knots="0 0 1 1"/>
-      </wire>
-      <wire id="wire_bore" closed="true" role="hole">
-        <param-curve id="c_bore" param="t" domain="0 1"
-          u-expr="ref(bore_r) * cos(2 * PI * t)"
-          v-expr="ref(bore_r) * sin(2 * PI * t)"/>
-      </wire>
-      <constraints>
-        <residual id="cx"    expr="v0.u + v1.u"/>
-        <residual id="cy"    expr="v0.v + v3.v"/>
-        <residual id="sym"   expr="v2.u + v3.u"/>
-        <residual id="h0"    expr="v1.v - v0.v"/>
-        <residual id="h1"    expr="v2.v - v3.v"/>
-        <residual id="ortho" expr="dot(v1-v0, v2-v1)"/>
-        <residual id="width" expr="norm(v1 - v0) - ref(flange_w)"/>
-        <residual id="height" expr="norm(v2 - v1) - ref(flange_w)"/>
-      </constraints>
-    </sketch>
+    <!-- Twisted Toroidal Prism with Flat z >= 0 Bed Base for Support-Free 3D Printing -->
+    <implicit id="logo_torus">
+      <domain
+        xmin="-38.0" xmax="38.0"
+        ymin="-38.0" ymax="38.0"
+        zmin="0.0"   zmax="22.0"
+        octree-depth="5"
+        qef-reg="1e-4"/>
 
-    <brep id="solid_flange">
-      <sweep id="sw_flange" sketch="sk_flange" cap-ends="true">
-        <trajectory>
-          <translate x="0" y="0" z-expr="ref(flange_h) * v"/>
-        </trajectory>
-      </sweep>
-      <fillet id="f_bore" edge="wire_bore" radius-expr="ref(fillet_r)"/>
-    </brep>
+      <!-- Smooth radial distance in XY plane (1e-4 prevents division by zero at origin) -->
+      <def name="r_xy" expr="sqrt(x^2 + y^2 + 1e-4)"/>
 
-    <surface id="surf_wall">
-      <eq>x^2 + y^2 - ref(infill_r)^2</eq>
-    </surface>
-    <region id="reg_wall">
-      <and>
-        <ineq id="wall_out" surface="surf_wall" sense="-"/>
-        <ineq id="wall_bot">z</ineq>
-        <ineq id="wall_top">ref(flange_h) - z</ineq>
-      </and>
-    </region>
-    <brep id="solid_wall" region="reg_wall"/>
+      <!-- Local radial offset (u) and vertical offset (w) from torus centerline -->
+      <def name="u" expr="r_xy - ref(R)"/>
+      <def name="w" expr="z - ref(z_c)"/>
 
-    <implicit id="infill_lattice" solid="solid_wall">
-      <field type="gyroid" period="ref(period)"
-             thickness-field="stress_field"
-             t-min="0.8" t-max="2.4"
-             stress-min="10.0" stress-max="80.0"/>
-      <dual-contour resolution="64" max-depth="6"/>
+      <!-- 180-degree continuous Mobius/toroidal twist around azimuth (cos(theta)=x/r_xy, sin(theta)=y/r_xy) -->
+      <def name="q1" expr="(u * x + w * y) / r_xy"/>
+      <def name="q2" expr="(w * x - u * y) / r_xy"/>
+
+      <!-- C1 R-function intersection of twisted square cross-section -->
+      <def name="d_tube"
+        expr="r_intersect(
+                abs_smooth(q1, 1e-3) - ref(a),
+                abs_smooth(q2, 1e-3) - ref(a))"/>
+
+      <!-- Intersect with z >= 0 (-z <= 0) so the bottom sits flat on the 3D printer build plate -->
+      <field expr="r_intersect(d_tube, 0.0 - z)"/>
     </implicit>
 
-    <csg id="solid_final">
-      <union op1="solid_flange" op2="infill_lattice"/>
-    </csg>
-
-    <probe id="housing_volume"   type="volume"      target="solid_final"/>
-    <probe id="max_fillet_stress" type="field_max"   target="f_bore" field="stress_field"/>
-    <probe id="mass_estimate"    type="mass"        target="solid_final" material="al6061"/>
+    <probe id="logo_volume" type="volume" target="logo_torus"/>
   </body>
 
   <exports>
-    <tessellate target="solid_final" chord-tol="0.02" angle-tol="0.05"/>
-    <step        target="solid_flange" schema="AP214"/>
-    <stl         target="solid_final"  binary="true"/>
+    <tessellate target="logo_torus" chord-tol="0.03" angle-tol="0.05"/>
+    <stl        target="logo_torus" binary="true"/>
   </exports>
+
 </cdml>`;
+
+export function getStarterCdml(): string {
+  return DEFAULT_TORUS_CDML;
 }
+
+const STORAGE_KEY = 'opencad_saved_cdml';
 
 async function resolveImports(baseUrl: string, xml: string): Promise<Record<string, string>> {
   const imports: Record<string, string> = {};
@@ -242,6 +187,15 @@ async function resolveImports(baseUrl: string, xml: string): Promise<Record<stri
 }
 
 function downloadFile(content: string | Uint8Array, filename: string, mimeType: string) {
+  if (typeof content === 'string' && content.startsWith('data:')) {
+    const a = document.createElement('a');
+    a.href = content;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
   const parts: any[] = content instanceof Uint8Array ? [content.slice()] : [content];
   const blob = new Blob(parts, { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -285,16 +239,40 @@ async function initApp() {
   const paneSplitter = document.getElementById('pane-splitter');
   const viewportContainer = document.getElementById('viewport-container') as HTMLElement;
   const cdmlEditor = document.getElementById('cdml-editor') as HTMLTextAreaElement | null;
+  const codemirrorMount = document.getElementById('codemirror-mount');
   const statusIndicator = document.getElementById('status-indicator');
   const statusMessage = document.getElementById('status-message');
   const statusTiming = document.getElementById('status-timing');
-  const exampleSelect = document.getElementById('example-select') as HTMLSelectElement | null;
   const btnCollapse = document.getElementById('btn-collapse-pane');
   const btnExpand = document.getElementById('btn-expand-pane');
+  const btnReset = document.getElementById('btn-reset-code');
+  const btnScreenshot = document.getElementById('btn-screenshot');
+  const btnCameraFit = document.getElementById('btn-camera-fit');
+  const btnToggleWireframe = document.getElementById('btn-toggle-wireframe');
+  const btnToggleGui = document.getElementById('btn-toggle-gui');
+  const telemetryDims = document.getElementById('telemetry-dims');
+  const telemetryVol = document.getElementById('telemetry-vol');
   const statTriangles = document.getElementById('stat-triangles');
   const statVertices = document.getElementById('stat-vertices');
   const fpsVal = document.getElementById('fps-val');
   const brandMark = document.getElementById('brand-mark');
+
+  // Diagnostics Drawer Elements
+  const diagnosticDrawer = document.getElementById('diagnostic-drawer');
+  const btnToggleDiag = document.getElementById('btn-toggle-diagnostics');
+  const btnCopyDiag = document.getElementById('btn-copy-diagnostic');
+  const btnCloseDiag = document.getElementById('btn-close-diagnostic');
+  const diagBadge = document.getElementById('diag-badge');
+  const diagSummaryTitle = document.getElementById('diag-summary-title');
+  const diagLocRow = document.getElementById('diag-loc-row');
+  const diagLocVal = document.getElementById('diag-loc-val');
+  const diagMsgVal = document.getElementById('diag-msg-val');
+  const diagCodeRow = document.getElementById('diag-code-row');
+  const diagCodeVal = document.getElementById('diag-code-val');
+  const diagRawContent = document.getElementById('diag-raw-content');
+
+  let lastDiagnosticPayload: string = '';
+
   if (brandMark) {
     brandMark.innerHTML = renderControlMarkSvg(20, 'nominal');
   }
@@ -337,7 +315,7 @@ async function initApp() {
   let lilController: LilController | null = null;
 
   if (shouldShowGui) {
-    lilController = new LilController(document.body, {
+    lilController = new LilController(viewportContainer || document.body, {
       title: 'Model Parameters',
       vars: varsFilter,
       probes: probesFilter,
@@ -349,6 +327,7 @@ async function initApp() {
           if (res.status === 0) {
             if (res.mesh) {
               viewer.meshManager.updateFromCdmlMesh(res.mesh);
+              updateTelemetry(res.probes);
               if (statTriangles) statTriangles.textContent = String(res.mesh.triangleCount);
               if (statVertices) statVertices.textContent = String(res.mesh.vertexCount);
             }
@@ -384,6 +363,26 @@ async function initApp() {
   // Live evaluation state
   let currentDocUrl = window.location.href;
 
+  const updateTelemetry = (probes?: Record<string, number | string>) => {
+    if (viewer.meshManager.solidMesh?.geometry) {
+      const geom = viewer.meshManager.solidMesh.geometry;
+      geom.computeBoundingBox();
+      if (geom.boundingBox) {
+        const dx = Math.round(Math.abs(geom.boundingBox.max.x - geom.boundingBox.min.x));
+        const dy = Math.round(Math.abs(geom.boundingBox.max.y - geom.boundingBox.min.y));
+        const dz = Math.round(Math.abs(geom.boundingBox.max.z - geom.boundingBox.min.z));
+        if (telemetryDims) telemetryDims.textContent = `${dx}mm × ${dy}mm × ${dz}mm`;
+      }
+    }
+    if (telemetryVol) {
+      const vol = probes?.logo_volume ?? probes?.housing_volume ?? probes?.volume;
+      if (vol !== undefined) {
+        const formatted = typeof vol === 'number' ? Math.round(vol).toLocaleString() : String(vol);
+        telemetryVol.textContent = `${formatted} mm³`;
+      }
+    }
+  };
+
   const evaluateCode = async (xml: string) => {
     const t0 = performance.now();
 
@@ -407,25 +406,43 @@ async function initApp() {
 
       if (res.status === 0) {
         if (statusIndicator) statusIndicator.className = 'status-dot status-ok';
-        if (statusMessage) statusMessage.textContent = 'Ready (CDML Valid)';
-        if (brandMark) brandMark.innerHTML = renderControlMarkSvg(20, 'nominal');
+        let noticeSuffix = '';
+        if (res.diagnostic && res.diagnostic.includes('Notice')) {
+          try {
+            const parsedNotice = JSON.parse(res.diagnostic);
+            if (parsedNotice.message) {
+              noticeSuffix = ` · ${parsedNotice.message}`;
+              console.info(`[OpenCAD Diagnostic] ${parsedNotice.message}`);
+            }
+          } catch {}
+        }
+        if (statusMessage) statusMessage.textContent = `Ready (CDML Valid)${noticeSuffix}`;
+        if (brandMark) brandMark.innerHTML = renderControlMarkSvg(20, noticeSuffix ? 'caution' : 'nominal');
+        if (btnToggleDiag) btnToggleDiag.style.display = 'none';
+        if (diagnosticDrawer) diagnosticDrawer.style.display = 'none';
 
         if (res.mesh) {
           viewer.meshManager.updateFromCdmlMesh(res.mesh);
           viewer.fitCameraToMesh(true);
+          updateTelemetry(res.probes);
           if (statTriangles) statTriangles.textContent = String(res.mesh.triangleCount);
           if (statVertices) statVertices.textContent = String(res.mesh.vertexCount);
         }
 
-        // Update LilController controls
+        // Update LilController controls (Excluding private variables!)
         if (lilController) {
           const paramsMap: Record<string, any> = {};
           for (const v of res.vars) {
+            // Check public vs private visibility
+            if (v.isPublic === false || v.id.startsWith('_')) {
+              continue;
+            }
             paramsMap[v.id] = {
               value: v.value,
               min: v.min ?? 0,
               max: v.max ?? (v.value === 0 ? 100 : Math.abs(v.value) * 2),
               unit: v.unit,
+              isPublic: true,
             };
           }
           const exportsToSet = exportsFilter
@@ -447,14 +464,62 @@ async function initApp() {
         // Fault tolerant: DO NOT change viewer geometry!
         if (statusIndicator) statusIndicator.className = 'status-dot status-err';
         if (brandMark) brandMark.innerHTML = renderControlMarkSvg(20, 'fault');
-        let diagMsg = res.diagnostic;
+
+        lastDiagnosticPayload = res.diagnostic;
+        let parsed: any = {};
         try {
-          const parsed = JSON.parse(res.diagnostic);
-          diagMsg = `[${parsed.name || parsed.code}] ${parsed.message || ''}`;
-        } catch {}
-        if (statusMessage) {
-          statusMessage.textContent = diagMsg || `Error 0x${res.status.toString(16)}`;
+          parsed = JSON.parse(res.diagnostic);
+        } catch {
+          parsed = { message: res.diagnostic };
         }
+
+        const errCodeName = parsed.name || parsed.code || `ERR_0x${res.status.toString(16).toUpperCase()}`;
+        const hexStatus = `0x${res.status.toString(16).padStart(4, '0')}`;
+        const errMsg = parsed.message || res.diagnostic || 'Unknown error';
+
+        const verboseSummary = `[${errCodeName}] (${hexStatus}) ${errMsg}`;
+        if (statusMessage) {
+          statusMessage.textContent = verboseSummary;
+          statusMessage.title = verboseSummary;
+        }
+
+        // Populate diagnostic drawer details
+        if (diagBadge) {
+          diagBadge.textContent = 'ERROR';
+          diagBadge.className = 'diag-badge diag-badge-err';
+        }
+        if (diagSummaryTitle) {
+          diagSummaryTitle.textContent = `${errCodeName} (${hexStatus})`;
+        }
+        if (diagMsgVal) {
+          diagMsgVal.textContent = errMsg;
+        }
+        if (diagCodeVal && diagCodeRow) {
+          diagCodeRow.style.display = 'flex';
+          diagCodeVal.textContent = `${errCodeName} (${hexStatus})`;
+        }
+        if (parsed.line !== undefined && diagLocVal && diagLocRow) {
+          diagLocRow.style.display = 'flex';
+          diagLocVal.textContent = `Line ${parsed.line}${parsed.col ? `, Col ${parsed.col}` : ''}${parsed.tag ? ` (<${parsed.tag}>)` : ''}`;
+        } else if (diagLocRow) {
+          diagLocRow.style.display = 'none';
+        }
+        if (diagRawContent) {
+          diagRawContent.textContent = typeof res.diagnostic === 'string'
+            ? res.diagnostic
+            : JSON.stringify(res.diagnostic, null, 2);
+        }
+        if (btnToggleDiag) {
+          btnToggleDiag.style.display = 'inline-block';
+        }
+
+        console.error('[OpenCAD Diagnostic Error]', {
+          status: res.status,
+          code: errCodeName,
+          message: errMsg,
+          details: parsed,
+          raw: res.diagnostic,
+        });
       }
 
       return res;
@@ -463,6 +528,7 @@ async function initApp() {
       if (statusIndicator) statusIndicator.className = 'status-dot status-err';
       if (statusMessage) statusMessage.textContent = err.message || 'Evaluation error';
       if (brandMark) brandMark.innerHTML = renderControlMarkSvg(20, 'fault');
+      if (btnToggleDiag) btnToggleDiag.style.display = 'inline-block';
       return { status: -1, diagnostic: err.message, mesh: null, vars: [], probes: {}, exports: [] };
     }
   };
@@ -470,6 +536,91 @@ async function initApp() {
   window.__evaluateCdml = evaluateCode;
   window.__exportStep = () => bridge.exportCDMLStep();
   window.__exportStl = () => bridge.exportCDMLStl();
+
+  // Diagnostics Drawer Toggle and Handlers
+  if (btnToggleDiag && diagnosticDrawer) {
+    btnToggleDiag.addEventListener('click', () => {
+      const isHidden = diagnosticDrawer.style.display === 'none';
+      diagnosticDrawer.style.display = isHidden ? 'block' : 'none';
+      btnToggleDiag.textContent = isHidden ? 'Details ▴' : 'Details ▾';
+    });
+  }
+
+  if (statusMessage && diagnosticDrawer && btnToggleDiag) {
+    statusMessage.style.cursor = 'pointer';
+    statusMessage.addEventListener('click', () => {
+      if (btnToggleDiag.style.display !== 'none') {
+        const isHidden = diagnosticDrawer.style.display === 'none';
+        diagnosticDrawer.style.display = isHidden ? 'block' : 'none';
+        btnToggleDiag.textContent = isHidden ? 'Details ▴' : 'Details ▾';
+      }
+    });
+  }
+
+  if (btnCloseDiag && diagnosticDrawer && btnToggleDiag) {
+    btnCloseDiag.addEventListener('click', () => {
+      diagnosticDrawer.style.display = 'none';
+      btnToggleDiag.textContent = 'Details ▾';
+    });
+  }
+
+  if (btnCopyDiag) {
+    btnCopyDiag.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(lastDiagnosticPayload);
+        const originalText = btnCopyDiag.textContent;
+        btnCopyDiag.textContent = 'Copied!';
+        setTimeout(() => {
+          btnCopyDiag.textContent = originalText;
+        }, 1500);
+      } catch (err) {
+        console.warn('Clipboard write failed:', err);
+      }
+    });
+  }
+
+  // Viewport Screenshot Capture
+  if (btnScreenshot) {
+    btnScreenshot.addEventListener('click', () => {
+      try {
+        const dataUrl = viewer.captureScreenshot();
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        downloadFile(dataUrl, `opencad-render-${timestamp}.png`, 'image/png');
+      } catch (err) {
+        console.error('Failed to capture screenshot:', err);
+      }
+    });
+  }
+
+  // Viewport Dock Actions (Inspired by Web Slicer UI)
+  if (btnCameraFit) {
+    btnCameraFit.addEventListener('click', () => {
+      viewer.fitCameraToMesh(true);
+    });
+  }
+
+  if (btnToggleWireframe) {
+    btnToggleWireframe.addEventListener('click', () => {
+      const isWireframe = viewer.meshManager.toggleWireframe();
+      btnToggleWireframe.classList.toggle('active', isWireframe);
+    });
+  }
+
+  if (btnToggleGui) {
+    btnToggleGui.addEventListener('click', () => {
+      if (lilController) {
+        const root = lilController.getRootElement();
+        const isHidden = !root || root.style.display === 'none';
+        if (isHidden) {
+          lilController.show();
+          btnToggleGui.classList.add('active');
+        } else {
+          lilController.hide();
+          btnToggleGui.classList.remove('active');
+        }
+      }
+    });
+  }
 
   // Splitter Dragging
   if (paneSplitter && codePane) {
@@ -506,98 +657,161 @@ async function initApp() {
     });
   }
 
-  // Collapse / Expand Toggles (Clean visibility: hidden is completely hidden, shown is cleanly shown)
-  if (btnCollapse && codePane) {
-    btnCollapse.addEventListener('click', () => {
+  // Code Pane Toggle (Always in sidebar dock; toggles open/collapsed state and active highlight)
+  const setCodePaneCollapsed = (collapsed: boolean) => {
+    if (!codePane) return;
+    if (collapsed) {
       codePane.classList.add('collapsed');
       if (paneSplitter) paneSplitter.classList.add('collapsed');
-      if (btnExpand) btnExpand.style.display = 'block';
-      viewer.handleResize();
+      if (btnExpand) {
+        btnExpand.classList.remove('active');
+        btnExpand.title = 'Show Code Editor';
+      }
+    } else {
+      codePane.classList.remove('collapsed');
+      if (paneSplitter) paneSplitter.classList.remove('collapsed');
+      if (btnExpand) {
+        btnExpand.classList.add('active');
+        btnExpand.title = 'Hide Code Editor';
+      }
+    }
+    viewer.handleResize();
+  };
+
+  if (btnCollapse && codePane) {
+    btnCollapse.addEventListener('click', () => {
+      setCodePaneCollapsed(true);
     });
   }
 
   if (btnExpand && codePane) {
     btnExpand.addEventListener('click', () => {
-      codePane.classList.remove('collapsed');
-      if (paneSplitter) paneSplitter.classList.remove('collapsed');
-      btnExpand.style.display = 'none';
-      viewer.handleResize();
+      const isCurrentlyCollapsed = codePane.classList.contains('collapsed');
+      setCodePaneCollapsed(!isCurrentlyCollapsed);
     });
   }
 
-  // Starter Examples Select
-  if (exampleSelect && cdmlEditor) {
-    exampleSelect.addEventListener('change', async () => {
-      const selected = exampleSelect.value;
-      if (selected) {
+  // Determine Initial Code (URL > localStorage > DEFAULT_TORUS_CDML)
+  let initialCode = DEFAULT_TORUS_CDML;
+  let hasExplicitUrl = Boolean(cdmlParam);
+
+  if (!hasExplicitUrl) {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved && saved.trim().length > 0) {
+        initialCode = saved;
+      }
+    } catch {}
+  }
+
+  // Synchronize CodeMirror & #cdml-editor
+  let isInternalSync = false;
+  let debounceTimer: any = null;
+
+  const handleCodeChange = (newCode: string) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      const trimmed = newCode.trim();
+      if (trimmed.length > 0) {
+        evaluateCode(newCode);
         try {
-          const targetUrl = getAssetUrl(selected);
-          const resp = await fetch(targetUrl);
-          if (resp.ok) {
-            const text = await resp.text();
-            cdmlEditor.value = text;
-            currentDocUrl = new URL(targetUrl, window.location.href).toString();
-            await evaluateCode(text);
-          } else {
-            console.warn('Example fetch returned status:', resp.status);
+          localStorage.setItem(STORAGE_KEY, newCode);
+        } catch {}
+      } else {
+        if (statusMessage) statusMessage.textContent = 'Ready (Enter CDML)';
+        if (statusIndicator) statusIndicator.className = 'status-dot';
+      }
+    }, 200);
+  };
+
+  // Mount CodeMirror 6 in #codemirror-mount
+  let editorView: EditorView | null = null;
+  if (codemirrorMount) {
+    editorView = new EditorView({
+      doc: initialCode,
+      extensions: [
+        basicSetup,
+        xml(),
+        oneDark,
+        EditorView.lineWrapping,
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged && !isInternalSync) {
+            const docStr = update.state.doc.toString();
+            if (cdmlEditor && cdmlEditor.value !== docStr) {
+              isInternalSync = true;
+              cdmlEditor.value = docStr;
+              isInternalSync = false;
+            }
+            handleCodeChange(docStr);
           }
-        } catch (err) {
-          console.error('Failed to load example:', selected, err);
-        }
-      }
+        }),
+      ],
+      parent: codemirrorMount,
     });
+    window.__cadEditorView = editorView;
   }
 
-  // Live Debounced CDML Editing: Geometry is built and rendered whenever user writes code
   if (cdmlEditor) {
-    let debounceTimer: any = null;
+    cdmlEditor.value = initialCode;
     cdmlEditor.addEventListener('input', () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        const code = cdmlEditor.value.trim();
-        if (code.length > 0) {
-          evaluateCode(cdmlEditor.value);
-        } else {
-          if (statusMessage) statusMessage.textContent = 'Ready (Enter CDML)';
-          if (statusIndicator) statusIndicator.className = 'status-dot';
-        }
-      }, 200);
+      if (isInternalSync) return;
+      const code = cdmlEditor.value;
+      if (editorView && editorView.state.doc.toString() !== code) {
+        isInternalSync = true;
+        editorView.dispatch({
+          changes: { from: 0, to: editorView.state.doc.length, insert: code },
+        });
+        isInternalSync = false;
+      }
+      handleCodeChange(code);
     });
   }
 
-  // Initial Load: If example is not loaded, user can still write code and geometry is built & rendered
-  const initialUrl = cdmlParam || getAssetUrl('examples/flange_normative.cdml');
-  let initialLoaded = false;
-  try {
-    const resp = await fetch(initialUrl);
-    if (resp.ok) {
-      const text = await resp.text();
-      // If user hasn't already typed in the editor, load the fetched example
-      if (cdmlEditor && (!cdmlEditor.value || cdmlEditor.value.trim().length === 0)) {
-        cdmlEditor.value = text;
+  // Reset Button: Restores Default Twisted Torus Ring
+  if (btnReset) {
+    btnReset.addEventListener('click', () => {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+      isInternalSync = true;
+      if (cdmlEditor) cdmlEditor.value = DEFAULT_TORUS_CDML;
+      if (editorView) {
+        editorView.dispatch({
+          changes: { from: 0, to: editorView.state.doc.length, insert: DEFAULT_TORUS_CDML },
+        });
       }
-      currentDocUrl = new URL(initialUrl, window.location.href).toString();
-      const codeToEval = cdmlEditor && cdmlEditor.value.trim().length > 0 ? cdmlEditor.value : text;
-      await evaluateCode(codeToEval);
-      initialLoaded = true;
-    } else {
-      console.warn('Initial CDML fetch returned status:', resp.status);
-    }
-  } catch (err) {
-    console.warn('Network error fetching initial CDML:', err);
+      isInternalSync = false;
+      evaluateCode(DEFAULT_TORUS_CDML);
+    });
   }
 
-  // Fallback: If example could not be loaded over network, user can still write code or use embedded starter
-  if (!initialLoaded) {
-    if (cdmlEditor && cdmlEditor.value && cdmlEditor.value.trim().length > 0) {
-      // User has already typed code into the editor: evaluate and render it directly!
-      await evaluateCode(cdmlEditor.value);
-    } else {
-      // Populate with standalone normative starter so the viewport is live
-      const starter = getStarterCdml();
-      if (cdmlEditor) cdmlEditor.value = starter;
-      await evaluateCode(starter);
+  // Initial Load from URL if provided, otherwise evaluate initialCode
+  if (hasExplicitUrl && cdmlParam) {
+    const targetUrl = getAssetUrl(cdmlParam);
+    try {
+      const resp = await fetch(targetUrl);
+      if (resp.ok) {
+        const text = await resp.text();
+        isInternalSync = true;
+        if (cdmlEditor) cdmlEditor.value = text;
+        if (editorView) {
+          editorView.dispatch({
+            changes: { from: 0, to: editorView.state.doc.length, insert: text },
+          });
+        }
+        isInternalSync = false;
+        currentDocUrl = new URL(targetUrl, window.location.href).toString();
+        await evaluateCode(text);
+      } else {
+        console.warn('Initial CDML fetch returned status:', resp.status);
+        await evaluateCode(initialCode);
+      }
+    } catch (err) {
+      console.warn('Network error fetching initial CDML:', err);
+      await evaluateCode(initialCode);
     }
+  } else {
+    await evaluateCode(initialCode);
   }
 }
 

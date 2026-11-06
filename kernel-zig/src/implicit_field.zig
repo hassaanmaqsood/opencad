@@ -19,6 +19,8 @@ pub var active_qef_reg: f64 = 1e-4;
 pub var last_implicit_status: u32 = 0;
 pub var last_pruned_nodes: usize = 0;
 pub var last_evaluated_leaves: usize = 0;
+pub var last_domain_clipped_corners: usize = 0;
+pub var last_singularities_filtered: usize = 0;
 
 pub const ImplicitSolid = struct {
     solid_id: u32,
@@ -32,8 +34,142 @@ pub const ImplicitSolid = struct {
 var next_implicit_id: u32 = 1;
 pub var implicit_store: std.AutoHashMap(u64, ImplicitSolid) = std.AutoHashMap(u64, ImplicitSolid).init(memory.persistent_allocator);
 
+pub fn freeImplicitSolid(handle: u64) void {
+    if (implicit_store.fetchRemove(handle)) |kv| {
+        autodiff.expr_free(kv.value.scalar_expr_h);
+    }
+    surface_brep.solid_free(handle);
+}
+
 fn packGridKey(ix: usize, iy: usize, iz: usize) u64 {
     return (@as(u64, @intCast(ix)) << 40) | (@as(u64, @intCast(iy)) << 20) | @as(u64, @intCast(iz));
+}
+
+/// Solves the 3x3 symmetric positive semi-definite QEF system A * u = rhs
+/// using exact cyclic Jacobi eigendecomposition A = V * Lambda * V^T and
+/// truncated SVD pseudoinverse (Schaefer & Warren Dual Contouring).
+/// Returns the numerical rank (1 = smooth face, 2 = sharp crease/ridge, 3 = corner)
+/// and writes the minimum-norm least-squares displacement into `u_out`.
+fn solveQefSvd3x3(A: *const [9]f64, rhs: *const [3]f64, svd_tol: f64, reg: f64, u_out: *[3]f64) u8 {
+    var m = [3][3]f64{
+        .{ A[0], A[1], A[2] },
+        .{ A[3], A[4], A[5] },
+        .{ A[6], A[7], A[8] },
+    };
+    var v = [3][3]f64{
+        .{ 1.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 1.0 },
+    };
+
+    // Cyclic Jacobi iterations to diagonalize symmetric 3x3 matrix m
+    for (0..15) |_| {
+        const a01 = @abs(m[0][1]);
+        const a02 = @abs(m[0][2]);
+        const a12 = @abs(m[1][2]);
+        var p: usize = 0;
+        var q: usize = 1;
+        var max_off = a01;
+        if (a02 > max_off) {
+            p = 0;
+            q = 2;
+            max_off = a02;
+        }
+        if (a12 > max_off) {
+            p = 1;
+            q = 2;
+            max_off = a12;
+        }
+        if (max_off < 1e-13) break;
+
+        const app = m[p][p];
+        const aqq = m[q][q];
+        const apq = m[p][q];
+        const tau = (aqq - app) / (2.0 * apq);
+        const t = if (tau >= 0.0)
+            1.0 / (tau + @sqrt(1.0 + tau * tau))
+        else
+            -1.0 / (-tau + @sqrt(1.0 + tau * tau));
+        const c = 1.0 / @sqrt(1.0 + t * t);
+        const s = t * c;
+
+        m[p][p] = app - t * apq;
+        m[q][q] = aqq + t * apq;
+        m[p][q] = 0.0;
+        m[q][p] = 0.0;
+
+        const r: usize = 3 - p - q;
+        const arp = m[r][p];
+        const arq = m[r][q];
+        m[r][p] = c * arp - s * arq;
+        m[p][r] = m[r][p];
+        m[r][q] = s * arp + c * arq;
+        m[q][r] = m[r][q];
+
+        for (0..3) |i| {
+            const vip = v[i][p];
+            const viq = v[i][q];
+            v[i][p] = c * vip - s * viq;
+            v[i][q] = s * vip + c * viq;
+        }
+    }
+
+    const e0 = @max(0.0, m[0][0]);
+    const e1 = @max(0.0, m[1][1]);
+    const e2 = @max(0.0, m[2][2]);
+    const e_max = @max(e0, @max(e1, e2));
+    if (e_max < 1e-12 or std.math.isNan(e_max)) {
+        u_out.* = .{ 0.0, 0.0, 0.0 };
+        return 0;
+    }
+
+    const cutoff = svd_tol * e_max;
+    const eigs = [3]f64{ e0, e1, e2 };
+    var rank: u8 = 0;
+    var u = [3]f64{ 0.0, 0.0, 0.0 };
+    const eff_reg = @max(reg, 1e-3);
+
+    for (0..3) |i| {
+        const lam = eigs[i];
+        if (lam > cutoff) {
+            rank += 1;
+            const v_dot_rhs = v[0][i] * rhs[0] + v[1][i] * rhs[1] + v[2][i] * rhs[2];
+            const inv_lam = lam / (lam * lam + eff_reg * eff_reg);
+            const scale = inv_lam * v_dot_rhs;
+            u[0] += scale * v[0][i];
+            u[1] += scale * v[1][i];
+            u[2] += scale * v[2][i];
+        }
+    }
+
+    if (std.math.isNan(u[0]) or std.math.isNan(u[1]) or std.math.isNan(u[2])) {
+        u_out.* = .{ 0.0, 0.0, 0.0 };
+        return 0;
+    }
+    u_out.* = u;
+    return rank;
+}
+
+/// Clips displacement ray `origin + s * u` (s in [0, 1]) to remain inside `[box_min, box_max]`
+/// without distorting the direction vector `u`.
+fn clipRayToBox(origin: Vec3d, u: Vec3d, box_min: Vec3d, box_max: Vec3d) Vec3d {
+    var s: f64 = 1.0;
+    if (u.x > 1e-12 and origin.x + u.x > box_max.x) {
+        s = @min(s, @max(0.0, (box_max.x - origin.x) / u.x));
+    } else if (u.x < -1e-12 and origin.x + u.x < box_min.x) {
+        s = @min(s, @max(0.0, (box_min.x - origin.x) / u.x));
+    }
+    if (u.y > 1e-12 and origin.y + u.y > box_max.y) {
+        s = @min(s, @max(0.0, (box_max.y - origin.y) / u.y));
+    } else if (u.y < -1e-12 and origin.y + u.y < box_min.y) {
+        s = @min(s, @max(0.0, (box_min.y - origin.y) / u.y));
+    }
+    if (u.z > 1e-12 and origin.z + u.z > box_max.z) {
+        s = @min(s, @max(0.0, (box_max.z - origin.z) / u.z));
+    } else if (u.z < -1e-12 and origin.z + u.z < box_min.z) {
+        s = @min(s, @max(0.0, (box_min.z - origin.z) / u.z));
+    }
+    return origin.add(u.scale(s));
 }
 
 /// Implements solid_implicit_field using adaptive Octree Interval Arithmetic pruning
@@ -90,6 +226,8 @@ const OctreeContext = struct {
     solid_id: u32,
     b_min: Vec3d,
     b_max: Vec3d,
+    domain_min: Vec3d,
+    domain_max: Vec3d,
     dx: f64,
     dy: f64,
     dz: f64,
@@ -103,8 +241,76 @@ const OctreeContext = struct {
     brep: *BRepSolid,
     pruned_nodes: usize = 0,
     evaluated_leaves: usize = 0,
+    domain_clipped_corners: usize = 0,
+    singularities_filtered: usize = 0,
     grad_zero_detected: bool = false,
     any_negative_sampled: bool = false,
+
+    fn domainBoxSdf(self: *const OctreeContext, x: f64, y: f64, z: f64) f64 {
+        const dx_lo = self.domain_min.x - x;
+        const dx_hi = x - self.domain_max.x;
+        const dy_lo = self.domain_min.y - y;
+        const dy_hi = y - self.domain_max.y;
+        const dz_lo = self.domain_min.z - z;
+        const dz_hi = z - self.domain_max.z;
+        return @max(@max(dx_lo, dx_hi), @max(@max(dy_lo, dy_hi), @max(dz_lo, dz_hi)));
+    }
+
+    fn domainBoxNormal(self: *const OctreeContext, x: f64, y: f64, z: f64) Vec3d {
+        const dx_lo = self.domain_min.x - x;
+        const dx_hi = x - self.domain_max.x;
+        const dy_lo = self.domain_min.y - y;
+        const dy_hi = y - self.domain_max.y;
+        const dz_lo = self.domain_min.z - z;
+        const dz_hi = z - self.domain_max.z;
+        var best = dx_lo;
+        var nrm = Vec3d.init(-1.0, 0.0, 0.0);
+        if (dx_hi > best) {
+            best = dx_hi;
+            nrm = Vec3d.init(1.0, 0.0, 0.0);
+        }
+        if (dy_lo > best) {
+            best = dy_lo;
+            nrm = Vec3d.init(0.0, -1.0, 0.0);
+        }
+        if (dy_hi > best) {
+            best = dy_hi;
+            nrm = Vec3d.init(0.0, 1.0, 0.0);
+        }
+        if (dz_lo > best) {
+            best = dz_lo;
+            nrm = Vec3d.init(0.0, 0.0, -1.0);
+        }
+        if (dz_hi > best) {
+            nrm = Vec3d.init(0.0, 0.0, 1.0);
+        }
+        return nrm;
+    }
+
+    /// Evaluates the raw scalar field and filters removable 0/0 coordinate singularities
+    /// (where a single point evaluates <= 0 while all 4 orthogonal XY neighbors at sub-voxel
+    /// offset are strictly positive).
+    fn evalRawFiltered(self: *OctreeContext, x: f64, y: f64, z: f64) f64 {
+        var raw_val = autodiff.expr_eval(self.expr_h, &[3]f64{ x, y, z }, 3, null);
+        if (raw_val <= 0.0) {
+            const delta = 0.05 * @min(self.dx, self.dy);
+            const f_xp = autodiff.expr_eval(self.expr_h, &[3]f64{ x + delta, y, z }, 3, null);
+            const f_xm = autodiff.expr_eval(self.expr_h, &[3]f64{ x - delta, y, z }, 3, null);
+            const f_yp = autodiff.expr_eval(self.expr_h, &[3]f64{ x, y + delta, z }, 3, null);
+            const f_ym = autodiff.expr_eval(self.expr_h, &[3]f64{ x, y - delta, z }, 3, null);
+            if (f_xp > 1e-2 and f_xm > 1e-2 and f_yp > 1e-2 and f_ym > 1e-2) {
+                raw_val = 0.25 * (f_xp + f_xm + f_yp + f_ym);
+                self.singularities_filtered += 1;
+            }
+        }
+        return raw_val;
+    }
+
+    fn evalBoundedPoint(self: *OctreeContext, x: f64, y: f64, z: f64) f64 {
+        const raw_val = self.evalRawFiltered(x, y, z);
+        const d_dom = self.domainBoxSdf(x, y, z);
+        return @max(raw_val, d_dom);
+    }
 
     fn evalCorner(self: *OctreeContext, ix: usize, iy: usize, iz: usize) f64 {
         const key = packGridKey(ix, iy, iz);
@@ -113,7 +319,12 @@ const OctreeContext = struct {
         const x = self.b_min.x + @as(f64, @floatFromInt(ix)) * self.dx;
         const y = self.b_min.y + @as(f64, @floatFromInt(iy)) * self.dy;
         const z = self.b_min.z + @as(f64, @floatFromInt(iz)) * self.dz;
-        const val = autodiff.expr_eval(self.expr_h, &[3]f64{ x, y, z }, 3, null);
+        const raw_val = self.evalRawFiltered(x, y, z);
+        const d_dom = self.domainBoxSdf(x, y, z);
+        if (raw_val < 0.0 and d_dom > 0.0) {
+            self.domain_clipped_corners += 1;
+        }
+        const val = @max(raw_val, d_dom);
         if (val <= 0.0) self.any_negative_sampled = true;
         self.corner_cache.put(key, val) catch {};
         return val;
@@ -127,24 +338,29 @@ const OctreeContext = struct {
         );
     }
 
-    /// Finds exact zero-crossing along edge [p_a, p_b] via secant + bisection refinement
-    fn findEdgeZeroCrossing(self: *const OctreeContext, p_a: Vec3d, p_b: Vec3d, f_a: f64, f_b: f64) Vec3d {
+    /// Finds exact zero-crossing along edge [p_a, p_b] via bracketed secant + bisection refinement
+    fn findEdgeZeroCrossing(self: *OctreeContext, p_a: Vec3d, p_b: Vec3d, f_a: f64, f_b: f64) Vec3d {
+        if (@abs(f_a) < 1e-15) return p_a;
+        if (@abs(f_b) < 1e-15) return p_b;
+
         var lo_p = p_a;
         var hi_p = p_b;
         var lo_f = f_a;
         var hi_f = f_b;
 
-        for (0..12) |_| {
+        for (0..12) |iter| {
             const denom = hi_f - lo_f;
             var t: f64 = if (@abs(denom) > 1e-15) -lo_f / denom else 0.5;
-            t = std.math.clamp(t, 0.1, 0.9);
+            if (t <= 0.002 or t >= 0.998 or (iter % 4 == 3)) {
+                t = 0.5;
+            }
             const mid_p = Vec3d.init(
                 lo_p.x + t * (hi_p.x - lo_p.x),
                 lo_p.y + t * (hi_p.y - lo_p.y),
                 lo_p.z + t * (hi_p.z - lo_p.z),
             );
-            const mid_f = autodiff.expr_eval(self.expr_h, &[3]f64{ mid_p.x, mid_p.y, mid_p.z }, 3, null);
-            if (@abs(mid_f) < 1e-14) return mid_p;
+            const mid_f = self.evalBoundedPoint(mid_p.x, mid_p.y, mid_p.z);
+            if (@abs(mid_f) < 1e-15) return mid_p;
             if ((lo_f <= 0.0 and mid_f <= 0.0) or (lo_f > 0.0 and mid_f > 0.0)) {
                 lo_p = mid_p;
                 lo_f = mid_f;
@@ -163,7 +379,25 @@ const OctreeContext = struct {
         );
     }
 
+    fn evalSurfaceNormalAt(self: *OctreeContext, p: Vec3d, out_grad: *[3]f64) ?Vec3d {
+        const raw_f = autodiff.expr_eval(self.expr_h, &[3]f64{ p.x, p.y, p.z }, 3, out_grad);
+        const d_dom = self.domainBoxSdf(p.x, p.y, p.z);
+        if (d_dom > raw_f + 1e-5) {
+            const dn = self.domainBoxNormal(p.x, p.y, p.z);
+            out_grad.* = .{ dn.x, dn.y, dn.z };
+            return dn;
+        }
+        const grad_norm = @sqrt(out_grad[0] * out_grad[0] + out_grad[1] * out_grad[1] + out_grad[2] * out_grad[2]);
+        if (grad_norm < 1e-12 or std.math.isNan(grad_norm)) {
+            return null;
+        }
+        return Vec3d.init(out_grad[0] / grad_norm, out_grad[1] / grad_norm, out_grad[2] / grad_norm);
+    }
+
     fn processLeafCell(self: *OctreeContext, ix: usize, iy: usize, iz: usize) void {
+        const cell_key = packGridKey(ix, iy, iz);
+        if (self.cell_vert_map.contains(cell_key)) return;
+
         self.evaluated_leaves += 1;
 
         const c_coords = [8][3]usize{
@@ -209,18 +443,13 @@ const OctreeContext = struct {
                 const pb = self.cornerPos(c_coords[e[1]][0], c_coords[e[1]][1], c_coords[e[1]][2]);
                 const pk = self.findEdgeZeroCrossing(pa, pb, fa, fb);
 
-                // Evaluate exact analytical gradient via Dual Numbers
                 var grad: [3]f64 = undefined;
-                _ = autodiff.expr_eval(self.expr_h, &[3]f64{ pk.x, pk.y, pk.z }, 3, &grad);
-                const grad_norm = @sqrt(grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]);
-
-                // CDML §8.1 & §13.1: Reject fields with ||grad F|| < 1e-12 on the zero isosurface
-                if (grad_norm < 1e-12 or std.math.isNan(grad_norm)) {
+                const nk = self.evalSurfaceNormalAt(pk, &grad) orelse {
+                    // CDML §8.1 & §13.1: Reject fields with ||grad F|| < 1e-12 on the zero isosurface
                     self.grad_zero_detected = true;
                     return;
-                }
+                };
 
-                const nk = Vec3d.init(grad[0] / grad_norm, grad[1] / grad_norm, grad[2] / grad_norm);
                 edge_pts[crossing_count] = pk;
                 edge_nrms[crossing_count] = nk;
                 crossing_count += 1;
@@ -236,14 +465,8 @@ const OctreeContext = struct {
         mass_pt = mass_pt.scale(inv_k);
         avg_nrm = avg_nrm.normalize();
 
-        // Assemble regularized 3x3 QEF normal equations:
-        // QEF(v) = sum_k (n_k . (v - p_k))^2 + lambda * ||v - mass_pt||^2
-        // Let u = v - mass_pt -> (A + lambda*I) * u = sum_k (n_k . (p_k - mass_pt)) * n_k
-        var A = [9]f64{
-            self.qef_reg, 0.0,          0.0,
-            0.0,          self.qef_reg, 0.0,
-            0.0,          0.0,          self.qef_reg,
-        };
+        // Assemble unregularized 3x3 QEF normal matrix A = sum_k n_k * n_k^T and rhs = sum_k (n_k . (p_k - mass_pt)) * n_k
+        var A = [9]f64{ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
         var rhs = [3]f64{ 0.0, 0.0, 0.0 };
 
         for (0..crossing_count) |k| {
@@ -268,37 +491,72 @@ const OctreeContext = struct {
 
         const cell_min = self.cornerPos(ix, iy, iz);
         const cell_max = self.cornerPos(ix + 1, iy + 1, iz + 1);
+        const margin = Vec3d.init(0.08 * self.dx, 0.08 * self.dy, 0.08 * self.dz);
+        const box_min = cell_min.sub(margin);
+        const box_max = cell_max.add(margin);
+
         var u_sol = [3]f64{ 0.0, 0.0, 0.0 };
-        var dual_v = mass_pt;
-        if (constraint_sys.solveLinearSystem(&A, &rhs, &u_sol, 3)) {
-            dual_v = Vec3d.init(
-                std.math.clamp(mass_pt.x + u_sol[0], cell_min.x, cell_max.x),
-                std.math.clamp(mass_pt.y + u_sol[1], cell_min.y, cell_max.y),
-                std.math.clamp(mass_pt.z + u_sol[2], cell_min.z, cell_max.z),
-            );
-        }
+        const qef_rank = solveQefSvd3x3(&A, &rhs, 0.1, self.qef_reg, &u_sol);
+        const u_vec = Vec3d.init(u_sol[0], u_sol[1], u_sol[2]);
+        var dual_v = clipRayToBox(mass_pt, u_vec, box_min, box_max);
 
-        // Project solved QEF vertex onto exact F(x,y,z) = 0 level set via damped Newton-Gradient steps
+        // Clamp dual_v to the declared <domain> bounding box so capped vertices never protrude outside domain
+        dual_v = Vec3d.init(
+            std.math.clamp(dual_v.x, @max(box_min.x, self.domain_min.x), @min(box_max.x, self.domain_max.x)),
+            std.math.clamp(dual_v.y, @max(box_min.y, self.domain_min.y), @min(box_max.y, self.domain_max.y)),
+            std.math.clamp(dual_v.z, @max(box_min.z, self.domain_min.z), @min(box_max.z, self.domain_max.z)),
+        );
+
+        // Damped Newton-Gradient projection onto exact F(x,y,z) = 0 level set (preserving domain box bounds)
+        const max_step = (if (qef_rank <= 1) @as(f64, 0.25) else @as(f64, 0.12)) * @min(self.dx, @min(self.dy, self.dz));
+        var cur_f = self.evalBoundedPoint(dual_v.x, dual_v.y, dual_v.z);
+
         for (0..4) |_| {
+            if (@abs(cur_f) < 1e-9) break;
             var g_step: [3]f64 = undefined;
-            const f_val = autodiff.expr_eval(self.expr_h, &[3]f64{ dual_v.x, dual_v.y, dual_v.z }, 3, &g_step);
-            if (@abs(f_val) < 1e-9) break;
+            const raw_f_v = autodiff.expr_eval(self.expr_h, &[3]f64{ dual_v.x, dual_v.y, dual_v.z }, 3, &g_step);
+            const d_dom_v = self.domainBoxSdf(dual_v.x, dual_v.y, dual_v.z);
+
+            // If on the domain cap boundary but raw_f != 0 near the rim, project along raw_f gradient
+            // tangent to the domain boundary so curved cylinder/torus rims sit on exact F_raw = 0.
+            const target_f = if (d_dom_v >= -1e-4 and @abs(raw_f_v) < 0.5 * @max(self.dx, self.dy)) raw_f_v else cur_f;
+            if (d_dom_v > raw_f_v + 1e-5 and @abs(raw_f_v) >= 0.5 * @max(self.dx, self.dy)) {
+                const dn = self.domainBoxNormal(dual_v.x, dual_v.y, dual_v.z);
+                g_step = .{ dn.x, dn.y, dn.z };
+            }
+
             const g_sq = g_step[0] * g_step[0] + g_step[1] * g_step[1] + g_step[2] * g_step[2];
-            if (g_sq < 1e-18) break;
-            const alpha = f_val / g_sq;
-            dual_v = Vec3d.init(
-                std.math.clamp(dual_v.x - alpha * g_step[0], cell_min.x, cell_max.x),
-                std.math.clamp(dual_v.y - alpha * g_step[1], cell_min.y, cell_max.y),
-                std.math.clamp(dual_v.z - alpha * g_step[2], cell_min.z, cell_max.z),
+            if (g_sq < 1e-18 or std.math.isNan(g_sq)) break;
+
+            var alpha = target_f / g_sq;
+            const step_len = @abs(alpha) * @sqrt(g_sq);
+            if (step_len > max_step) {
+                alpha *= (max_step / step_len);
+            }
+
+            const step_vec = Vec3d.init(-alpha * g_step[0], -alpha * g_step[1], -alpha * g_step[2]);
+            var next_v = dual_v.add(step_vec);
+            next_v = Vec3d.init(
+                std.math.clamp(next_v.x, self.domain_min.x, self.domain_max.x),
+                std.math.clamp(next_v.y, self.domain_min.y, self.domain_max.y),
+                std.math.clamp(next_v.z, self.domain_min.z, self.domain_max.z),
             );
+            const next_f = self.evalBoundedPoint(next_v.x, next_v.y, next_v.z);
+            if (@abs(next_f) <= @abs(cur_f) + 1e-7) {
+                dual_v = next_v;
+                cur_f = next_f;
+            } else {
+                break;
+            }
         }
 
-        // Re-evaluate exact Dual-Number normal at the solved QEF dual vertex
+        // Compute final vertex normal: on Rank >= 2 creases, use the balanced average of crossing normals
+        // so that adjacent face normals are not biased toward whichever side of the crease dual_v landed on.
         var v_grad: [3]f64 = undefined;
-        _ = autodiff.expr_eval(self.expr_h, &[3]f64{ dual_v.x, dual_v.y, dual_v.z }, 3, &v_grad);
-        const vg_norm = @sqrt(v_grad[0] * v_grad[0] + v_grad[1] * v_grad[1] + v_grad[2] * v_grad[2]);
-        const final_nrm = if (vg_norm > 1e-12)
-            Vec3d.init(v_grad[0] / vg_norm, v_grad[1] / vg_norm, v_grad[2] / vg_norm)
+        const final_nrm = if (qef_rank >= 2)
+            avg_nrm
+        else if (self.evalSurfaceNormalAt(dual_v, &v_grad)) |n|
+            n
         else
             avg_nrm;
 
@@ -306,9 +564,18 @@ const OctreeContext = struct {
         self.brep.vertices.append(self.alloc, dual_v) catch return;
         self.brep.normals.append(self.alloc, final_nrm) catch return;
 
-        const cell_key = packGridKey(ix, iy, iz);
         self.cell_vert_map.put(cell_key, v_idx) catch return;
         self.active_leaves.append(self.alloc, .{ ix, iy, iz }) catch return;
+    }
+
+    fn getOrCreateCellVert(self: *OctreeContext, ix: usize, iy: usize, iz: usize) ?u32 {
+        const key = packGridKey(ix, iy, iz);
+        if (self.cell_vert_map.get(key)) |v| return v;
+        if (ix < self.grid_n and iy < self.grid_n and iz < self.grid_n) {
+            self.processLeafCell(ix, iy, iz);
+            return self.cell_vert_map.get(key);
+        }
+        return null;
     }
 
     fn subdivideOctree(self: *OctreeContext, depth: u5, ix: usize, iy: usize, iz: usize) void {
@@ -328,11 +595,26 @@ const OctreeContext = struct {
             Interval.init(y0, y1),
             Interval.init(z0, z1),
         };
-        const f_bounds = autodiff.expr_eval_interval(self.expr_h, &box_intervals);
-        if (f_bounds.min <= 0.0) self.any_negative_sampled = true;
+        const raw_bounds = autodiff.expr_eval_interval(self.expr_h, &box_intervals);
+
+        // Intersect interval bounds with exact <domain> bounding box interval [d_dom_min, d_dom_max]
+        const dx_min = @max(self.domain_min.x - x1, x0 - self.domain_max.x);
+        const dy_min = @max(self.domain_min.y - y1, y0 - self.domain_max.y);
+        const dz_min = @max(self.domain_min.z - z1, z0 - self.domain_max.z);
+        const d_dom_min = @max(dx_min, @max(dy_min, dz_min));
+
+        const dx_max = @max(self.domain_min.x - x0, x1 - self.domain_max.x);
+        const dy_max = @max(self.domain_min.y - y0, y1 - self.domain_max.y);
+        const dz_max = @max(self.domain_min.z - z0, z1 - self.domain_max.z);
+        const d_dom_max = @max(dx_max, @max(dy_max, dz_max));
+
+        const f_min = @max(raw_bounds.min, d_dom_min);
+        const f_max = @max(raw_bounds.max, d_dom_max);
+
+        if (f_min <= 0.0) self.any_negative_sampled = true;
 
         const tau: f64 = 1e-9;
-        if (f_bounds.min > tau or f_bounds.max < -tau) {
+        if (f_min > tau or f_max < -tau) {
             // O(1) Interval Arithmetic octree pruning: cell does not straddle F = 0!
             self.pruned_nodes += 1;
             return;
@@ -356,16 +638,66 @@ const OctreeContext = struct {
 };
 
 fn emitQuad(brep: *BRepSolid, alloc: std.mem.Allocator, face_id: surface_brep.TopoId, v0: u32, v1: u32, v2: u32, v3: u32, flip: bool) void {
-    if (!flip) {
-        brep.indices.appendSlice(alloc, &[_]u32{ v0, v1, v2 }) catch return;
-        brep.triangle_to_topo_id.append(alloc, face_id) catch return;
-        brep.indices.appendSlice(alloc, &[_]u32{ v0, v2, v3 }) catch return;
-        brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+    const p0 = brep.vertices.items[v0];
+    const p1 = brep.vertices.items[v1];
+    const p2 = brep.vertices.items[v2];
+    const p3 = brep.vertices.items[v3];
+
+    // Evaluate normals for Diagonal Split A (connecting v0 and v2)
+    const nA1 = if (!flip) (p1.sub(p0)).cross(p2.sub(p0)) else (p2.sub(p0)).cross(p1.sub(p0));
+    const nA2 = if (!flip) (p2.sub(p0)).cross(p3.sub(p0)) else (p3.sub(p0)).cross(p2.sub(p0));
+    const dotA = nA1.dot(nA2);
+    const lenA1 = nA1.length();
+    const lenA2 = nA2.length();
+    const cosA = if (lenA1 > 1e-12 and lenA2 > 1e-12) dotA / (lenA1 * lenA2) else dotA;
+
+    // Evaluate normals for Diagonal Split B (connecting v1 and v3)
+    const nB1 = if (!flip) (p1.sub(p0)).cross(p3.sub(p0)) else (p3.sub(p0)).cross(p1.sub(p0));
+    const nB2 = if (!flip) (p2.sub(p1)).cross(p3.sub(p1)) else (p3.sub(p1)).cross(p2.sub(p1));
+    const dotB = nB1.dot(nB2);
+    const lenB1 = nB1.length();
+    const lenB2 = nB2.length();
+    const cosB = if (lenB1 > 1e-12 and lenB2 > 1e-12) dotB / (lenB1 * lenB2) else dotB;
+
+    const d02_sq = p2.sub(p0).normSq();
+    const d13_sq = p3.sub(p1).normSq();
+
+    // Anti-foldover selection: NEVER select a diagonal split that folds the two triangles backwards onto each other!
+    const choose_b = if (cosA <= 0.0 and cosB > 0.0)
+        true
+    else if (cosB <= 0.0 and cosA > 0.0)
+        false
+    else if (cosB > cosA + 0.15)
+        true
+    else if (cosA > cosB + 0.15)
+        false
+    else
+        (d13_sq < d02_sq);
+
+    if (choose_b) {
+        if (!flip) {
+            brep.indices.appendSlice(alloc, &[_]u32{ v0, v1, v3 }) catch return;
+            brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+            brep.indices.appendSlice(alloc, &[_]u32{ v1, v2, v3 }) catch return;
+            brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+        } else {
+            brep.indices.appendSlice(alloc, &[_]u32{ v0, v3, v1 }) catch return;
+            brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+            brep.indices.appendSlice(alloc, &[_]u32{ v1, v3, v2 }) catch return;
+            brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+        }
     } else {
-        brep.indices.appendSlice(alloc, &[_]u32{ v0, v2, v1 }) catch return;
-        brep.triangle_to_topo_id.append(alloc, face_id) catch return;
-        brep.indices.appendSlice(alloc, &[_]u32{ v0, v3, v2 }) catch return;
-        brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+        if (!flip) {
+            brep.indices.appendSlice(alloc, &[_]u32{ v0, v1, v2 }) catch return;
+            brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+            brep.indices.appendSlice(alloc, &[_]u32{ v0, v2, v3 }) catch return;
+            brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+        } else {
+            brep.indices.appendSlice(alloc, &[_]u32{ v0, v2, v1 }) catch return;
+            brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+            brep.indices.appendSlice(alloc, &[_]u32{ v0, v3, v2 }) catch return;
+            brep.triangle_to_topo_id.append(alloc, face_id) catch return;
+        }
     }
 }
 
@@ -380,17 +712,28 @@ fn meshImplicitSolidOctree(
     alloc: std.mem.Allocator,
 ) void {
     const N: usize = @as(usize, 1) << max_depth;
-    const dx = (b_max.x - b_min.x) / @as(f64, @floatFromInt(N));
-    const dy = (b_max.y - b_min.y) / @as(f64, @floatFromInt(N));
-    const dz = (b_max.z - b_min.z) / @as(f64, @floatFromInt(N));
+    // Pad domain asymmetrically (~0.618 / 0.654 cell) so boundary cutting planes (e.g. zmin=0)
+    // and the origin (0,0,0) become well-conditioned interior edge crossings rather than grid corners.
+    const raw_dx = (b_max.x - b_min.x) / @as(f64, @floatFromInt(N));
+    const raw_dy = (b_max.y - b_min.y) / @as(f64, @floatFromInt(N));
+    const raw_dz = (b_max.z - b_min.z) / @as(f64, @floatFromInt(N));
+
+    const pad_min = Vec3d.init(b_min.x - raw_dx, b_min.y - raw_dy, b_min.z - raw_dz);
+    const pad_max = Vec3d.init(b_max.x + raw_dx, b_max.y + raw_dy, b_max.z + raw_dz);
+
+    const dx = (pad_max.x - pad_min.x) / @as(f64, @floatFromInt(N));
+    const dy = (pad_max.y - pad_min.y) / @as(f64, @floatFromInt(N));
+    const dz = (pad_max.z - pad_min.z) / @as(f64, @floatFromInt(N));
 
     var brep = BRepSolid.init(alloc, solid_id);
 
     var ctx = OctreeContext{
         .expr_h = expr_h,
         .solid_id = solid_id,
-        .b_min = b_min,
-        .b_max = b_max,
+        .b_min = pad_min,
+        .b_max = pad_max,
+        .domain_min = b_min,
+        .domain_max = b_max,
         .dx = dx,
         .dy = dy,
         .dz = dz,
@@ -412,6 +755,8 @@ fn meshImplicitSolidOctree(
 
     last_pruned_nodes = ctx.pruned_nodes;
     last_evaluated_leaves = ctx.evaluated_leaves;
+    last_domain_clipped_corners = ctx.domain_clipped_corners;
+    last_singularities_filtered = ctx.singularities_filtered;
 
     if (ctx.grad_zero_detected) {
         last_implicit_status = ERR_IMPLICIT_GRAD_ZERO;
@@ -422,7 +767,9 @@ fn meshImplicitSolidOctree(
     const face_id = makeTopoId(solid_id, SUBSHAPE_FACE, 1);
 
     // 2. Connect dual vertices across sign-changing interior grid edges along +X, +Y, +Z
-    for (ctx.active_leaves.items) |leaf| {
+    const leaf_count = ctx.active_leaves.items.len;
+    for (0..leaf_count) |leaf_i| {
+        const leaf = ctx.active_leaves.items[leaf_i];
         const ix = leaf[0];
         const iy = leaf[1];
         const iz = leaf[2];
@@ -432,10 +779,10 @@ fn meshImplicitSolidOctree(
             const f0 = ctx.evalCorner(ix, iy, iz);
             const f1 = ctx.evalCorner(ix + 1, iy, iz);
             if ((f0 <= 0.0 and f1 > 0.0) or (f0 > 0.0 and f1 <= 0.0)) {
-                const c0 = ctx.cell_vert_map.get(packGridKey(ix, iy - 1, iz - 1));
-                const c1 = ctx.cell_vert_map.get(packGridKey(ix, iy, iz - 1));
-                const c2 = ctx.cell_vert_map.get(packGridKey(ix, iy, iz));
-                const c3 = ctx.cell_vert_map.get(packGridKey(ix, iy - 1, iz));
+                const c0 = ctx.getOrCreateCellVert(ix, iy - 1, iz - 1);
+                const c1 = ctx.getOrCreateCellVert(ix, iy, iz - 1);
+                const c2 = ctx.getOrCreateCellVert(ix, iy, iz);
+                const c3 = ctx.getOrCreateCellVert(ix, iy - 1, iz);
                 if (c0 != null and c1 != null and c2 != null and c3 != null) {
                     emitQuad(&brep, alloc, face_id, c0.?, c1.?, c2.?, c3.?, f0 > 0.0);
                 }
@@ -447,10 +794,10 @@ fn meshImplicitSolidOctree(
             const f0 = ctx.evalCorner(ix, iy, iz);
             const f1 = ctx.evalCorner(ix, iy + 1, iz);
             if ((f0 <= 0.0 and f1 > 0.0) or (f0 > 0.0 and f1 <= 0.0)) {
-                const c0 = ctx.cell_vert_map.get(packGridKey(ix - 1, iy, iz - 1));
-                const c1 = ctx.cell_vert_map.get(packGridKey(ix - 1, iy, iz));
-                const c2 = ctx.cell_vert_map.get(packGridKey(ix, iy, iz));
-                const c3 = ctx.cell_vert_map.get(packGridKey(ix, iy, iz - 1));
+                const c0 = ctx.getOrCreateCellVert(ix - 1, iy, iz - 1);
+                const c1 = ctx.getOrCreateCellVert(ix - 1, iy, iz);
+                const c2 = ctx.getOrCreateCellVert(ix, iy, iz);
+                const c3 = ctx.getOrCreateCellVert(ix, iy, iz - 1);
                 if (c0 != null and c1 != null and c2 != null and c3 != null) {
                     emitQuad(&brep, alloc, face_id, c0.?, c1.?, c2.?, c3.?, f0 > 0.0);
                 }
@@ -462,10 +809,10 @@ fn meshImplicitSolidOctree(
             const f0 = ctx.evalCorner(ix, iy, iz);
             const f1 = ctx.evalCorner(ix, iy, iz + 1);
             if ((f0 <= 0.0 and f1 > 0.0) or (f0 > 0.0 and f1 <= 0.0)) {
-                const c0 = ctx.cell_vert_map.get(packGridKey(ix - 1, iy - 1, iz));
-                const c1 = ctx.cell_vert_map.get(packGridKey(ix, iy - 1, iz));
-                const c2 = ctx.cell_vert_map.get(packGridKey(ix, iy, iz));
-                const c3 = ctx.cell_vert_map.get(packGridKey(ix - 1, iy, iz));
+                const c0 = ctx.getOrCreateCellVert(ix - 1, iy - 1, iz);
+                const c1 = ctx.getOrCreateCellVert(ix, iy - 1, iz);
+                const c2 = ctx.getOrCreateCellVert(ix, iy, iz);
+                const c3 = ctx.getOrCreateCellVert(ix - 1, iy, iz);
                 if (c0 != null and c1 != null and c2 != null and c3 != null) {
                     emitQuad(&brep, alloc, face_id, c0.?, c1.?, c2.?, c3.?, f0 > 0.0);
                 }
@@ -595,4 +942,49 @@ test "Interval-pruned Octree Dual Contouring, QEF vertex placement, and ERR_IMPL
     const h_degen = solid_implicit_field_WithParams(degen_expr, &bbox_degen, 3, 1e-4);
     try std.testing.expectEqual(@as(u64, 0), h_degen);
     try std.testing.expectEqual(ERR_IMPLICIT_GRAD_ZERO, last_implicit_status);
+}
+
+test "Watertight twisted torus across z_c parameter sweep (including domain boundary capping)" {
+    const zc_vals = [_][]const u8{
+        "r_intersect(r_intersect(abs_smooth(((sqrt(x^2 + y^2 + 1e-4) - 24.0) * x + (z - 5.0) * y) / sqrt(x^2 + y^2 + 1e-4), 1e-3) - 7.5, abs_smooth(((z - 5.0) * x - (sqrt(x^2 + y^2 + 1e-4) - 24.0) * y) / sqrt(x^2 + y^2 + 1e-4), 1e-3) - 7.5), 0.0 - z)",
+        "r_intersect(r_intersect(abs_smooth(((sqrt(x^2 + y^2 + 1e-4) - 24.0) * x + (z - 8.5) * y) / sqrt(x^2 + y^2 + 1e-4), 1e-3) - 7.5, abs_smooth(((z - 8.5) * x - (sqrt(x^2 + y^2 + 1e-4) - 24.0) * y) / sqrt(x^2 + y^2 + 1e-4), 1e-3) - 7.5), 0.0 - z)",
+        "r_intersect(r_intersect(abs_smooth(((sqrt(x^2 + y^2 + 1e-4) - 24.0) * x + (z - 16.0) * y) / sqrt(x^2 + y^2 + 1e-4), 1e-3) - 7.5, abs_smooth(((z - 16.0) * x - (sqrt(x^2 + y^2 + 1e-4) - 24.0) * y) / sqrt(x^2 + y^2 + 1e-4), 1e-3) - 7.5), 0.0 - z)",
+    };
+    const bbox = [_]f64{ -38.0, -38.0, 0.0, 38.0, 38.0, 22.0 };
+
+    for (zc_vals, 0..) |expr_str, idx| {
+        const expr_h = autodiff.expr_compile(expr_str.ptr, expr_str.len);
+        const h = solid_implicit_field_WithParams(expr_h, &bbox, 4, 1e-4);
+        try std.testing.expect(h != 0);
+        defer freeImplicitSolid(h);
+
+        if (idx == 2) {
+            // z_c = 16.0 exceeds zmax = 22.0, so domain clipping telemetry must record capped corners
+            try std.testing.expect(last_domain_clipped_corners > 0);
+        }
+
+        const mesh = surface_brep.solid_brep_store.getPtr(h).?;
+        try std.testing.expect(mesh.indices.items.len > 300);
+
+        // Verify zero open boundary edges (every undirected edge shared by an even number >= 2 of triangles)
+        var edge_counts = std.AutoHashMap(u64, u32).init(std.testing.allocator);
+        defer edge_counts.deinit();
+        var t: usize = 0;
+        while (t < mesh.indices.items.len) : (t += 3) {
+            const tri = [3]u32{ mesh.indices.items[t], mesh.indices.items[t + 1], mesh.indices.items[t + 2] };
+            for (0..3) |e| {
+                const a = @min(tri[e], tri[(e + 1) % 3]);
+                const b = @max(tri[e], tri[(e + 1) % 3]);
+                const key = (@as(u64, a) << 32) | @as(u64, b);
+                const prev = edge_counts.get(key) orelse 0;
+                try edge_counts.put(key, prev + 1);
+            }
+        }
+        var open_edges: usize = 0;
+        var it = edge_counts.valueIterator();
+        while (it.next()) |cnt| {
+            if (cnt.* == 1) open_edges += 1;
+        }
+        try std.testing.expectEqual(@as(usize, 0), open_edges);
+    }
 }

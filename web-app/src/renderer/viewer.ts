@@ -54,6 +54,7 @@ export class CadViewer {
       antialias: true,
       powerPreference: 'high-performance',
       alpha: false,
+      preserveDrawingBuffer: true,
     });
     this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));

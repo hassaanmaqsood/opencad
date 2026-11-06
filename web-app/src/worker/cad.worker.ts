@@ -151,6 +151,17 @@ let activeSlice: CadTessellatedSolidSlice | null = null;
 
 export const sharedWasmMemory = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
 
+// Global unhandled error listeners in worker scope
+self.addEventListener('error', (e: ErrorEvent) => {
+  const detail = e.message || (e.error ? (e.error.stack || e.error.message) : '') || 'Unknown worker error';
+  console.error(`[cad.worker] Uncaught worker error: ${detail} [at ${e.filename || 'cad.worker'}:${e.lineno || 0}:${e.colno || 0}]`, e.error || e);
+});
+
+self.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+  const reason = e.reason ? (e.reason.stack || e.reason.message || String(e.reason)) : 'Unknown rejection';
+  console.error(`[cad.worker] Unhandled promise rejection in worker: ${reason}`, e.reason);
+});
+
 // Make shared memory available globally on worker global scope
 (self as any).__openCadSharedMemory = sharedWasmMemory;
 
@@ -247,22 +258,44 @@ function writeWasmString(str: string): { ptr: number; len: number } {
 }
 
 function parseVarsFromXml(xml: string) {
-  const vars: Array<{ id: string; value: number; min?: number; max?: number; unit?: string }> = [];
+  const vars: Array<{ id: string; value: number; min?: number; max?: number; unit?: string; isPublic: boolean }> = [];
   const matches = xml.matchAll(/<var\s+([^>]+)\/>/g);
   for (const m of matches) {
     const attrs = m[1];
     const idMatch = attrs.match(/id="([^"]+)"/);
     const valMatch = attrs.match(/value="([^"]+)"/);
     if (idMatch && valMatch) {
+      const varId = idMatch[1];
       const minMatch = attrs.match(/min="([^"]+)"/);
       const maxMatch = attrs.match(/max="([^"]+)"/);
       const unitMatch = attrs.match(/unit="([^"]+)"/);
+      const publicMatch = attrs.match(/public="([^"]+)"/);
+      const privateMatch = attrs.match(/private="([^"]+)"/);
+      const accessMatch = attrs.match(/access="([^"]+)"/);
+
+      // Variables are public by default.
+      // Private if: id starts with '_', private="true", public="false", or access="private"
+      let isPublic = true;
+      if (varId.startsWith('_')) {
+        isPublic = false;
+      }
+      if (privateMatch && (privateMatch[1] === 'true' || privateMatch[1] === '1')) {
+        isPublic = false;
+      }
+      if (publicMatch && (publicMatch[1] === 'false' || publicMatch[1] === '0')) {
+        isPublic = false;
+      }
+      if (accessMatch && accessMatch[1].toLowerCase() === 'private') {
+        isPublic = false;
+      }
+
       vars.push({
-        id: idMatch[1],
+        id: varId,
         value: parseFloat(valMatch[1]),
         min: minMatch ? parseFloat(minMatch[1]) : undefined,
         max: maxMatch ? parseFloat(maxMatch[1]) : undefined,
         unit: unitMatch ? unitMatch[1] : undefined,
+        isPublic,
       });
     }
   }
@@ -304,31 +337,8 @@ function readTessellationFromSharedMemory() {
   const normals = new Float32Array(sharedWasmMemory.buffer, nrmOffset, vertexCount * 3).slice();
   const indices = new Uint32Array(sharedWasmMemory.buffer, idxOffset, triangleCount * 3).slice();
 
-  const tempEdges = new Float32Array(triangleCount * 18);
-  let eIdx = 0;
-  for (let i = 0; i < indices.length; i += 3) {
-    const idx0 = indices[i];
-    const idx1 = indices[i + 1];
-    const idx2 = indices[i + 2];
-    const pairs = [idx0, idx1, idx1, idx2, idx2, idx0];
-    for (let p = 0; p < 6; p += 2) {
-      const u = pairs[p];
-      const v = pairs[p + 1];
-      if (u > v) continue;
-      const u3 = u * 3;
-      const v3 = v * 3;
-      const dot = normals[u3] * normals[v3] + normals[u3 + 1] * normals[v3 + 1] + normals[u3 + 2] * normals[v3 + 2];
-      if (dot < 0.995) {
-        tempEdges[eIdx++] = positions[u3];
-        tempEdges[eIdx++] = positions[u3 + 1];
-        tempEdges[eIdx++] = positions[u3 + 2];
-        tempEdges[eIdx++] = positions[v3];
-        tempEdges[eIdx++] = positions[v3 + 1];
-        tempEdges[eIdx++] = positions[v3 + 2];
-      }
-    }
-  }
-  const edgeVertices = tempEdges.slice(0, eIdx);
+  // True CAD feature edges are generated client-side via EdgesGeometry with 38-deg dihedral threshold
+  const edgeVertices = new Float32Array(0);
 
   return {
     solidId,
@@ -452,13 +462,14 @@ self.onmessage = async (e: MessageEvent) => {
   const data = e.data;
   if (!data || typeof data !== 'object') return;
 
-  if (data.type === 'INIT_CONFIG') {
-    if (data.wasmUrl) configuredWasmUrl = data.wasmUrl;
-    if (data.canaryUrl) configuredCanaryUrl = data.canaryUrl;
-    // Eagerly initialize WASM in background so user can write code immediately
-    ensureKernelWasm().catch(err => console.warn('Background WASM initialization warning:', err));
-    return;
-  }
+  try {
+    if (data.type === 'INIT_CONFIG') {
+      if (data.wasmUrl) configuredWasmUrl = data.wasmUrl;
+      if (data.canaryUrl) configuredCanaryUrl = data.canaryUrl;
+      // Eagerly initialize WASM in background so user can write code immediately
+      ensureKernelWasm().catch(err => console.warn('Background WASM initialization warning:', err));
+      return;
+    }
 
   if (data.type === 'LOAD_WASM' && data.wasmBinary instanceof ArrayBuffer) {
     const success = await initWasm(data.wasmBinary);
@@ -498,13 +509,24 @@ self.onmessage = async (e: MessageEvent) => {
       const docStr = writeWasmString(data.xml);
       const status = (wasmExports as any).cdml_eval_document(docStr.ptr, docStr.len);
 
-      if (status !== 0) {
+      const readScratchDiagnostic = (): string => {
         const diagPtr = (wasmExports as any).get_string_ptr?.();
         const diagLen = (wasmExports as any).get_string_len?.() ?? 0;
-        let diag = `CDML Error 0x${status.toString(16)}`;
-        if (diagPtr && diagLen > 0) {
-          diag = new TextDecoder().decode(new Uint8Array(sharedWasmMemory.buffer, diagPtr, diagLen).slice());
+        if (diagPtr && diagLen > 0 && diagLen < 16384) {
+          const raw = new TextDecoder().decode(new Uint8Array(sharedWasmMemory.buffer, diagPtr, diagLen).slice());
+          if (raw.trim().startsWith('{')) return raw;
         }
+        return '';
+      };
+
+      if (status !== 0) {
+        const diag = readScratchDiagnostic() || `CDML Error 0x${status.toString(16)}`;
+        const isUserErr = status >= 0x0100 && status <= 0x0502;
+        console.warn(
+          isUserErr
+            ? `[OpenCAD — User CDML Model Error 0x${status.toString(16)}] ${diag}`
+            : `[OpenCAD — CAD Kernel Error 0x${status.toString(16)}] ${diag}`
+        );
         self.postMessage({
           type: 'CDML_EVALUATED',
           requestId: reqId,
@@ -527,7 +549,38 @@ self.onmessage = async (e: MessageEvent) => {
         }
       }
 
+      const noticeDiag = readScratchDiagnostic();
+      if (noticeDiag && noticeDiag.includes('Notice')) {
+        console.info(`[OpenCAD — User CDML Model Notice] ${noticeDiag}`);
+      }
+
       const mesh = readTessellationFromSharedMemory();
+      if (mesh && mesh.indices.length >= 3) {
+        const edgeCounts = new Map<string, number>();
+        for (let i = 0; i < mesh.indices.length; i += 3) {
+          const a = mesh.indices[i], b = mesh.indices[i + 1], c = mesh.indices[i + 2];
+          const e0 = a < b ? `${a}_${b}` : `${b}_${a}`;
+          const e1 = b < c ? `${b}_${c}` : `${c}_${b}`;
+          const e2 = c < a ? `${c}_${a}` : `${a}_${c}`;
+          edgeCounts.set(e0, (edgeCounts.get(e0) || 0) + 1);
+          edgeCounts.set(e1, (edgeCounts.get(e1) || 0) + 1);
+          edgeCounts.set(e2, (edgeCounts.get(e2) || 0) + 1);
+        }
+        let openBoundaryEdges = 0;
+        for (const cnt of edgeCounts.values()) {
+          if (cnt === 1) openBoundaryEdges++;
+        }
+        if (openBoundaryEdges > 0) {
+          console.error(
+            `[OpenCAD — CAD Kernel Topology Warning] Mesh has ${openBoundaryEdges} open boundary edges (V=${mesh.vertexCount}, T=${mesh.triangleCount}).`
+          );
+        } else {
+          console.info(
+            `[OpenCAD — Kernel Nominal] Watertight manifold verified (0 open boundary edges, V=${mesh.vertexCount}, T=${mesh.triangleCount}).`
+          );
+        }
+      }
+
       const vars = parseVarsFromXml(data.xml);
       const probeIds = parseProbesFromXml(data.xml);
       const probes: Record<string, number> = {};
@@ -550,7 +603,7 @@ self.onmessage = async (e: MessageEvent) => {
           type: 'CDML_EVALUATED',
           requestId: reqId,
           status: 0,
-          diagnostic: '',
+          diagnostic: noticeDiag,
           mesh: {
             positions: mesh.positions.buffer,
             normals: mesh.normals.buffer,
@@ -569,7 +622,7 @@ self.onmessage = async (e: MessageEvent) => {
           type: 'CDML_EVALUATED',
           requestId: reqId,
           status: 0,
-          diagnostic: '',
+          diagnostic: noticeDiag,
           mesh: null,
           vars,
           probes,
@@ -594,16 +647,39 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (data.type === 'CDML_SET_VAR') {
     const reqId = data.requestId ?? 0;
+    const ok = await ensureKernelWasm();
+    if (!ok || !wasmExports) {
+      self.postMessage({
+        type: 'CDML_VAR_UPDATED',
+        requestId: reqId,
+        status: -1,
+        diagnostic: 'Kernel WASM not initialized',
+        mesh: null,
+        probes: {},
+      });
+      return;
+    }
     const varStr = writeWasmString(data.varId);
     const status = (wasmExports as any).cdml_set_var(varStr.ptr, varStr.len, data.value);
 
-    if (status !== 0) {
+    const readVarDiagnostic = (): string => {
       const diagPtr = (wasmExports as any).get_string_ptr?.();
       const diagLen = (wasmExports as any).get_string_len?.() ?? 0;
-      let diag = `CDML Error 0x${status.toString(16)}`;
-      if (diagPtr && diagLen > 0) {
-        diag = new TextDecoder().decode(new Uint8Array(sharedWasmMemory.buffer, diagPtr, diagLen).slice());
+      if (diagPtr && diagLen > 0 && diagLen < 16384) {
+        const raw = new TextDecoder().decode(new Uint8Array(sharedWasmMemory.buffer, diagPtr, diagLen).slice());
+        if (raw.trim().startsWith('{')) return raw;
       }
+      return '';
+    };
+
+    if (status !== 0) {
+      const diag = readVarDiagnostic() || `CDML Error 0x${status.toString(16)}`;
+      const isUserErr = status >= 0x0100 && status <= 0x0502;
+      console.warn(
+        isUserErr
+          ? `[OpenCAD — User CDML Parameter Error (${data.varId}=${data.value})] ${diag}`
+          : `[OpenCAD — CAD Kernel Error 0x${status.toString(16)}] ${diag}`
+      );
       self.postMessage({
         type: 'CDML_VAR_UPDATED',
         requestId: reqId,
@@ -613,6 +689,11 @@ self.onmessage = async (e: MessageEvent) => {
         probes: {},
       });
       return;
+    }
+
+    const varNotice = readVarDiagnostic();
+    if (varNotice && varNotice.includes('Notice')) {
+      console.info(`[OpenCAD — User CDML Parameter Notice (${data.varId}=${data.value})] ${varNotice}`);
     }
 
     const mesh = readTessellationFromSharedMemory();
@@ -635,7 +716,7 @@ self.onmessage = async (e: MessageEvent) => {
         type: 'CDML_VAR_UPDATED',
         requestId: reqId,
         status: 0,
-        diagnostic: '',
+        diagnostic: varNotice,
         mesh: {
           positions: mesh.positions.buffer,
           normals: mesh.normals.buffer,
@@ -652,7 +733,7 @@ self.onmessage = async (e: MessageEvent) => {
         type: 'CDML_VAR_UPDATED',
         requestId: reqId,
         status: 0,
-        diagnostic: '',
+        diagnostic: varNotice,
         mesh: null,
         probes,
       });
@@ -662,6 +743,11 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (data.type === 'CDML_EXPORT_STEP') {
     const reqId = data.requestId ?? 0;
+    const ok = await ensureKernelWasm();
+    if (!ok || !wasmExports) {
+      self.postMessage({ type: 'CDML_STEP_EXPORTED', requestId: reqId, stepStr: '' });
+      return;
+    }
     let stepLen = (wasmExports as any).get_step_len?.() ?? 0;
     if (stepLen === 0 && typeof (wasmExports as any).cdml_get_active_solid === 'function') {
       const activeH = (wasmExports as any).cdml_get_active_solid();
@@ -680,6 +766,12 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (data.type === 'CDML_EXPORT_STL') {
     const reqId = data.requestId ?? 0;
+    const ok = await ensureKernelWasm();
+    if (!ok || !wasmExports) {
+      const emptyBuf = new Uint8Array(0);
+      self.postMessage({ type: 'CDML_STL_EXPORTED', requestId: reqId, stlBuf: emptyBuf.buffer }, [emptyBuf.buffer]);
+      return;
+    }
     let stlLen = (wasmExports as any).get_stl_len?.() ?? 0;
     if (stlLen === 0 && typeof (wasmExports as any).cdml_get_active_solid === 'function') {
       const activeH = (wasmExports as any).cdml_get_active_solid();
@@ -1243,32 +1335,42 @@ self.onmessage = async (e: MessageEvent) => {
     return;
   }
 
-  if (data.type === 'COMPUTE_VISUAL_DIFF') {
-    const requestId = data.requestId ?? 0;
-    const baseNodes = data.baseNodes || [];
-    const targetNodes = data.targetNodes || cachedDagNodes;
-    const diff = workerPluginBridge.computeVisualDiff(baseNodes, targetNodes);
+    if (data.type === 'COMPUTE_VISUAL_DIFF') {
+      const requestId = data.requestId ?? 0;
+      const baseNodes = data.baseNodes || [];
+      const targetNodes = data.targetNodes || cachedDagNodes;
+      const diff = workerPluginBridge.computeVisualDiff(baseNodes, targetNodes);
 
-    const transferList: Transferable[] = [];
-    if (diff.addedPositions) transferList.push(diff.addedPositions.buffer);
-    if (diff.addedIndices) transferList.push(diff.addedIndices.buffer);
-    if (diff.removedPositions) transferList.push(diff.removedPositions.buffer);
-    if (diff.removedIndices) transferList.push(diff.removedIndices.buffer);
+      const transferList: Transferable[] = [];
+      if (diff.addedPositions) transferList.push(diff.addedPositions.buffer);
+      if (diff.addedIndices) transferList.push(diff.addedIndices.buffer);
+      if (diff.removedPositions) transferList.push(diff.removedPositions.buffer);
+      if (diff.removedIndices) transferList.push(diff.removedIndices.buffer);
 
-    self.postMessage(
-      {
-        type: 'VISUAL_DIFF_RESULT',
-        requestId,
-        diff: {
-          addedPositions: diff.addedPositions?.buffer,
-          addedIndices: diff.addedIndices?.buffer,
-          removedPositions: diff.removedPositions?.buffer,
-          removedIndices: diff.removedIndices?.buffer,
-          summary: diff.summary,
+      self.postMessage(
+        {
+          type: 'VISUAL_DIFF_RESULT',
+          requestId,
+          diff: {
+            addedPositions: diff.addedPositions?.buffer,
+            addedIndices: diff.addedIndices?.buffer,
+            removedPositions: diff.removedPositions?.buffer,
+            removedIndices: diff.removedIndices?.buffer,
+            summary: diff.summary,
+          },
         },
-      },
-      transferList
-    );
-    return;
+        transferList
+      );
+      return;
+    }
+  } catch (err: any) {
+    const errorMsg = err?.stack || err?.message || String(err);
+    console.error(`[cad.worker] Internal exception during message "${data.type}":`, errorMsg, err);
+    self.postMessage({
+      type: 'WORKER_INTERNAL_ERROR',
+      requestId: data.requestId ?? 0,
+      originalType: data.type,
+      error: errorMsg,
+    });
   }
 };
