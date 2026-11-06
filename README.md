@@ -24,7 +24,7 @@ OpenCAD is built on a **Zero-Primitive Pure-Math Architecture**: no hardcoded `b
 4. **Responsive Flex Studio & Minimal Zero-GUI Embed Viewer:**
    - Desktop horizontal (`flex-direction: row`) and mobile vertical (`flex-direction: column`) split studio with fault-tolerant live CDML editing (retaining the last valid 3D mesh when assertions or syntax fail).
    - Embeddable via URL parameters (`?embed=true&cdml=...&gui=true&vars=...&probes=...&exports=...`) or the `<opencad-viewer>` Custom Element.
-   - Clean, minimal slate theme calibrated for **WCAG AA/AAA compliance** (contrast ratio $\ge 13:1$ without glare) with an abstract topological logo inspired by continuous manifolds and level-set field contours.
+   - Clean, minimal slate theme calibrated for **WCAG AA/AAA compliance** (contrast ratio $\ge 13:1$ without glare) with a precision isometric cube identity mark.
 
 ---
 
