@@ -680,6 +680,186 @@ pub fn sweepProfileLoopsSE3(
 }
 
 // ============================================================================
+// Multi-Wire SE(3) Revolution Solid with Watertight Closure
+// ============================================================================
+
+pub fn revolveProfileLoops(
+    allocator: std.mem.Allocator,
+    feature_hash: u64,
+    revolve_branch_hash: u64,
+    frame_p0: Vec3d,
+    frame_e1: Vec3d,
+    frame_e2: Vec3d,
+    outer_loop: ProfileLoop2D,
+    axis_origin: Vec3d,
+    axis_direction: Vec3d,
+    angle_rad: f64,
+    n_slices_opt: ?usize,
+) !u64 {
+    last_brep_status = 0;
+    const M = outer_loop.points.len;
+    if (M < 3) {
+        last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+        return error.SweepSelfIntersect;
+    }
+
+    const axis_norm = axis_direction.normalize();
+    if (axis_norm.length() < 1e-9) {
+        last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+        return error.SweepSelfIntersect;
+    }
+
+    const N = n_slices_opt orelse 32;
+    if (N < 3) {
+        last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+        return error.SweepSelfIntersect;
+    }
+
+    // Check signed area to ensure CCW polygon orientation
+    var area2: f64 = 0.0;
+    for (0..M) |i| {
+        const curr = outer_loop.points[i];
+        const next = outer_loop.points[(i + 1) % M];
+        area2 += curr.u * next.v - next.u * curr.v;
+    }
+    const is_ccw = (area2 >= 0.0);
+
+    // Create oriented points slice
+    var poly_pts = try allocator.alloc(ProfileEdgeSample2D, M);
+    defer allocator.free(poly_pts);
+    for (0..M) |i| {
+        if (is_ccw) {
+            poly_pts[i] = outer_loop.points[i];
+        } else {
+            poly_pts[i] = outer_loop.points[M - 1 - i];
+        }
+    }
+
+    const solid_id = next_solid_id;
+    next_solid_id += 1;
+
+    var solid = BRepSolid.init(allocator, solid_id);
+    errdefer solid.deinit();
+    solid.feature_hash = feature_hash;
+
+    // Check if any vertex touches the axis (determines genus)
+    var touches_axis = false;
+    for (0..M) |i| {
+        const p_3d = frame_p0.add(frame_e1.scale(poly_pts[i].u)).add(frame_e2.scale(poly_pts[i].v));
+        const w = p_3d.sub(axis_origin);
+        const w_proj = axis_norm.scale(axis_norm.dot(w));
+        const w_perp = w.sub(w_proj);
+        if (w_perp.length() < 1e-5) {
+            touches_axis = true;
+            break;
+        }
+    }
+    solid.genus = if (touches_axis) 0 else 1;
+
+    // Allocate vertex index mapping: [M][N]
+    var vert_indices = try allocator.alloc(u32, M * N);
+    defer allocator.free(vert_indices);
+
+    // Emit vertices
+    for (0..M) |i| {
+        const p_3d = frame_p0.add(frame_e1.scale(poly_pts[i].u)).add(frame_e2.scale(poly_pts[i].v));
+        const w = p_3d.sub(axis_origin);
+        const w_proj = axis_norm.scale(axis_norm.dot(w));
+        const w_perp = w.sub(w_proj);
+        const r_axis = w_perp.length();
+
+        if (r_axis < 1e-5) {
+            // Apex vertex on axis: single shared vertex for all k
+            const apex_pt = axis_origin.add(w_proj);
+            const v_idx: u32 = @intCast(solid.vertices.items.len);
+            try solid.vertices.append(allocator, apex_pt);
+            try solid.normals.append(allocator, Vec3d.init(0.0, 0.0, 0.0));
+            for (0..N) |k| {
+                vert_indices[i * N + k] = v_idx;
+            }
+        } else {
+            // Off axis: N vertices rotated around the axis
+            const inv_n: f64 = 1.0 / @as(f64, @floatFromInt(N));
+            for (0..N) |k| {
+                const theta = @as(f64, @floatFromInt(k)) * inv_n * angle_rad;
+                const pt_k = axis_origin.add(rotateRodrigues(w, axis_norm, theta));
+                const v_idx: u32 = @intCast(solid.vertices.items.len);
+                try solid.vertices.append(allocator, pt_k);
+                try solid.normals.append(allocator, Vec3d.init(0.0, 0.0, 0.0));
+                vert_indices[i * N + k] = v_idx;
+            }
+        }
+    }
+
+    // Emit triangles
+    for (0..M) |i| {
+        const next_i = (i + 1) % M;
+        const p0_3d = frame_p0.add(frame_e1.scale(poly_pts[i].u)).add(frame_e2.scale(poly_pts[i].v));
+        const p1_3d = frame_p0.add(frame_e1.scale(poly_pts[next_i].u)).add(frame_e2.scale(poly_pts[next_i].v));
+        const w0 = p0_3d.sub(axis_origin);
+        const w1 = p1_3d.sub(axis_origin);
+        const r0 = w0.sub(axis_norm.scale(axis_norm.dot(w0))).length();
+        const r1 = w1.sub(axis_norm.scale(axis_norm.dot(w1))).length();
+
+        if (r0 < 1e-5 and r1 < 1e-5) {
+            // Both vertices on axis -> segment lies along the rotation axis, sweeps zero area
+            continue;
+        }
+
+        const c_hash = if (poly_pts[i].curve_hash != 0) poly_pts[i].curve_hash else revolve_branch_hash;
+        const tid = TopoId.init(feature_hash, c_hash, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.PRESERVE, 0);
+        const curv = FaceCurvature{};
+
+        for (0..N) |k| {
+            const next_k = (k + 1) % N;
+            const v00 = vert_indices[i * N + k];
+            const v01 = vert_indices[i * N + next_k];
+            const v10 = vert_indices[next_i * N + k];
+            const v11 = vert_indices[next_i * N + next_k];
+
+            if (r0 < 1e-5) {
+                // v00 == v01 (apex)
+                try solid.addTriangle(v10, v00, v11, tid, curv);
+            } else if (r1 < 1e-5) {
+                // v10 == v11 (apex)
+                try solid.addTriangle(v00, v01, v10, tid, curv);
+            } else {
+                try solid.addTriangle(v00, v01, v10, tid, curv);
+                try solid.addTriangle(v10, v01, v11, tid, curv);
+            }
+        }
+    }
+
+    // Compute smooth vertex normals by accumulating triangle face normals
+    const num_tris = solid.indices.items.len / 3;
+    for (0..num_tris) |t| {
+        const idx0 = solid.indices.items[t * 3 + 0];
+        const idx1 = solid.indices.items[t * 3 + 1];
+        const idx2 = solid.indices.items[t * 3 + 2];
+        const p0 = solid.vertices.items[idx0];
+        const p1 = solid.vertices.items[idx1];
+        const p2 = solid.vertices.items[idx2];
+        const fn_vec = p1.sub(p0).cross(p2.sub(p0));
+        solid.normals.items[idx0] = solid.normals.items[idx0].add(fn_vec);
+        solid.normals.items[idx1] = solid.normals.items[idx1].add(fn_vec);
+        solid.normals.items[idx2] = solid.normals.items[idx2].add(fn_vec);
+    }
+
+    for (solid.normals.items) |*n| {
+        const len = n.length();
+        if (len > 1e-9) {
+            n.* = n.scale(1.0 / len);
+        } else {
+            n.* = Vec3d.init(0.0, 0.0, 1.0);
+        }
+    }
+
+    const handle: u64 = (@as(u64, 0b00) << 62) | @as(u64, solid_id);
+    try solid_brep_store.put(handle, solid);
+    return handle;
+}
+
+// ============================================================================
 // Analytic Region B-Rep Builder (<brep region="..."/>, CDML §4.4–§4.5)
 // ============================================================================
 

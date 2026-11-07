@@ -43,7 +43,7 @@
       </wire>
     </sketch>
     <brep id="b_solid">
-      <solid_revolve sketch="sk_profile" axis_origin="vec3(0, 0, 0)" axis_direction="vec3(0, 0, 1)" angle="360.0"/>
+      <solid_revolve sketch="sk_shaft" axis_origin="vec3(0, 0, 0)" axis_direction="vec3(0, 0, 1)" angle="360.0"/>
     </brep>
   </body>
   <exports>

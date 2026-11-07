@@ -663,17 +663,17 @@ pub fn executeBodyAndExports(ev: *DocumentEvaluator) u32 {
     if (root.findChild("exports")) |exp_node| {
         for (exp_node.children.items) |exp| {
             if (std.mem.eql(u8, exp.tag, "tessellate")) {
-                const target_id = exp.getAttr("target") orelse "";
+                const target_id = exp.getAttr("target") orelse (exp.getAttr("source") orelse "");
                 const solid_h = ev.solids.get(target_id) orelse ev.active_solid_h;
                 if (solid_h != 0) {
-                    const chord_tol = if (exp.getAttr("chord-tol")) |c| std.fmt.parseFloat(f32, c) catch 0.05 else 0.05;
-                    const angle_tol = if (exp.getAttr("angle-tol")) |a| std.fmt.parseFloat(f32, a) catch 0.1 else 0.1;
+                    const chord_tol = if (exp.getAttr("chord-tol") orelse exp.getAttr("linear_deflection")) |c| std.fmt.parseFloat(f32, c) catch 0.05 else 0.05;
+                    const angle_tol = if (exp.getAttr("angle-tol") orelse exp.getAttr("angular_deflection")) |a| std.fmt.parseFloat(f32, a) catch 0.1 else 0.1;
                     tess_export.solid_tessellate(solid_h, chord_tol, angle_tol);
                     active_mesh_valid = true;
                     ev.last_tess_solid_h = solid_h;
                 }
             } else if (std.mem.eql(u8, exp.tag, "step")) {
-                const target_id = exp.getAttr("target") orelse "";
+                const target_id = exp.getAttr("target") orelse (exp.getAttr("source") orelse "");
                 const solid_h = ev.solids.get(target_id) orelse ev.active_solid_h;
                 if (solid_h != 0) {
                     var out_buf: std.ArrayList(u8) = .empty;
@@ -684,9 +684,9 @@ pub fn executeBodyAndExports(ev: *DocumentEvaluator) u32 {
                     }
                 }
             } else if (std.mem.eql(u8, exp.tag, "stl")) {
-                const target_id = exp.getAttr("target") orelse "";
+                const target_id = exp.getAttr("target") orelse (exp.getAttr("source") orelse "");
                 const solid_h = ev.solids.get(target_id) orelse ev.active_solid_h;
-                const binary = if (exp.getAttr("binary")) |b| std.mem.eql(u8, b, "true") else true;
+                const binary = if (exp.getAttr("format")) |fmt| std.mem.eql(u8, fmt, "binary") else (if (exp.getAttr("binary")) |b| std.mem.eql(u8, b, "true") else true);
                 if (solid_h != 0) {
                     var out_buf: std.ArrayList(u8) = .empty;
                     defer out_buf.deinit(alloc);
@@ -952,7 +952,7 @@ fn evaluateSketchNode(ev: *DocumentEvaluator, node: *const XmlNode) u32 {
         if (!std.mem.eql(u8, w_node.tag, "wire")) continue;
         const w_id = w_node.getAttr("id") orelse "wire";
         const role = w_node.getAttr("role") orelse "outer";
-        const is_hole = std.mem.eql(u8, role, "hole");
+        const is_hole = std.mem.eql(u8, role, "hole") or std.mem.eql(u8, role, "inner");
         const is_closed = if (w_node.getAttr("closed")) |c| std.mem.eql(u8, c, "true") else true;
         if (!is_closed) {
             setDiagnostic(types.ERR_WIRE_OPEN_OR_SELF_INT, w_id, "Sweep wire must be closed", w_node.line);
@@ -1119,6 +1119,21 @@ fn evaluateSketchNode(ev: *DocumentEvaluator, node: *const XmlNode) u32 {
                         .curvature_2d = k2d,
                     }) catch {};
                 }
+            } else if (std.mem.eql(u8, cv_node.tag, "line")) {
+                const p0_id = cv_node.getAttr("p0") orelse "";
+                var bu: [64]u8 = undefined;
+                var bv: [64]u8 = undefined;
+                const ku = std.fmt.bufPrint(&bu, "{s}.u", .{p0_id}) catch continue;
+                const kv = std.fmt.bufPrint(&bv, "{s}.v", .{p0_id}) catch continue;
+                const u_val = sk_consts.get(ku) orelse 0.0;
+                const v_val = sk_consts.get(kv) orelse 0.0;
+                const line_hash = topo_id.h64(p0_id);
+                loop.samples.append(alloc, .{
+                    .u = u_val,
+                    .v = v_val,
+                    .curve_hash = line_hash,
+                    .curvature_2d = 0.0,
+                }) catch {};
             }
         }
 
@@ -1154,6 +1169,29 @@ fn evaluateSketchNode(ev: *DocumentEvaluator, node: *const XmlNode) u32 {
 // ============================================================================
 // B-Rep Construction (<brep region="..."/> and <sweep> + <fillet>)
 // ============================================================================
+
+fn parseVec3(str: []const u8) Vec3d {
+    var s = std.mem.trim(u8, str, " \t\r\n");
+    if (std.mem.startsWith(u8, s, "vec3(") and std.mem.endsWith(u8, s, ")")) {
+        s = s[5 .. s.len - 1];
+    } else if (std.mem.startsWith(u8, s, "(") and std.mem.endsWith(u8, s, ")")) {
+        s = s[1 .. s.len - 1];
+    }
+    var it = std.mem.tokenizeAny(u8, s, " ,\t\r\n");
+    const x = if (it.next()) |tok| (std.fmt.parseFloat(f64, tok) catch 0.0) else 0.0;
+    const y = if (it.next()) |tok| (std.fmt.parseFloat(f64, tok) catch 0.0) else 0.0;
+    const z = if (it.next()) |tok| (std.fmt.parseFloat(f64, tok) catch 0.0) else 0.0;
+    return Vec3d.init(x, y, z);
+}
+
+fn getSketchPtr(ev: *DocumentEvaluator, sk_id: []const u8) ?*SketchDef {
+    if (ev.sketches.getPtr(sk_id)) |p| return p;
+    if (ev.sketches.count() == 1) {
+        var it = ev.sketches.valueIterator();
+        return it.next();
+    }
+    return null;
+}
 
 fn constructBrepSolid(ev: *DocumentEvaluator, node: *const XmlNode, out_err_code: *u32) !u64 {
     const alloc = ev.allocator;
@@ -1238,7 +1276,7 @@ fn constructBrepSolid(ev: *DocumentEvaluator, node: *const XmlNode, out_err_code
         const sk_id = sw_node.getAttr("sketch") orelse "";
         const cap_ends = if (sw_node.getAttr("cap-ends")) |c| std.mem.eql(u8, c, "true") else true;
 
-        const sk = ev.sketches.getPtr(sk_id) orelse {
+        const sk = getSketchPtr(ev, sk_id) orelse {
             out_err_code.* = types.ERR_UNDEFINED_REF;
             return error.UndefinedSketch;
         };
@@ -1348,6 +1386,133 @@ fn constructBrepSolid(ev: *DocumentEvaluator, node: *const XmlNode, out_err_code
             hole_slice,
             steps,
             cap_ends,
+        ) catch |err| {
+            out_err_code.* = types.ERR_SWEEP_SELF_INTERSECT;
+            return err;
+        };
+    } else if (node.findChild("solid_extrude")) |ext_node| {
+        const ext_id = ext_node.getAttr("id") orelse "extrude";
+        const sk_id = ext_node.getAttr("sketch") orelse "";
+        const dist_str = ext_node.getAttr("distance") orelse "10.0";
+        const dist = ev.evaluateExpression(dist_str, .residual) catch 10.0;
+        const dir_str = ext_node.getAttr("direction") orelse "vec3(0, 0, 1)";
+        var dir = parseVec3(dir_str);
+        if (dir.length() < 1e-9) dir = Vec3d.init(0.0, 0.0, 1.0);
+        dir = dir.normalize();
+
+        const sk = getSketchPtr(ev, sk_id) orelse {
+            out_err_code.* = types.ERR_UNDEFINED_REF;
+            return error.UndefinedSketch;
+        };
+
+        const chart = ev.charts.get(sk.chart_id) orelse ChartDef{
+            .id = "default",
+            .p0 = Vec3d.init(0.0, 0.0, 0.0),
+            .e1 = Vec3d.init(1.0, 0.0, 0.0),
+            .e2 = Vec3d.init(0.0, 1.0, 0.0),
+        };
+
+        if (sk.outer_loops.items.len == 0) {
+            out_err_code.* = types.ERR_PROFILE_INVALID;
+            return error.ProfileInvalid;
+        }
+
+        const outer_l = surface_brep.ProfileLoop2D{
+            .wire_id = sk.outer_loops.items[0].wire_id,
+            .is_hole = false,
+            .points = sk.outer_loops.items[0].samples.items,
+        };
+
+        var hole_slice = try alloc.alloc(surface_brep.ProfileLoop2D, sk.hole_loops.items.len);
+        defer alloc.free(hole_slice);
+        for (sk.hole_loops.items, 0..) |hl, hi| {
+            hole_slice[hi] = .{
+                .wire_id = hl.wire_id,
+                .is_hole = true,
+                .points = hl.samples.items,
+            };
+        }
+
+        var steps = try alloc.alloc(surface_brep.TrajectoryStep, 2);
+        defer alloc.free(steps);
+        steps[0] = .{
+            .v = 0.0,
+            .translation = Vec3d.init(0.0, 0.0, 0.0),
+            .axis = Vec3d.init(0.0, 0.0, 1.0),
+            .angle_rad = 0.0,
+        };
+        steps[1] = .{
+            .v = 1.0,
+            .translation = dir.scale(dist),
+            .axis = Vec3d.init(0.0, 0.0, 1.0),
+            .angle_rad = 0.0,
+        };
+
+        solid_h = surface_brep.sweepProfileLoopsSE3(
+            memory.persistent_allocator,
+            feature_hash,
+            topo_id.h64(ext_id),
+            chart.p0,
+            chart.e1,
+            chart.e2,
+            outer_l,
+            hole_slice,
+            steps,
+            true,
+        ) catch |err| {
+            out_err_code.* = types.ERR_SWEEP_SELF_INTERSECT;
+            return err;
+        };
+    } else if (node.findChild("solid_revolve")) |rev_node| {
+        const rev_id = rev_node.getAttr("id") orelse "revolve";
+        const sk_id = rev_node.getAttr("sketch") orelse "";
+        const ang_str = rev_node.getAttr("angle") orelse "360.0";
+        const ang_deg = ev.evaluateExpression(ang_str, .residual) catch 360.0;
+        const ang_rad = (ang_deg * std.math.pi) / 180.0;
+
+        const orig_str = rev_node.getAttr("axis_origin") orelse "vec3(0, 0, 0)";
+        const axis_orig = parseVec3(orig_str);
+
+        const dir_str = rev_node.getAttr("axis_direction") orelse "vec3(0, 0, 1)";
+        var axis_dir = parseVec3(dir_str);
+        if (axis_dir.length() < 1e-9) axis_dir = Vec3d.init(0.0, 0.0, 1.0);
+        axis_dir = axis_dir.normalize();
+
+        const sk = getSketchPtr(ev, sk_id) orelse {
+            out_err_code.* = types.ERR_UNDEFINED_REF;
+            return error.UndefinedSketch;
+        };
+
+        const chart = ev.charts.get(sk.chart_id) orelse ChartDef{
+            .id = "default",
+            .p0 = Vec3d.init(0.0, 0.0, 0.0),
+            .e1 = Vec3d.init(1.0, 0.0, 0.0),
+            .e2 = Vec3d.init(0.0, 1.0, 0.0),
+        };
+
+        if (sk.outer_loops.items.len == 0) {
+            out_err_code.* = types.ERR_PROFILE_INVALID;
+            return error.ProfileInvalid;
+        }
+
+        const outer_l = surface_brep.ProfileLoop2D{
+            .wire_id = sk.outer_loops.items[0].wire_id,
+            .is_hole = false,
+            .points = sk.outer_loops.items[0].samples.items,
+        };
+
+        solid_h = surface_brep.revolveProfileLoops(
+            memory.persistent_allocator,
+            feature_hash,
+            topo_id.h64(rev_id),
+            chart.p0,
+            chart.e1,
+            chart.e2,
+            outer_l,
+            axis_orig,
+            axis_dir,
+            ang_rad,
+            32,
         ) catch |err| {
             out_err_code.* = types.ERR_SWEEP_SELF_INTERSECT;
             return err;

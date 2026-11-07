@@ -11,3 +11,5 @@ test-results/
 dist-publish/
 *.zip
 tmp/
+.agents/
+.antigravity/
