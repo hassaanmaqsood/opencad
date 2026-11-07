@@ -11,26 +11,88 @@
 
 ---
 
-## 🏛️ Architectural Highlights (v2.0)
+## ⚠️ Stability & Transparency Notice (Experimental State)
 
-OpenCAD is built on a **Zero-Primitive Pure-Math Architecture**: no hardcoded `box`, `cylinder`, or `sphere` primitives exist in the engine. All geometry is rigorously synthesized from first mathematical principles across four core pillars:
+OpenCAD is under active development. While core mathematical engines (Automatic Differentiation, exact kinematic sweeps, TPMS implicit fields, and SharedArrayBuffer tessellation) pass strict verification suites, several advanced CAD modules remain **experimental and unstable**:
+
+- **Variational Nonlinear Constraint Solver:** The Householder QR / Newton-Raphson solver converges reliably for well-posed orthogonal frames and convex profiles. Over-constrained sketches, near-collinear tangent constraints, and degenerate loop topologies can experience non-convergence or cycle limits.
+- **Multi-Body CSG Booleans:** Straddling-triangle mesh boolean operations are stable for regular volumetric intersections. Coplanar face intersections, zero-clearance tangent contacts (e.g. hole bores tangent to outer boundary walls), and non-manifold edge contacts may exhibit localized topological artifacts.
+- **Rolling-Ball Filleting:** Analytic edge-predicate fillets operate cleanly on uniform convex/concave lateral edges. Complex multi-edge apex corner transitions and variable-radius sweeps with high curvature ratios are actively being hardened.
+- **API & CDML Schema Evolution:** Interfaces are evolving as we advance toward Turing-complete scripting. Semantic versioning guarantees will stabilize upon v2.1.
+
+---
+
+## 🏛️ Architectural Highlights
+
+OpenCAD is built on a **Zero-Primitive Pure-Math Architecture**: no hardcoded `box`, `cylinder`, or `sphere` primitives exist in the engine. All geometry is synthesized from first mathematical principles across four core pillars:
 
 1. **Pure-Math Kernel (`cad_kernel.wasm`):**
-   - Synthesizes geometry via **18 canonical C-ABI functions**: forward-mode Automatic Differentiation ([`autodiff.zig`](./kernel-zig/src/math/autodiff.zig)), Householder QR nonlinear constraint solving ([`constraint_sys.zig`](./kernel-zig/src/math/constraint_sys.zig)), rational NURBS curves & wires ([`curve_wire.zig`](./kernel-zig/src/geom/curve_wire.zig)), $SE(3)$ kinematic sweeps, bivariate tensor-product NURBS lofts, rolling-ball fillets, non-destructive offset shells, analytic inequality regions ([`surface_brep.zig`](./kernel-zig/src/geom/surface_brep.zig)), and interval-pruned octree QEF Dual Contouring ([`implicit_field.zig`](./kernel-zig/src/implicit/implicit_field.zig)).
+   - Synthesizes geometry via **18 canonical C-ABI functions**: forward-mode Automatic Differentiation ([`autodiff.zig`](./kernel-zig/src/math/autodiff.zig)), Householder QR nonlinear constraint solving ([`constraint_sys.zig`](./kernel-zig/src/math/constraint_sys.zig)), rational NURBS curves & wires ([`curve_wire.zig`](./kernel-zig/src/geom/curve_wire.zig)), $SE(3)$ kinematic sweeps and watertight revolutions ([`surface_brep.zig`](./kernel-zig/src/surface_brep.zig)), bivariate tensor-product NURBS lofts, rolling-ball fillets, non-destructive offset shells, analytic inequality regions, and interval-pruned octree QEF Dual Contouring ([`implicit_field.zig`](./kernel-zig/src/implicit/implicit_field.zig)).
 2. **CDML v1.0 (Computational Design Markup Language):**
-   - Declarative XML engineering format combining `<imports>`, parametric `<defs>` (`<var>`, `<expr>`, `<field-slot>`, `<assert>`), orthonormal `<chart>` frames, constrained `<sketch>` profiles, `<region>` half-spaces, `<brep>` sweeps/fillets, `<implicit>` TPMS lattices, straddling-triangle `<csg>` booleans, physical `<probe>` queries, and production `<exports>` (`<tessellate>`, `<step>`, `<stl>`).
+   - Declarative engineering markup combining `<imports>`, parametric `<defs>` (`<var>`, `<expr>`, `<field-slot>`, `<assert>`), orthonormal `<chart>` frames, constrained `<sketch>` profiles, `<region>` half-spaces, `<brep>` sweeps, revolves, and fillets, `<implicit>` TPMS lattices, straddling-triangle `<csg>` booleans, physical `<probe>` queries, and production `<exports>` (`<tessellate>`, `<step>`, `<stl>`).
 3. **Single `SharedArrayBuffer` Zero-Copy Memory (`0x000000`–`0x5F0000`):**
    - Unified linear memory connecting `cad_kernel.wasm`, external field WASM extensions (`ext_field_canary.wasm` writing 3D stress voxels at `0x1F0000`), and the Three.js WebGL viewport (`0x0F0000` tessellation buffer with 192-bit SHA-256 `TopoId`s).
 4. **Responsive Flex Studio & Minimal Zero-GUI Embed Viewer:**
    - Desktop horizontal (`flex-direction: row`) and mobile vertical (`flex-direction: column`) split studio with fault-tolerant live CDML editing (retaining the last valid 3D mesh when assertions or syntax fail).
    - Embeddable via URL parameters (`?embed=true&cdml=...&gui=true&vars=...&probes=...&exports=...`) or the `<opencad-viewer>` Custom Element.
-   - Clean, minimal slate theme calibrated for **WCAG AA/AAA compliance** (contrast ratio $\ge 13:1$ without glare) with a precision isometric cube identity mark.
+   - Clean, minimal slate theme calibrated for **WCAG AA/AAA compliance** (contrast ratio $\ge 13:1$ without glare) with an isometric cube identity mark.
 
 ---
 
-## ⚡ Quick Usage Examples
+## 📦 Module Portability & Installation
 
-### 1. Declarative `<opencad-viewer>` Web Component & URL Embed
+OpenCAD is engineered for maximum portability across web, server, native, and embedded workflows:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          OpenCAD Distribution Tiers                         │
+├─────────────────────┬─────────────────────┬─────────────────────────────────┤
+│ Tier 1: Standalone  │ Tier 2: ESM JS/TS   │ Tier 3: Python / Headless       │
+│ cad_kernel.wasm     │ @open-cad/core-sdk  │ bindings/python/opencad         │
+│ Freestanding C-ABI  │ Browser & Node.js   │ wasmtime / pure CLI             │
+└─────────────────────┴─────────────────────┴─────────────────────────────────┘
+```
+
+### 1. Standalone WASM (`cad_kernel.wasm`)
+The core mathematical kernel is compiled to freestanding WebAssembly with no host system dependencies.
+- **Exports:** 18 canonical C functions conforming to [`abi/cad_kernel.h`](./abi/cad_kernel.h).
+- **Memory Requirements:** 8MB initial shared memory, expandable up to 128MB.
+- **Direct WebAssembly Instantiation:**
+  ```javascript
+  const sharedMem = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
+  const { instance } = await WebAssembly.instantiateStreaming(fetch('cad_kernel.wasm'), {
+    env: { memory: sharedMem },
+    opencad: {
+      field_alloc: () => 0,
+      field_eval_scalar: () => 0.0,
+      field_eval_vec3: () => {},
+      cmd_write: () => {}
+    }
+  });
+  instance.exports.kernel_init();
+  ```
+
+### 2. JavaScript / TypeScript ESM SDK (`packages/kernel-sdk`)
+For Node.js, Vite, Next.js, and web application pipelines:
+```bash
+npm install @open-cad/core-sdk
+```
+```typescript
+import { OpenCadKernel } from '@open-cad/core-sdk';
+
+const kernel = await OpenCadKernel.create();
+const result = kernel.evaluateCdml(cdmlXmlString);
+
+if (result.status === 0) {
+  const mesh = kernel.getTessellationMesh();
+  console.log(`Vertices: ${mesh.vertexCount}, Triangles: ${mesh.triangleCount}`);
+  const stepText = kernel.exportStep();
+  const stlBuffer = kernel.exportStl({ binary: true });
+}
+```
+
+### 3. Declarative `<opencad-viewer>` Web Component
+Embed 3D CAD models directly into documentation, blogs, or dashboards:
 ```html
 <script type="module" src="https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad-element.mjs"></script>
 
@@ -50,9 +112,11 @@ OpenCAD is built on a **Zero-Primitive Pure-Math Architecture**: no hardcoded `b
 </opencad-viewer>
 ```
 
-### 2. 4-Step Fluent CDML Surface SDK (Python & TypeScript)
-
-#### Python (`bindings/python/opencad`)
+### 4. Python SDK (`bindings/python/opencad` via `wasmtime`)
+Ideal for data science, algorithmic geometry exploration, and automated manufacturing pipelines:
+```bash
+pip install opencad
+```
 ```python
 import opencad as cad
 
@@ -78,106 +142,62 @@ step_str = res.to_step()
 stl_bytes = res.to_stl()
 ```
 
-#### TypeScript (`packages/core-sdk`)
-```typescript
-import { cdml } from '@open-cad/core-sdk';
-
-const doc = cdml({ units: 'mm' })
-  .var('W', 80.0, { min: 40.0, max: 120.0 })
-  .var('H', 20.0)
-  .var('R', 10.0)
-  .chartXY('c_xy')
-  .sketch('sk1', 'c_xy')
-    .rectWire('w_out', 'ref(W)', '50.0', 'outer')
-    .circleWire('w_hole', 'ref(R)', 'hole')
-  .brep('b1')
-    .sweepExtrude('sw1', 'sk1', 'ref(H) * v')
-  .probe('vol', 'volume', 'b1')
-  .exportTessellate('b1')
-  .exportStep('b1')
-  .exportStl('b1', true);
-
-const xml = doc.toCDML();
-```
-
 ---
 
-## 🗺️ Product & Engineering Roadmap
+## 🗺️ Extended Product & Engineering Roadmap
 
-The OpenCAD roadmap is organized into five specialized tracks focusing on production ergonomics, advanced geometric synthesis, multi-manifold modeling, manufacturing toolpaths, and technical drawing generation.
+The OpenCAD roadmap focuses on empowering engineers, designers, and autonomous coding agents with deterministic, scriptable, and highly portable CAD tooling.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                             OpenCAD Roadmap                                 │
 ├─────────────────────┬─────────────────────┬─────────────────────────────────┤
-│ Track 1: Docs & UX  │ Track 2: Patterns   │ Track 3: Manifolds & Sketching  │
-│ • Interactive Guides│ • Linear & Polar    │ • Curved 2-Manifold Substrates  │
-│ • Production Models │ • Feature-on-Feature│ • Geodesic Constraints          │
-│ • Live Sandboxes    │ • TopoId Tracking   │ • Conformal Normal Embossing    │
+│ Track 1: Scripting  │ Track 2: 2D Vector  │ Track 3: Section Views          │
+│ • Turing-Complete   │ • Fast Rasterizer   │ • Declarative CDML Sections     │
+│ • Loops & Condition │ • SVG & DXF Exports │ • Viewport Interactive Slice    │
 ├─────────────────────┴─────────────────────┼─────────────────────────────────┤
-│ Track 4: Standalone Projection Renderer   │ Track 5: Direct Slicing & Toolpaths
-│ • Exact B-Rep Hidden Line Removal (HLR)   │ • Exact Mathematical B-Rep Slicing│
-│ • Multi-View Orthographic Projections     │ • TPMS Lattice Direct 2D Slicing│
-│ • Production SVG, PDF & DXF Vector Sheets │ • Adaptive Z & CNC/3D Print CAM │
+│ Track 4: Interactive MDN-Style Docs       │ Track 5: 3D Ecosystem Plugins   │
+│ • Live Sandboxes & Runnable Code Blocks   │ • Blender, FreeCAD, Rhino       │
+│ • Interactive Geometric Visualizers       │ • KiCad Enclosure Exchange      │
 └───────────────────────────────────────────┴─────────────────────────────────┘
 ```
 
-### 📖 Track 1: Comprehensive Documentation & Engineering Example Library
-- **Interactive Documentation Portal:**
-  - Full API references across Python SDK, TypeScript/Node SDK, Web Components, and native C-ABI.
-  - Interactive browser-based CDML sandboxes with real-time parameter tweaking and 3D preview.
-- **Production-Grade Example Catalog:**
-  - *Precision Mechanics:* High-pressure flanged housings, planetary gearboxes, bearing mounts, and bolt-circle patterns.
-  - *Compliant Mechanisms & Flexures:* FACT-synthesized parallel flexure stages, cross-axis flexural pivots, and leaf-spring suspensions.
-  - *Thermal & Fluidics:* Gyroid, Schwarz-D, and Lidinoid TPMS conformal cold-plates and lightweight aerospace heat exchangers.
-  - *Consumer & Industrial Design:* Ergonomic shells, snap-fit joints, threaded fasteners, and ribbed enclosures.
+### ⚙️ Track 1: Turing-Complete CDML Scripting Engine
+- **Procedural Constructs:**
+  - Introduce procedural syntax (`<for each="..." in="...">`, `<while expr="...">`, `<if condition="..."> / <else>`) directly within CDML definitions.
+  - User-defined functions, parameterized macros (`<def-macro id="...">` and `<call macro="...">`), and scoped variables.
+- **Algorithmic Geometry Synthesis:**
+  - Programmatic generation of gear profiles (involute teeth arrays), heat sinks with variable fin profiles, and lattice metamaterials with gradient density fields without external preprocessors.
 
-### 🔁 Track 2: Advanced Feature Patterning (Linear, Polar & Hierarchical Feature-on-Feature)
-- **1D & 2D Linear Patterns:**
-  - Directional vector propagation with parametric pitch, count limits, and instance-level suppression masks.
-- **Polar & Cylindrical Patterns:**
-  - Radial distribution around arbitrary 3D axes with uniform spacing, angular span ($0^\circ$–$360^\circ$), and radial offset compensation.
-- **Curve-Driven & Spline Patterns:**
-  - Distributing features along continuous 3D NURBS curves using Frenet-Serret frames and Rotation-Minimizing Frames (RMF) to prevent axial twisting.
-- **Hierarchical Feature-on-Feature Patterning:**
-  - Repeating compound features (e.g., an extruded boss with counterbored hole, chamfer, and cooling ribs) across an existing parent pattern.
-  - Conformal distribution over non-planar target faces (e.g., patterning fastener mounts along an aerodynamic curved fuselage).
-  - Preserving **192-bit deterministic `TopoId`s** across pattern instances for stable downstream fillets, chamfers, and boolean operations without naming breakdown.
+### 📐 Track 2: Built-in 2D Fast Renderer & Vector Formats (SVG / DXF)
+- **Headless 2D Preview Renderer:**
+  - Lightweight in-kernel rasterizer for rapid snapshot generation during unit testing and automated CI regression verification without WebGL/GPU overhead.
+- **Precision Vector Export:**
+  - Automated Hidden Line Removal (HLR) projection emitting standards-compliant **SVG** with semantic stroke classes (visible, hidden, centerlines).
+  - Production **DXF (AutoCAD R12/2000)** generation with separate CAD layers for profile geometry, dimensions, and annotations.
 
-### 🌐 Track 3: Manifolds & Non-Planar Sketching on Curved Surfaces
-- **Curved 2-Manifold Substrates:**
-  - Elevating sketches beyond flat Cartesian planes ($\mathbb{R}^2$) to arbitrary 2-manifold B-Rep surfaces $\mathbf{S}(u,v)$ (cylinders, cones, spheres, toroids, and general bicubic NURBS patches).
-- **Geodesic & Parameter-Space $(u,v)$ Sketch Constraints:**
-  - Solving geometric constraints directly in surface parameter space using pullback metric tensors $g_{ij} = \frac{\partial \mathbf{S}}{\partial u^i} \cdot \frac{\partial \mathbf{S}}{\partial u^j}$.
-  - Geodesic distance constraints, surface-parallel alignment, and tangent curve continuity across trimmed boundary patches.
-- **Conformal Normal Extrusion & Embossing:**
-  - Sweeping 2D profiles along the local unit normal field $\mathbf{n}(u,v) = \frac{\mathbf{S}_u \times \mathbf{S}_v}{\|\mathbf{S}_u \times \mathbf{S}_v\|}$.
-  - Constant-thickness surface offsetting, conformal ribbing, textured grips, and fluidic micro-channels on organic surfaces.
+### ✂️ Track 3: Dynamic Section Views (CDML & Web Studio)
+- **Declarative CDML Section Tag:**
+  - Define section planes directly in markup (`<section-view plane="xy" offset="15.0" hatch="ansi31" />`) for automated slice callouts in downstream technical sheets.
+- **Studio Interactive Sectioning Plane:**
+  - Real-time Three.js viewport clipping tool with draggable plane normal gizmos, hollow-cap cross-hatching, and sub-shape inspection.
 
-### 📐 Track 4: Standalone Projection Renderer & Technical 2D Drawings (HLR)
-- **Headless Standalone Projection Engine:**
-  - Fully decoupled from browser WebGL runtimes — executable via Zig native CLI, Node.js, and serverless workers for batch automated rendering.
-- **Exact B-Rep Hidden Line Removal (HLR):**
-  - Analytic edge classification into visible sharp, visible smooth silhouette, hidden/occluded (dashed), and seam lines.
-  - Accelerated via bounding volume hierarchies (BVH) and exact ray-surface clipping against NURBS geometry (no polyhedral approximation artifacts).
-- **Standard Engineering Drawing Generation:**
-  - Automated First-Angle and Third-Angle orthographic projection layouts (Front, Top, Right, Isometric, and Arbitrary Auxiliary Views).
-  - Cross-section slicing planes with automated hatching patterns and cut-line callouts.
-  - Parametric dimensioning, datums, centerlines, and GD&T tolerance frames.
-  - Direct export to vector **SVG** (with semantic CSS stroke classes), print-ready **PDF**, and CAD **DXF** (R12/R2000).
+### 📖 Track 4: MDN-Style Interactive Documentation & Guides
+- **Live Interactive Reference Portal:**
+  - A documentation platform modeled after the MDN Web Docs standard.
+  - Side-by-side runnable CDML and SDK code blocks connected to live WebGL render viewports for every single tag, constraint, and method.
+- **Comprehensive Mechanical Engineering Curriculum:**
+  - Tutorials spanning sketch constraint optimization, kinematic sweep theory, TPMS lattice design, rolling-ball filleting limits, and export compliance.
 
-### ⚙️ Track 5: Direct B-Rep & Implicit Slicing for Manufacturing (CAM & 3D Printing)
-- **Exact Mathematical B-Rep Slicing:**
-  - Slicing solids directly against exact analytic and NURBS B-Rep surfaces without intermediate STL polygonization.
-  - Eliminates chordal deviation errors and facet staircasing on circular bores, fillets, and cylinders.
-- **Direct Implicit & TPMS Lattice Slicing:**
-  - Evaluating 2D level sets $F(x, y, z_k) = 0$ on slicing planes $Z = z_k$ via 2D Dual Contouring, avoiding multi-gigabyte triangle meshes for dense porous lattices.
-- **Adaptive & Non-Planar Layer Generation:**
-  - Slope-adaptive variable layer height based on local surface curvature ($\Delta z \propto \cos\theta$).
-  - Multi-axis curved slicing paths for non-planar continuous-fiber 3D printing and surface conformal deposition.
-- **Production Toolpath Synthesis:**
-  - CNC toolpath generation: 2.5D pocketing, profiling, adaptive clearing, and trochoidal milling.
-  - Additive manufacturing exports: G-code, standardized 3MF slice bundles, and CLI layer files.
+### 🔌 Track 5: Portability & Integration in External 3D Software
+- **Blender Addon:**
+  - Geometry Nodes integration and Python-driven parametric operator allowing OpenCAD models to be imported as native modifier graphs.
+- **FreeCAD Workbench:**
+  - Native workbench module importing CDML feature trees into FreeCAD's App::Part framework.
+- **Rhino & Grasshopper Component:**
+  - Grasshopper custom node invoking `cad_kernel.wasm` via RhinoCommon for generative architectural workflows.
+- **KiCad Mechanical Exchange:**
+  - Automated 3D enclosure generation matching KiCad PCB edge cuts and component clearance bounds.
 
 ---
 
@@ -207,7 +227,7 @@ zig build -Doptimize=ReleaseSmall     # Compiles stripped cad_kernel.wasm
 | **Gate 3B**| CDML Compiler | Tests CDML §14 normative housing, assertions, and randomized Acid Tests. |
 | **Gate 4** | Zero-Copy Extension | Verifies 3D stress field modulation across `SharedArrayBuffer` (`0x1F0000`). |
 | **Gate 5** | Python / Wasmtime | Verifies 4-step Python CDML builder and `wasmtime` headless execution. |
-| **Gate 6** | Playwright E2E | 6 browser tests verifying flex responsiveness, embed mode, and 60-FPS WebGL. |
+| **Gate 6** | Playwright E2E | 8 browser tests verifying flex responsiveness, embed mode, and 60-FPS WebGL. |
 
 ---
 
@@ -215,5 +235,5 @@ zig build -Doptimize=ReleaseSmall     # Compiles stripped cad_kernel.wasm
 
 - [**ARCHITECTURE.md**](./ARCHITECTURE.md) — Comprehensive technical specification: `SharedArrayBuffer` memory layout (`0x000000`–`0x5F0000`), 18-function C-ABI, AD/Interval VM, Householder QR solver, straddling-triangle CSG, and Dual Contouring internals.
 - [**CDML v1.0 Specification**](./docs/CDML%20v1.0%20%E2%80%94%20Computational%20Design%20Markup%20Language%20Format%20Specification.md) — Complete normative specification of the Computational Design Markup Language.
-- [**.antigravity/CHARTER.md**](./.antigravity/CHARTER.md) — Architectural charter, mathematical tenets, and multi-agent coordination locks.
+- [**LLM Kernel Integration Skill (`docs/SKILL.md`)**](./docs/SKILL.md) — Reference handbook for AI coding agents integrating with OpenCAD via ESM JS and shared memory.
 - [**API Reference (ABI)**](./abi/cad_kernel.h) — Canonical C-ABI header definition for external language bindings.
