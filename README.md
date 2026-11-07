@@ -1,239 +1,253 @@
-# OpenCAD (`open-parametric-cad` v2.0)
+# OpenCAD
 
-> **Pure-Math Computational CAD Kernel, CDML v1.0 Compiler, Responsive Flex Studio & Minimal Embed Viewer.**  
-> Powered by Zig (`wasm32-freestanding`), SharedArrayBuffer Zero-Copy Memory, TypeScript, Python (`wasmtime`), and Three.js.
+> Parametric 3D CAD kernel, CDML v1.0 compiler, and web viewer.
+> The kernel compiles from Zig to freestanding WebAssembly. The browser interface uses TypeScript and Three.js.
 
 [![Live Studio](https://img.shields.io/badge/Live_Studio-hassaanmaqsood.github.io%2Fopencad-blue?style=for-the-badge&logo=googlechrome)](https://hassaanmaqsood.github.io/opencad/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Zig Tests](https://img.shields.io/badge/Zig_Unit_Tests-198%2F198_Passed-brightgreen.svg)](./kernel-zig)
-[![Anti-Cheat Gates](https://img.shields.io/badge/Verification_Gates-All_9_Passed-success.svg)](./scripts/verify_gates.sh)
-[![Zero-Primitive Law](https://img.shields.io/badge/Architecture-Zero--Primitive_Pure--Math-blueviolet.svg)](./kernel-zig/src/main.zig)
+[![Verification Gates](https://img.shields.io/badge/Verification_Gates-All_9_Passed-success.svg)](./scripts/verify_gates.sh)
 
 ---
 
-## ⚠️ Stability & Transparency Notice (Experimental State)
+## Stability Notice
 
-OpenCAD is under active development. While core mathematical engines (Automatic Differentiation, exact kinematic sweeps, TPMS implicit fields, and SharedArrayBuffer tessellation) pass strict verification suites, several advanced CAD modules remain **experimental and unstable**:
+OpenCAD is in active development. Core operations pass verification tests, but four modules remain experimental:
 
-- **Variational Nonlinear Constraint Solver:** The Householder QR / Newton-Raphson solver converges reliably for well-posed orthogonal frames and convex profiles. Over-constrained sketches, near-collinear tangent constraints, and degenerate loop topologies can experience non-convergence or cycle limits.
-- **Multi-Body CSG Booleans:** Straddling-triangle mesh boolean operations are stable for regular volumetric intersections. Coplanar face intersections, zero-clearance tangent contacts (e.g. hole bores tangent to outer boundary walls), and non-manifold edge contacts may exhibit localized topological artifacts.
-- **Rolling-Ball Filleting:** Analytic edge-predicate fillets operate cleanly on uniform convex/concave lateral edges. Complex multi-edge apex corner transitions and variable-radius sweeps with high curvature ratios are actively being hardened.
-- **API & CDML Schema Evolution:** Interfaces are evolving as we advance toward Turing-complete scripting. Semantic versioning guarantees will stabilize upon v2.1.
+1. **Nonlinear Constraint Solver:**
+   The solver handles simple orthogonal profiles and convex shapes. Sketches with over-constrained dimensions or near-collinear tangent lines may fail to converge.
+
+2. **CSG Mesh Booleans:**
+   Boolean operations succeed on standard volumetric intersections. Coplanar faces and tangent boundary contacts can produce mesh errors.
+
+3. **Edge Fillets:**
+   Rolling-ball fillets operate on uniform convex and concave edges. Apex corners and variable-radius sweeps with high curvature may fail.
+
+4. **CDML Schema:**
+   The XML schema and language bindings will evolve before version 2.1. Do not expect long-term API stability yet.
 
 ---
 
-## 🏛️ Architectural Highlights
+## System Architecture
 
-OpenCAD is built on a **Zero-Primitive Pure-Math Architecture**: no hardcoded `box`, `cylinder`, or `sphere` primitives exist in the engine. All geometry is synthesized from first mathematical principles across four core pillars:
+OpenCAD generates solids from mathematical equations and sweeps. The engine contains no hardcoded box or cylinder meshes. The system consists of four parts:
 
-1. **Pure-Math Kernel (`cad_kernel.wasm`):**
-   - Synthesizes geometry via **18 canonical C-ABI functions**: forward-mode Automatic Differentiation ([`autodiff.zig`](./kernel-zig/src/math/autodiff.zig)), Householder QR nonlinear constraint solving ([`constraint_sys.zig`](./kernel-zig/src/math/constraint_sys.zig)), rational NURBS curves & wires ([`curve_wire.zig`](./kernel-zig/src/geom/curve_wire.zig)), $SE(3)$ kinematic sweeps and watertight revolutions ([`surface_brep.zig`](./kernel-zig/src/surface_brep.zig)), bivariate tensor-product NURBS lofts, rolling-ball fillets, non-destructive offset shells, analytic inequality regions, and interval-pruned octree QEF Dual Contouring ([`implicit_field.zig`](./kernel-zig/src/implicit/implicit_field.zig)).
+1. **Kernel (`cad_kernel.wasm`):**
+   A freestanding WebAssembly module. It exposes 18 C-ABI functions for automatic differentiation, sketch solving, curves, sweeps, and dual contouring.
+
 2. **CDML v1.0 (Computational Design Markup Language):**
-   - Declarative engineering markup combining `<imports>`, parametric `<defs>` (`<var>`, `<expr>`, `<field-slot>`, `<assert>`), orthonormal `<chart>` frames, constrained `<sketch>` profiles, `<region>` half-spaces, `<brep>` sweeps, revolves, and fillets, `<implicit>` TPMS lattices, straddling-triangle `<csg>` booleans, physical `<probe>` queries, and production `<exports>` (`<tessellate>`, `<step>`, `<stl>`).
-3. **Single `SharedArrayBuffer` Zero-Copy Memory (`0x000000`–`0x5F0000`):**
-   - Unified linear memory connecting `cad_kernel.wasm`, external field WASM extensions (`ext_field_canary.wasm` writing 3D stress voxels at `0x1F0000`), and the Three.js WebGL viewport (`0x0F0000` tessellation buffer with 192-bit SHA-256 `TopoId`s).
-4. **Responsive Flex Studio & Minimal Zero-GUI Embed Viewer:**
-   - Desktop horizontal (`flex-direction: row`) and mobile vertical (`flex-direction: column`) split studio with fault-tolerant live CDML editing (retaining the last valid 3D mesh when assertions or syntax fail).
-   - Embeddable via URL parameters (`?embed=true&cdml=...&gui=true&vars=...&probes=...&exports=...`) or the `<opencad-viewer>` Custom Element.
-   - Clean, minimal slate theme calibrated for **WCAG AA/AAA compliance** (contrast ratio $\ge 13:1$ without glare) with an isometric cube identity mark.
+   An XML format that defines parametric variables, 2D sketches, 3D sweeps, physical probes, and file exports.
+
+3. **Shared Memory (`SharedArrayBuffer`):**
+   A single linear memory buffer between 0x000000 and 0x5F0000. It transfers tessellation data directly to WebGL without data copies.
+
+4. **Web Studio and Embed Viewer:**
+   A browser application with a split code editor and a Three.js 3D viewport. The viewer embeds into web pages through a custom HTML element.
 
 ---
 
-## 📦 Module Portability & Installation
+## Installation and Distribution
 
-OpenCAD is engineered for maximum portability across web, server, native, and embedded workflows:
+OpenCAD does not publish packages to public npm or PyPI registries. You obtain releases from GitHub Actions and GitHub Releases.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          OpenCAD Distribution Tiers                         │
+│                          OpenCAD Distribution Files                         │
 ├─────────────────────┬─────────────────────┬─────────────────────────────────┤
-│ Tier 1: Standalone  │ Tier 2: ESM JS/TS   │ Tier 3: Python / Headless       │
-│ cad_kernel.wasm     │ @open-cad/core-sdk  │ bindings/python/opencad         │
-│ Freestanding C-ABI  │ Browser & Node.js   │ wasmtime / pure CLI             │
+│ GitHub Releases     │ GitHub dist Branch  │ GitHub Actions Artifacts        │
+│ Standalone bundles  │ CDN & Git installs  │ Automated build outputs         │
 └─────────────────────┴─────────────────────┴─────────────────────────────────┘
 ```
 
-### 1. Standalone WASM (`cad_kernel.wasm`)
-The core mathematical kernel is compiled to freestanding WebAssembly with no host system dependencies.
-- **Exports:** 18 canonical C functions conforming to [`abi/cad_kernel.h`](./abi/cad_kernel.h).
-- **Memory Requirements:** 8MB initial shared memory, expandable up to 128MB.
-- **Direct WebAssembly Instantiation:**
-  ```javascript
-  const sharedMem = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
-  const { instance } = await WebAssembly.instantiateStreaming(fetch('cad_kernel.wasm'), {
-    env: { memory: sharedMem },
-    opencad: {
-      field_alloc: () => 0,
-      field_eval_scalar: () => 0.0,
-      field_eval_vec3: () => {},
-      cmd_write: () => {}
-    }
-  });
-  instance.exports.kernel_init();
-  ```
+### 1. Download Release Artifacts (GitHub Releases)
 
-### 2. JavaScript / TypeScript ESM SDK (`packages/kernel-sdk`)
-For Node.js, Vite, Next.js, and web application pipelines:
-```bash
-npm install @open-cad/core-sdk
+Download precompiled archives from the [OpenCAD Releases](https://github.com/hassaanmaqsood/opencad/releases) page:
+
+| File | Format | Description |
+| :--- | :--- | :--- |
+| `opencad-wasm-sdk.zip` | ZIP archive | Contains TypeScript declarations, JavaScript modules, C headers, and WASM binaries. |
+| `opencad-portable.html` | HTML file | A single offline CAD studio. Runs in any modern web browser without an internet connection. |
+| `cad_kernel.wasm` | WebAssembly | The freestanding mathematical kernel conforming to `abi/cad_kernel.h`. |
+| `opencad.mjs` | ES module | Standalone JavaScript module for browser and Node.js environments. |
+| `opencad-element.mjs` | ES module | Web Component defining the `<opencad-viewer>` custom element. |
+| `opencad-examples.zip` | ZIP archive | A collection of more than 1,000 verified CDML model files. |
+
+### 2. JavaScript and TypeScript Usage
+
+#### Option A: Import from CDN (Recommended for Browsers)
+Import the ES module directly from the GitHub distribution branch:
+
+```html
+<script type="module">
+  import { OpenCadKernel } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad.mjs';
+
+  const kernel = await OpenCadKernel.create();
+  const result = kernel.evaluateCdml(xmlString);
+
+  if (result.status === 0) {
+    const mesh = kernel.getTessellationMesh();
+    console.log(`Vertices: ${mesh.vertexCount}, Triangles: ${mesh.triangleCount}`);
+    const stepText = kernel.exportStep();
+    const stlData = kernel.exportStl({ binary: true });
+  }
+</script>
 ```
+
+#### Option B: Install from GitHub via npm
+Add the distribution branch directly to your `package.json`:
+
+```bash
+npm install github:hassaanmaqsood/opencad#dist
+```
+
+Import OpenCAD in your project:
+
 ```typescript
 import { OpenCadKernel } from '@open-cad/core-sdk';
 
 const kernel = await OpenCadKernel.create();
-const result = kernel.evaluateCdml(cdmlXmlString);
-
-if (result.status === 0) {
-  const mesh = kernel.getTessellationMesh();
-  console.log(`Vertices: ${mesh.vertexCount}, Triangles: ${mesh.triangleCount}`);
-  const stepText = kernel.exportStep();
-  const stlBuffer = kernel.exportStl({ binary: true });
-}
+const result = kernel.evaluateCdml(xmlString);
 ```
 
-### 3. Declarative `<opencad-viewer>` Web Component
-Embed 3D CAD models directly into documentation, blogs, or dashboards:
+#### Option C: Unpack the Release SDK Archive
+Download `opencad-wasm-sdk.zip` from the latest release. Extract the archive into your project directory.
+
+### 3. Embed 3D Models with the Web Component
+
+Load the custom element from the CDN:
+
 ```html
 <script type="module" src="https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad-element.mjs"></script>
 
-<!-- Minimal Zero-GUI 3D Embed -->
+<!-- Embedded 3D viewer -->
 <opencad-viewer
-  src="/examples/flange_normative.cdml"
-  data-gui="false">
-</opencad-viewer>
-
-<!-- Filtered Interactive Parameters, Probes & Exports -->
-<opencad-viewer
-  src="/examples/flange_normative.cdml"
+  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/examples/lib/0001_bracket.cdml"
   data-gui="true"
-  data-gui-vars="flange_w,bore_r,fillet_r"
-  data-gui-probes="housing_volume,max_fillet_stress"
+  data-gui-vars="width,height,radius"
   data-gui-exports="step,stl">
 </opencad-viewer>
 ```
 
-### 4. Python SDK (`bindings/python/opencad` via `wasmtime`)
-Ideal for data science, algorithmic geometry exploration, and automated manufacturing pipelines:
+### 4. Python Usage
+
+#### Option A: Install from GitHub via pip
+Install the Python bindings directly from the repository:
+
 ```bash
-pip install opencad
+pip install "git+https://github.com/hassaanmaqsood/opencad.git#subdirectory=bindings/python"
 ```
+
+#### Option B: Run Headless with Wasmtime
+Download `cad_kernel.wasm` from the GitHub Release page. Use the Python SDK with `wasmtime`:
+
 ```python
 import opencad as cad
 
 doc = (cad.cdml(units="mm")
-    .var("W", 80.0, min=40.0, max=120.0)
-    .var("H", 20.0)
-    .var("R", 10.0)
+    .var("width", 80.0, min=40.0, max=120.0)
+    .var("height", 20.0)
+    .var("radius", 10.0)
     .chart_xy("c_xy")
     .sketch("sk1", chart="c_xy")
-        .rect_wire("w_out", width="ref(W)", height="50.0", role="outer")
-        .circle_wire("w_hole", radius="ref(R)", role="hole")
+        .rect_wire("w_out", width="ref(width)", height="50.0", role="outer")
+        .circle_wire("w_hole", radius="ref(radius)", role="hole")
     .brep("b1")
-        .sweep_extrude("sw1", sketch="sk1", z_expr="ref(H) * v")
+        .sweep_extrude("sw1", sketch="sk1", z_expr="ref(height) * v")
     .probe("vol", type="volume", target="b1")
-    .export_tessellate("b1")
     .export_step("b1")
     .export_stl("b1", binary=True))
 
 res = doc.evaluate()
-assert res.status == 0
-print("Enclosed Volume (mm³):", res.probe("vol"))
-step_str = res.to_step()
+print("Status:", res.status)
+print("Volume (mm3):", res.probe("vol"))
+step_string = res.to_step()
 stl_bytes = res.to_stl()
 ```
 
+### 5. Offline Single-File Studio
+
+Download `opencad-portable.html` from the release page. Double-click the file to open the CAD studio in your web browser. The file requires no server, no internet connection, and no installation.
+
 ---
 
-## 🗺️ Extended Product & Engineering Roadmap
-
-The OpenCAD roadmap focuses on empowering engineers, designers, and autonomous coding agents with deterministic, scriptable, and highly portable CAD tooling.
+## Product Roadmap
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                             OpenCAD Roadmap                                 │
 ├─────────────────────┬─────────────────────┬─────────────────────────────────┤
 │ Track 1: Scripting  │ Track 2: 2D Vector  │ Track 3: Section Views          │
-│ • Turing-Complete   │ • Fast Rasterizer   │ • Declarative CDML Sections     │
-│ • Loops & Condition │ • SVG & DXF Exports │ • Viewport Interactive Slice    │
+│ • Control structures│ • Software renderer │ • CDML section plane tag        │
+│ • Loops & functions │ • SVG & DXF export  │ • 3D viewport clipping gizmo    │
 ├─────────────────────┴─────────────────────┼─────────────────────────────────┤
-│ Track 4: Interactive MDN-Style Docs       │ Track 5: 3D Ecosystem Plugins   │
-│ • Live Sandboxes & Runnable Code Blocks   │ • Blender, FreeCAD, Rhino       │
-│ • Interactive Geometric Visualizers       │ • KiCad Enclosure Exchange      │
+│ Track 4: Interactive Documentation        │ Track 5: Software Integration   │
+│ • Live code examples with WebGL preview   │ • Blender addon                 │
+│ • Step-by-step CAD tutorials              │ • FreeCAD and KiCad workflows   │
 └───────────────────────────────────────────┴─────────────────────────────────┘
 ```
 
-### ⚙️ Track 1: Turing-Complete CDML Scripting Engine
-- **Procedural Constructs:**
-  - Introduce procedural syntax (`<for each="..." in="...">`, `<while expr="...">`, `<if condition="..."> / <else>`) directly within CDML definitions.
-  - User-defined functions, parameterized macros (`<def-macro id="...">` and `<call macro="...">`), and scoped variables.
-- **Algorithmic Geometry Synthesis:**
-  - Programmatic generation of gear profiles (involute teeth arrays), heat sinks with variable fin profiles, and lattice metamaterials with gradient density fields without external preprocessors.
+### Track 1: Procedural CDML Scripting
+- Add procedural elements to CDML: `<for>`, `<while>`, `<if>`, and `<else>`.
+- Support user-defined functions and reusable macros.
+- Generate repeating mechanical patterns such as gear teeth, heat sinks, and lattices.
 
-### 📐 Track 2: Built-in 2D Fast Renderer & Vector Formats (SVG / DXF)
-- **Headless 2D Preview Renderer:**
-  - Lightweight in-kernel rasterizer for rapid snapshot generation during unit testing and automated CI regression verification without WebGL/GPU overhead.
-- **Precision Vector Export:**
-  - Automated Hidden Line Removal (HLR) projection emitting standards-compliant **SVG** with semantic stroke classes (visible, hidden, centerlines).
-  - Production **DXF (AutoCAD R12/2000)** generation with separate CAD layers for profile geometry, dimensions, and annotations.
+### Track 2: 2D Software Renderer and Vector Export
+- Build an in-kernel 2D software rasterizer for test snapshot generation without a GPU.
+- Export SVG files with semantic line classes for visible edges, hidden edges, and centerlines.
+- Export DXF files for manufacturing with separate layers for geometry, dimensions, and annotations.
 
-### ✂️ Track 3: Dynamic Section Views (CDML & Web Studio)
-- **Declarative CDML Section Tag:**
-  - Define section planes directly in markup (`<section-view plane="xy" offset="15.0" hatch="ansi31" />`) for automated slice callouts in downstream technical sheets.
-- **Studio Interactive Sectioning Plane:**
-  - Real-time Three.js viewport clipping tool with draggable plane normal gizmos, hollow-cap cross-hatching, and sub-shape inspection.
+### Track 3: Dynamic Section Views
+- Add a `<section-view>` element to CDML to define cutting planes in technical drawings.
+- Add an interactive 3D clipping tool in the web studio to inspect interior geometry.
 
-### 📖 Track 4: MDN-Style Interactive Documentation & Guides
-- **Live Interactive Reference Portal:**
-  - A documentation platform modeled after the MDN Web Docs standard.
-  - Side-by-side runnable CDML and SDK code blocks connected to live WebGL render viewports for every single tag, constraint, and method.
-- **Comprehensive Mechanical Engineering Curriculum:**
-  - Tutorials spanning sketch constraint optimization, kinematic sweep theory, TPMS lattice design, rolling-ball filleting limits, and export compliance.
+### Track 4: Interactive Documentation
+- Build a documentation website with live code blocks and interactive WebGL viewports.
+- Publish guides on constraint optimization, kinematic sweeps, and export formats.
 
-### 🔌 Track 5: Portability & Integration in External 3D Software
-- **Blender Addon:**
-  - Geometry Nodes integration and Python-driven parametric operator allowing OpenCAD models to be imported as native modifier graphs.
-- **FreeCAD Workbench:**
-  - Native workbench module importing CDML feature trees into FreeCAD's App::Part framework.
-- **Rhino & Grasshopper Component:**
-  - Grasshopper custom node invoking `cad_kernel.wasm` via RhinoCommon for generative architectural workflows.
-- **KiCad Mechanical Exchange:**
-  - Automated 3D enclosure generation matching KiCad PCB edge cuts and component clearance bounds.
+### Track 5: 3D Software Integration
+- Develop a Blender addon to import CDML models into Geometry Nodes.
+- Develop a FreeCAD workbench to import CDML models into standard feature trees.
+- Build an exchange tool for KiCad to generate 3D enclosures from circuit board outline files.
 
 ---
 
-## 🔬 Build & Verification Pipeline
+## Build and Verification
 
-OpenCAD enforces strict mathematical correctness, memory safety, and anti-cheat policies via a 9-gate automated verification suite.
+OpenCAD verifies mathematical precision, memory safety, and code requirements using automated test gates.
 
-### 1. Build Native Zig Kernel, Run 198 Unit Tests & Compile WASM
+### 1. Build the Kernel and Run Native Tests
+Compile the Zig kernel and run the unit tests:
+
 ```bash
 cd kernel-zig
-zig build test                        # Runs 39 test steps (198 tests) with zero-leak checks
-zig build -Doptimize=ReleaseSmall     # Compiles stripped cad_kernel.wasm
+zig build test                        # Runs 198 unit tests with memory leak checks
+zig build -Doptimize=ReleaseFast      # Compiles cad_kernel.wasm
 ```
 
-### 2. Run All 9 Anti-Cheat & E2E Verification Gates
+### 2. Run Verification Gates
+Execute all verification gates:
+
 ```bash
 ./scripts/verify_gates.sh all
 ```
 
-| Gate | Target | Scope & Assertions |
+| Gate | Target | Scope |
 | :--- | :--- | :--- |
-| **Gate 0** | Zero-Primitive Law | Enforces zero hardcoded `box`/`cylinder`/`sphere` primitives in kernel. |
-| **Gate 0B**| Anti-Cheat Scan | AST and symbol scanning against hardcoded test models or values. |
-| **Gate 1** | Pure WASM Geometry | Asserts zero Three.js/JS geometry generation fallbacks. |
-| **Gate 2** | Native Zig Tests | Runs all 198 native tests with `std.testing.allocator` zero-leak checks. |
-| **Gate 3** | Pure-Math WASM ABI | Validates the 18-function C-ABI in headless Node.js without browser DOM. |
-| **Gate 3B**| CDML Compiler | Tests CDML §14 normative housing, assertions, and randomized Acid Tests. |
-| **Gate 4** | Zero-Copy Extension | Verifies 3D stress field modulation across `SharedArrayBuffer` (`0x1F0000`). |
-| **Gate 5** | Python / Wasmtime | Verifies 4-step Python CDML builder and `wasmtime` headless execution. |
-| **Gate 6** | Playwright E2E | 8 browser tests verifying flex responsiveness, embed mode, and 60-FPS WebGL. |
+| **Gate 0** | Zero-Primitive Law | Verifies zero hardcoded box or cylinder meshes in the kernel. |
+| **Gate 0B**| Anti-Cheat Scan | Scans AST and symbols to prevent hardcoded outputs. |
+| **Gate 1** | WebAssembly Geometry | Verifies geometry generation occurs in WASM without JS fallbacks. |
+| **Gate 2** | Native Zig Tests | Runs 198 native tests with zero memory leaks. |
+| **Gate 3** | C-ABI Verification | Tests the 18 C-ABI functions in Node.js without a browser DOM. |
+| **Gate 3B**| CDML Compiler | Tests CDML normative models, assertions, and parameter updates. |
+| **Gate 4** | Shared Memory | Verifies data transfer across the single shared memory buffer. |
+| **Gate 5** | Python Execution | Verifies the Python builder and headless wasmtime evaluation. |
+| **Gate 6** | Browser E2E Tests | Runs Playwright tests for responsive layout and 60-FPS WebGL rendering. |
 
 ---
 
-## 📚 Documentation Index
+## Documentation Index
 
-- [**ARCHITECTURE.md**](./ARCHITECTURE.md) — Comprehensive technical specification: `SharedArrayBuffer` memory layout (`0x000000`–`0x5F0000`), 18-function C-ABI, AD/Interval VM, Householder QR solver, straddling-triangle CSG, and Dual Contouring internals.
-- [**CDML v1.0 Specification**](./docs/CDML%20v1.0%20%E2%80%94%20Computational%20Design%20Markup%20Language%20Format%20Specification.md) — Complete normative specification of the Computational Design Markup Language.
-- [**LLM Kernel Integration Skill (`docs/SKILL.md`)**](./docs/SKILL.md) — Reference handbook for AI coding agents integrating with OpenCAD via ESM JS and shared memory.
-- [**API Reference (ABI)**](./abi/cad_kernel.h) — Canonical C-ABI header definition for external language bindings.
+- [**ARCHITECTURE.md**](./ARCHITECTURE.md) — Technical description of linear memory, C-ABI functions, constraint solver, and contouring algorithms.
+- [**CDML v1.0 Specification**](./docs/CDML%20v1.0%20%E2%80%94%20Computational%20Design%20Markup%20Language%20Format%20Specification.md) — Specification for the Computational Design Markup Language.
+- [**Skill Guide (`docs/SKILL.md`)**](./docs/SKILL.md) — Integration handbook for language models using the kernel through JavaScript modules.
+- [**API Header (`abi/cad_kernel.h`)**](./abi/cad_kernel.h) — C header file defining kernel functions and data structures.

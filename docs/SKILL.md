@@ -1,17 +1,17 @@
 ---
 name: opencad-esm-kernel
-description: Authoritative developer skill and instruction manual for Large Language Models (LLMs) and autonomous agents to construct parametric 3D CAD models, evaluate CDML v1.0, tessellate geometries, and export AP214 STEP/STL files using the OpenCAD pure-math WebAssembly kernel via modern ESM JavaScript and TypeScript.
+description: Developer skill and instructions for Large Language Models (LLMs) and autonomous agents to construct parametric 3D CAD models, evaluate CDML v1.0, tessellate geometries, and export AP214 STEP/STL files using the OpenCAD WebAssembly kernel through ESM JavaScript and TypeScript.
 ---
 
-# Skill: OpenCAD Pure-Math Kernel via ESM JavaScript
+# Skill: OpenCAD WebAssembly Kernel via ESM JavaScript
 
 ## 1. Overview & Capabilities
-OpenCAD (`open-parametric-cad`) is a zero-primitive computational CAD kernel compiled from native Zig to freestanding WebAssembly (`wasm32-freestanding`). It operates with double-precision floating-point arithmetic ($10^{-7}\text{ mm}$ linear tolerance, $10^{-11}\text{ rad}$ angular tolerance).
+OpenCAD (`open-parametric-cad`) is a computational CAD kernel compiled from native Zig to freestanding WebAssembly (`wasm32-freestanding`). It operates with double-precision floating-point arithmetic ($10^{-7}\text{ mm}$ linear tolerance, $10^{-11}\text{ rad}$ angular tolerance).
 
-This skill guides LLMs to generate valid, bug-free, high-performance ESM JavaScript / TypeScript code that interfaces with OpenCAD via:
-1. **High-Level Fluent API (`Part` / `FluentPart`):** Ergonomic parametric chaining, 2D sketcher, extrusion/revolve, 3D fillets, hole wizards, threads, and auto-disposing handles (`using` / `.dispose()`).
-2. **Declarative CDML 4-Step Builder (`cdml()` / `CdmlDocument`):** Zero-primitive normative Computational Design Markup Language generator with live in-process evaluation, physical probes, and export pipeline.
-3. **Low-Level Kernel Client (`OpenCadKernel`):** Direct interface to the 18 C-ABI functions, managing flat WebAssembly memory slices, tessellation buffers, and topological naming IDs (`TopoId`).
+This skill guides LLMs to generate valid, efficient ESM JavaScript and TypeScript code that interfaces with OpenCAD via:
+1. **Fluent API (`Part` / `FluentPart`):** Parametric chaining, 2D sketch profiles, extrusion, revolution, fillets, hole placement, and automatic resource disposal (`using` / `.dispose()`).
+2. **CDML 4-Step Builder (`cdml()` / `CdmlDocument`):** Computational Design Markup Language generator with in-process evaluation, physical probes, and export pipelines.
+3. **Kernel Client (`OpenCadKernel`):** Direct interface to the 18 C-ABI functions, managing WebAssembly memory buffers, tessellation data, and topological naming IDs (`TopoId`).
 
 ---
 
@@ -80,15 +80,17 @@ const stlBinary = res.toStl();
 
 ---
 
-## 3. Package Installation & ESM Resolution
+## 3. Distribution & ESM Resolution
 
-### 3.1 Node.js / Bun / TypeScript
-Install package:
+OpenCAD does not publish packages to public npm or PyPI registries. Obtain builds from GitHub Releases or the repository distribution branch:
+
+### 3.1 GitHub Distribution Branch / Local SDK Unpack
+Install directly from the GitHub distribution branch:
 ```bash
-npm install @open-cad/core
-# Or directly from the GitHub repository distribution branch:
 npm install github:hassaanmaqsood/opencad#dist
 ```
+Or download `opencad-wasm-sdk.zip` from GitHub Releases and unpack it into your project.
+
 Module Import:
 ```typescript
 import {
@@ -101,8 +103,8 @@ import {
 } from '@open-cad/core';
 ```
 
-### 3.2 Modern Browser / CDN / ES Modules
-OpenCAD provides a zero-dependency standalone ESM bundle:
+### 3.2 Browser / CDN / ES Modules
+Import the standalone ES module bundle directly from the CDN:
 ```html
 <script type="module">
   import { Part, cdml, OpenCadKernel } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad.mjs';
@@ -381,7 +383,7 @@ worker.onmessage = (event) => {
 | :--- | :--- |
 | **Zero-Primitive Law** | Never attempt to construct raw Three.js boxes/spheres and claim they are CAD solids. OpenCAD models MUST be generated through `Part`, `cdml()`, or `OpenCadKernel` to generate exact B-Rep boundary curves and valid STEP exports. |
 | **Explicit Disposal** | WebAssembly linear memory cannot be garbage-collected automatically by JavaScript engines in all environments. Always call `part.dispose()` or `using part = ...` in production code. |
-| **Units: Millimeters** | All dimensions in OpenCAD are millimeters (`mm`). Angular arguments in 2D sketching (`revolve`) are degrees ($0^\circ$–$360^\circ$); internal trig functions evaluate in radians. |
+| **Units: Millimeters** | All dimensions in OpenCAD are millimeters (`mm`). Angular arguments in 2D sketching (`revolve`) use degrees ($0^\circ$–$360^\circ$). Internal trigonometric functions evaluate in radians. |
 | **Tolerance Rules** | Linear default tolerance is $10^{-7}\text{ mm}$. Angular tolerance is $10^{-11}\text{ rad}$. For high-speed screen tessellation, set `chordTol = 0.05` and `angleTol = 0.1`. For high-precision CNC tooling, set `chordTol = 0.005`. |
 | **Closed Wires** | All profile wires intended for `extrude` or `revolve` must form a single closed loop without self-intersections. Holes must be flagged with `role="hole"` or `cut: true`. |
 | **Handle Verification** | Check that solid handles are non-zero before passing them to boolean or export operations. Catch and log `CadStatus` errors gracefully. |
