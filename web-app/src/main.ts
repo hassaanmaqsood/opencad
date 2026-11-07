@@ -785,6 +785,39 @@ async function initApp() {
     });
   }
 
+  // If not cross-origin isolated yet, allow coi-serviceworker to activate and reload cleanly
+  if (!window.crossOriginIsolated && 'serviceWorker' in navigator) {
+    if (statusMessage) {
+      statusMessage.textContent = 'Enabling secure CAD execution context...';
+    }
+    if (statusIndicator) {
+      statusIndicator.className = 'status-dot status-busy';
+    }
+    const didReload = await new Promise<boolean>((resolve) => {
+      let done = false;
+      const finish = (reloaded: boolean) => {
+        if (!done) {
+          done = true;
+          resolve(reloaded);
+        }
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        finish(true);
+      });
+      navigator.serviceWorker.ready.then((reg) => {
+        if (reg.active && !navigator.serviceWorker.controller) {
+          window.location.reload();
+          finish(true);
+        }
+      }).catch(() => {});
+      setTimeout(() => finish(false), 1200);
+    });
+
+    if (didReload) {
+      return;
+    }
+  }
+
   // Initial Load from URL if provided, otherwise evaluate initialCode
   if (hasExplicitUrl && cdmlParam) {
     const targetUrl = getAssetUrl(cdmlParam);

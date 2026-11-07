@@ -146,7 +146,26 @@ let cachedDagNodes: CadFeatureNode[] = getDefaultDemoFeatureDag();
 let cachedRollbackIndex: number = cachedDagNodes.length - 1;
 let activeSlice: CadTessellatedSolidSlice | null = null;
 
-export const sharedWasmMemory = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
+function createSharedWasmMemory(): WebAssembly.Memory {
+  try {
+    return new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
+  } catch (err) {
+    console.warn(
+      '[cad.worker] Shared memory creation failed (crossOriginIsolated:',
+      typeof self !== 'undefined' ? (self as any).crossOriginIsolated : false,
+      '):',
+      err
+    );
+    const WasmMem: any = WebAssembly.Memory;
+    try {
+      return new WasmMem({ initial: 128, maximum: 512 });
+    } catch {
+      return new WasmMem({ initial: 128 });
+    }
+  }
+}
+
+export const sharedWasmMemory = createSharedWasmMemory();
 
 // Global unhandled error listeners in worker scope
 self.addEventListener('error', (e: ErrorEvent) => {
@@ -480,11 +499,15 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       const ok = await ensureKernelWasm();
       if (!ok) {
+        const isShared = typeof SharedArrayBuffer !== 'undefined' && sharedWasmMemory.buffer instanceof SharedArrayBuffer;
+        const diagnostic = isShared
+          ? 'Kernel WASM failed to initialize'
+          : 'Cross-origin isolation required for WebAssembly shared memory. Waiting for service worker...';
         self.postMessage({
           type: 'CDML_EVALUATED',
           requestId: reqId,
           status: -1,
-          diagnostic: 'Kernel WASM failed to initialize',
+          diagnostic,
           mesh: null,
           vars: [],
           probes: {},

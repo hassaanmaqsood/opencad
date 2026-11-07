@@ -41,33 +41,34 @@ if (typeof window === 'undefined') {
   });
 } else {
   (() => {
-    // If native headers already enable cross-origin isolation, unregister any stale service workers and return
+    // If cross-origin isolation is already enabled, keep the service worker active
     if (window.crossOriginIsolated) {
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (const reg of registrations) {
-            reg.unregister();
-          }
-        });
-      }
       return;
     }
-
-    const reloadedBySelf = window.sessionStorage.getItem("coiReloadedBySelf");
-    window.sessionStorage.removeItem("coiReloadedBySelf");
 
     const currentScript = document.currentScript;
     const src = currentScript ? currentScript.src : "coi-serviceworker.js";
 
     if ("serviceWorker" in navigator) {
+      // When the service worker claims the page, reload so COOP/COEP headers apply
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        window.location.reload();
+      });
+
       navigator.serviceWorker.register(src).then((registration) => {
         registration.addEventListener("updatefound", () => {
-          window.location.reload();
+          const installingWorker = registration.installing;
+          if (installingWorker) {
+            installingWorker.addEventListener("statechange", () => {
+              if (installingWorker.state === "activated") {
+                window.location.reload();
+              }
+            });
+          }
         });
 
-        // If registration is active but crossOriginIsolated is false, reload page once
+        // If registration is active but not controlling the page yet, trigger reload
         if (registration.active && !navigator.serviceWorker.controller) {
-          window.sessionStorage.setItem("coiReloadedBySelf", "true");
           window.location.reload();
         }
       }, (err) => {

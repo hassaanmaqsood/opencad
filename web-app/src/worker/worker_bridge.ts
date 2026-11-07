@@ -332,10 +332,16 @@ export class CadWorkerBridge {
   }
 
   private handleError(e: ErrorEvent) {
-    const errorDetails =
+    let errorDetails =
       e.message ||
-      (e.error ? (e.error.stack || e.error.message || String(e.error)) : '') ||
-      (typeof e === 'object' && e ? `${e.type || 'ErrorEvent'} at ${e.filename || 'cad.worker'}:${e.lineno || 0}:${e.colno || 0}` : String(e));
+      (e.error ? (e.error.stack || e.error.message || String(e.error)) : '');
+    if (!errorDetails) {
+      if (typeof window !== 'undefined' && !window.crossOriginIsolated) {
+        errorDetails = 'Cross-origin isolation required for WebAssembly shared memory';
+      } else {
+        errorDetails = typeof e === 'object' && e ? `${e.type || 'ErrorEvent'} at ${e.filename || 'cad.worker'}:${e.lineno || 0}:${e.colno || 0}` : String(e);
+      }
+    }
     console.error(`CAD Worker error: ${errorDetails} [at ${e.filename || 'cad.worker'}:${e.lineno || 0}:${e.colno || 0}]`, e.error || e);
     const errObj = new Error(`Worker encountered error: ${errorDetails}`);
 
