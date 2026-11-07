@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cdml version="1.0" units="mm">
+  <defs>
+    <var id="bolt_d" value="6.0" unit="mm"/>
+    <var id="bolt_pcd" value="35.0" unit="mm"/>
+  </defs>
+</cdml>
