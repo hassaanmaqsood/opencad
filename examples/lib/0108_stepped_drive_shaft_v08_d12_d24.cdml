@@ -1,0 +1,54 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="d_seat1" value="12.00" min="9.60" max="14.40" unit="mm"/>
+    <var id="d_shoulder" value="24.00" min="19.20" max="28.80" unit="mm"/>
+    <var id="d_seat2" value="14.00" min="11.20" max="16.80" unit="mm"/>
+    <var id="tot_length" value="120.00" min="96.00" max="144.00" unit="mm"/>
+    <assert expr="d_shoulder > d_seat1" message="Shoulder must exceed journal diameter" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_revolve">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="0.0" z="1.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="py" expr="dot(e2, vec3(0, 1, 0))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_shaft" chart="ch_revolve" max-iter="100">
+      <vars>
+                <point2d id="p0" u="0.0" v="0.0"/>
+        <point2d id="p1" u="6.0000" v="0.0"/>
+        <point2d id="p2" u="6.0000" v="25.0000"/>
+        <point2d id="p3" u="12.0000" v="25.0000"/>
+        <point2d id="p4" u="12.0000" v="85.0000"/>
+        <point2d id="p5" u="7.0000" v="85.0000"/>
+        <point2d id="p6" u="7.0000" v="120.0000"/>
+        <point2d id="p7" u="0.0" v="120.0000"/>
+      </vars>
+      <wire id="w_profile" closed="true" role="outer">
+                <line p0="p0" p1="p1"/>
+        <line p0="p1" p1="p2"/>
+        <line p0="p2" p1="p3"/>
+        <line p0="p3" p1="p4"/>
+        <line p0="p4" p1="p5"/>
+        <line p0="p5" p1="p6"/>
+        <line p0="p6" p1="p7"/>
+        <line p0="p7" p1="p0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_revolve sketch="sk_profile" axis_origin="vec3(0, 0, 0)" axis_direction="vec3(0, 0, 1)" angle="360.0"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="stepped_drive_shaft_v08_d12_d24.step" schema="AP214"/>
+    <stl source="b_solid" filename="stepped_drive_shaft_v08_d12_d24.stl" format="binary"/>
+  </exports>
+</cdml>

@@ -1,0 +1,135 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="flange_od" value="167.20" min="121.60" max="228.00" unit="mm"/>
+    <var id="pipe_bore" value="66.33" min="48.24" max="90.45" unit="mm"/>
+    <var id="flange_thk" value="21.01" min="10.0" max="60.0" unit="mm"/>
+    <assert expr="flange_od > pipe_bore * 1.5" message="Flange OD must accommodate sealing face and bolt circle" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_flange" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="fo_0" u="83.6000" v="0.0000"/>
+        <point2d id="fo_1" u="80.7514" v="21.6373"/>
+        <point2d id="fo_2" u="72.3997" v="41.8000"/>
+        <point2d id="fo_3" u="59.1141" v="59.1141"/>
+        <point2d id="fo_4" u="41.8000" v="72.3997"/>
+        <point2d id="fo_5" u="21.6373" v="80.7514"/>
+        <point2d id="fo_6" u="0.0000" v="83.6000"/>
+        <point2d id="fo_7" u="-21.6373" v="80.7514"/>
+        <point2d id="fo_8" u="-41.8000" v="72.3997"/>
+        <point2d id="fo_9" u="-59.1141" v="59.1141"/>
+        <point2d id="fo_10" u="-72.3997" v="41.8000"/>
+        <point2d id="fo_11" u="-80.7514" v="21.6373"/>
+        <point2d id="fo_12" u="-83.6000" v="0.0000"/>
+        <point2d id="fo_13" u="-80.7514" v="-21.6373"/>
+        <point2d id="fo_14" u="-72.3997" v="-41.8000"/>
+        <point2d id="fo_15" u="-59.1141" v="-59.1141"/>
+        <point2d id="fo_16" u="-41.8000" v="-72.3997"/>
+        <point2d id="fo_17" u="-21.6373" v="-80.7514"/>
+        <point2d id="fo_18" u="-0.0000" v="-83.6000"/>
+        <point2d id="fo_19" u="21.6373" v="-80.7514"/>
+        <point2d id="fo_20" u="41.8000" v="-72.3997"/>
+        <point2d id="fo_21" u="59.1141" v="-59.1141"/>
+        <point2d id="fo_22" u="72.3997" v="-41.8000"/>
+        <point2d id="fo_23" u="80.7514" v="-21.6373"/>
+                <point2d id="fi_0" u="33.1650" v="0.0000"/>
+        <point2d id="fi_1" u="32.0349" v="8.5837"/>
+        <point2d id="fi_2" u="28.7217" v="16.5825"/>
+        <point2d id="fi_3" u="23.4512" v="23.4512"/>
+        <point2d id="fi_4" u="16.5825" v="28.7217"/>
+        <point2d id="fi_5" u="8.5837" v="32.0349"/>
+        <point2d id="fi_6" u="0.0000" v="33.1650"/>
+        <point2d id="fi_7" u="-8.5837" v="32.0349"/>
+        <point2d id="fi_8" u="-16.5825" v="28.7217"/>
+        <point2d id="fi_9" u="-23.4512" v="23.4512"/>
+        <point2d id="fi_10" u="-28.7217" v="16.5825"/>
+        <point2d id="fi_11" u="-32.0349" v="8.5837"/>
+        <point2d id="fi_12" u="-33.1650" v="0.0000"/>
+        <point2d id="fi_13" u="-32.0349" v="-8.5837"/>
+        <point2d id="fi_14" u="-28.7217" v="-16.5825"/>
+        <point2d id="fi_15" u="-23.4512" v="-23.4512"/>
+        <point2d id="fi_16" u="-16.5825" v="-28.7217"/>
+        <point2d id="fi_17" u="-8.5837" v="-32.0349"/>
+        <point2d id="fi_18" u="-0.0000" v="-33.1650"/>
+        <point2d id="fi_19" u="8.5837" v="-32.0349"/>
+        <point2d id="fi_20" u="16.5825" v="-28.7217"/>
+        <point2d id="fi_21" u="23.4512" v="-23.4512"/>
+        <point2d id="fi_22" u="28.7217" v="-16.5825"/>
+        <point2d id="fi_23" u="32.0349" v="-8.5837"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="fo_0" p1="fo_1"/>
+        <line p0="fo_1" p1="fo_2"/>
+        <line p0="fo_2" p1="fo_3"/>
+        <line p0="fo_3" p1="fo_4"/>
+        <line p0="fo_4" p1="fo_5"/>
+        <line p0="fo_5" p1="fo_6"/>
+        <line p0="fo_6" p1="fo_7"/>
+        <line p0="fo_7" p1="fo_8"/>
+        <line p0="fo_8" p1="fo_9"/>
+        <line p0="fo_9" p1="fo_10"/>
+        <line p0="fo_10" p1="fo_11"/>
+        <line p0="fo_11" p1="fo_12"/>
+        <line p0="fo_12" p1="fo_13"/>
+        <line p0="fo_13" p1="fo_14"/>
+        <line p0="fo_14" p1="fo_15"/>
+        <line p0="fo_15" p1="fo_16"/>
+        <line p0="fo_16" p1="fo_17"/>
+        <line p0="fo_17" p1="fo_18"/>
+        <line p0="fo_18" p1="fo_19"/>
+        <line p0="fo_19" p1="fo_20"/>
+        <line p0="fo_20" p1="fo_21"/>
+        <line p0="fo_21" p1="fo_22"/>
+        <line p0="fo_22" p1="fo_23"/>
+        <line p0="fo_23" p1="fo_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="fi_0" p1="fi_1"/>
+        <line p0="fi_1" p1="fi_2"/>
+        <line p0="fi_2" p1="fi_3"/>
+        <line p0="fi_3" p1="fi_4"/>
+        <line p0="fi_4" p1="fi_5"/>
+        <line p0="fi_5" p1="fi_6"/>
+        <line p0="fi_6" p1="fi_7"/>
+        <line p0="fi_7" p1="fi_8"/>
+        <line p0="fi_8" p1="fi_9"/>
+        <line p0="fi_9" p1="fi_10"/>
+        <line p0="fi_10" p1="fi_11"/>
+        <line p0="fi_11" p1="fi_12"/>
+        <line p0="fi_12" p1="fi_13"/>
+        <line p0="fi_13" p1="fi_14"/>
+        <line p0="fi_14" p1="fi_15"/>
+        <line p0="fi_15" p1="fi_16"/>
+        <line p0="fi_16" p1="fi_17"/>
+        <line p0="fi_17" p1="fi_18"/>
+        <line p0="fi_18" p1="fi_19"/>
+        <line p0="fi_19" p1="fi_20"/>
+        <line p0="fi_20" p1="fi_21"/>
+        <line p0="fi_21" p1="fi_22"/>
+        <line p0="fi_22" p1="fi_23"/>
+        <line p0="fi_23" p1="fi_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_flange" distance="flange_thk" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="pipe_slip_on_flange_class150_dn50_two_inch_v16.step" schema="AP214"/>
+    <stl source="b_solid" filename="pipe_slip_on_flange_class150_dn50_two_inch_v16.stl" format="binary"/>
+  </exports>
+</cdml>

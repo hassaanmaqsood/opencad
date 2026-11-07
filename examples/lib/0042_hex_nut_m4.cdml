@@ -1,0 +1,84 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="thread_d" value="4.00" min="3.20" max="4.80" unit="mm"/>
+    <var id="hex_s" value="7.00" min="5.60" max="8.40" unit="mm"/>
+    <var id="height" value="3.20" min="1.60" max="4.80" unit="mm"/>
+    <expr id="thread_r" expr="thread_d / 2.0"/>
+    <assert expr="hex_s > thread_d" message="Hex flat width must exceed thread size" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_nut" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="vh_0" u="3.5000" v="2.0207"/>
+        <point2d id="vh_1" u="0.0000" v="4.0415"/>
+        <point2d id="vh_2" u="-3.5000" v="2.0207"/>
+        <point2d id="vh_3" u="-3.5000" v="-2.0207"/>
+        <point2d id="vh_4" u="-0.0000" v="-4.0415"/>
+        <point2d id="vh_5" u="3.5000" v="-2.0207"/>
+                <point2d id="vc_0" u="2.0000" v="0.0000"/>
+        <point2d id="vc_1" u="1.8478" v="0.7654"/>
+        <point2d id="vc_2" u="1.4142" v="1.4142"/>
+        <point2d id="vc_3" u="0.7654" v="1.8478"/>
+        <point2d id="vc_4" u="0.0000" v="2.0000"/>
+        <point2d id="vc_5" u="-0.7654" v="1.8478"/>
+        <point2d id="vc_6" u="-1.4142" v="1.4142"/>
+        <point2d id="vc_7" u="-1.8478" v="0.7654"/>
+        <point2d id="vc_8" u="-2.0000" v="0.0000"/>
+        <point2d id="vc_9" u="-1.8478" v="-0.7654"/>
+        <point2d id="vc_10" u="-1.4142" v="-1.4142"/>
+        <point2d id="vc_11" u="-0.7654" v="-1.8478"/>
+        <point2d id="vc_12" u="-0.0000" v="-2.0000"/>
+        <point2d id="vc_13" u="0.7654" v="-1.8478"/>
+        <point2d id="vc_14" u="1.4142" v="-1.4142"/>
+        <point2d id="vc_15" u="1.8478" v="-0.7654"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="vh_0" p1="vh_1"/>
+        <line p0="vh_1" p1="vh_2"/>
+        <line p0="vh_2" p1="vh_3"/>
+        <line p0="vh_3" p1="vh_4"/>
+        <line p0="vh_4" p1="vh_5"/>
+        <line p0="vh_5" p1="vh_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="vc_0" p1="vc_1"/>
+        <line p0="vc_1" p1="vc_2"/>
+        <line p0="vc_2" p1="vc_3"/>
+        <line p0="vc_3" p1="vc_4"/>
+        <line p0="vc_4" p1="vc_5"/>
+        <line p0="vc_5" p1="vc_6"/>
+        <line p0="vc_6" p1="vc_7"/>
+        <line p0="vc_7" p1="vc_8"/>
+        <line p0="vc_8" p1="vc_9"/>
+        <line p0="vc_9" p1="vc_10"/>
+        <line p0="vc_10" p1="vc_11"/>
+        <line p0="vc_11" p1="vc_12"/>
+        <line p0="vc_12" p1="vc_13"/>
+        <line p0="vc_13" p1="vc_14"/>
+        <line p0="vc_14" p1="vc_15"/>
+        <line p0="vc_15" p1="vc_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_nut" distance="height" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="hex_nut_m4.step" schema="AP214"/>
+    <stl source="b_solid" filename="hex_nut_m4.stl" format="binary"/>
+  </exports>
+</cdml>

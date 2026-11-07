@@ -1,0 +1,135 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="flange_od" value="40.00" min="32.00" max="48.00" unit="mm"/>
+    <var id="shaft_bore" value="12.00" min="9.60" max="14.40" unit="mm"/>
+    <var id="hub_len" value="20.00" min="10.00" max="40.00" unit="mm"/>
+    <assert expr="flange_od > shaft_bore * 2.0" message="Hub OD must be at least twice bore" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_hub" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="f_out_0" u="20.0000" v="0.0000"/>
+        <point2d id="f_out_1" u="19.3185" v="5.1764"/>
+        <point2d id="f_out_2" u="17.3205" v="10.0000"/>
+        <point2d id="f_out_3" u="14.1421" v="14.1421"/>
+        <point2d id="f_out_4" u="10.0000" v="17.3205"/>
+        <point2d id="f_out_5" u="5.1764" v="19.3185"/>
+        <point2d id="f_out_6" u="0.0000" v="20.0000"/>
+        <point2d id="f_out_7" u="-5.1764" v="19.3185"/>
+        <point2d id="f_out_8" u="-10.0000" v="17.3205"/>
+        <point2d id="f_out_9" u="-14.1421" v="14.1421"/>
+        <point2d id="f_out_10" u="-17.3205" v="10.0000"/>
+        <point2d id="f_out_11" u="-19.3185" v="5.1764"/>
+        <point2d id="f_out_12" u="-20.0000" v="0.0000"/>
+        <point2d id="f_out_13" u="-19.3185" v="-5.1764"/>
+        <point2d id="f_out_14" u="-17.3205" v="-10.0000"/>
+        <point2d id="f_out_15" u="-14.1421" v="-14.1421"/>
+        <point2d id="f_out_16" u="-10.0000" v="-17.3205"/>
+        <point2d id="f_out_17" u="-5.1764" v="-19.3185"/>
+        <point2d id="f_out_18" u="-0.0000" v="-20.0000"/>
+        <point2d id="f_out_19" u="5.1764" v="-19.3185"/>
+        <point2d id="f_out_20" u="10.0000" v="-17.3205"/>
+        <point2d id="f_out_21" u="14.1421" v="-14.1421"/>
+        <point2d id="f_out_22" u="17.3205" v="-10.0000"/>
+        <point2d id="f_out_23" u="19.3185" v="-5.1764"/>
+                <point2d id="f_in_0" u="6.0000" v="0.0000"/>
+        <point2d id="f_in_1" u="5.7956" v="1.5529"/>
+        <point2d id="f_in_2" u="5.1962" v="3.0000"/>
+        <point2d id="f_in_3" u="4.2426" v="4.2426"/>
+        <point2d id="f_in_4" u="3.0000" v="5.1962"/>
+        <point2d id="f_in_5" u="1.5529" v="5.7956"/>
+        <point2d id="f_in_6" u="0.0000" v="6.0000"/>
+        <point2d id="f_in_7" u="-1.5529" v="5.7956"/>
+        <point2d id="f_in_8" u="-3.0000" v="5.1962"/>
+        <point2d id="f_in_9" u="-4.2426" v="4.2426"/>
+        <point2d id="f_in_10" u="-5.1962" v="3.0000"/>
+        <point2d id="f_in_11" u="-5.7956" v="1.5529"/>
+        <point2d id="f_in_12" u="-6.0000" v="0.0000"/>
+        <point2d id="f_in_13" u="-5.7956" v="-1.5529"/>
+        <point2d id="f_in_14" u="-5.1962" v="-3.0000"/>
+        <point2d id="f_in_15" u="-4.2426" v="-4.2426"/>
+        <point2d id="f_in_16" u="-3.0000" v="-5.1962"/>
+        <point2d id="f_in_17" u="-1.5529" v="-5.7956"/>
+        <point2d id="f_in_18" u="-0.0000" v="-6.0000"/>
+        <point2d id="f_in_19" u="1.5529" v="-5.7956"/>
+        <point2d id="f_in_20" u="3.0000" v="-5.1962"/>
+        <point2d id="f_in_21" u="4.2426" v="-4.2426"/>
+        <point2d id="f_in_22" u="5.1962" v="-3.0000"/>
+        <point2d id="f_in_23" u="5.7956" v="-1.5529"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="f_out_0" p1="f_out_1"/>
+        <line p0="f_out_1" p1="f_out_2"/>
+        <line p0="f_out_2" p1="f_out_3"/>
+        <line p0="f_out_3" p1="f_out_4"/>
+        <line p0="f_out_4" p1="f_out_5"/>
+        <line p0="f_out_5" p1="f_out_6"/>
+        <line p0="f_out_6" p1="f_out_7"/>
+        <line p0="f_out_7" p1="f_out_8"/>
+        <line p0="f_out_8" p1="f_out_9"/>
+        <line p0="f_out_9" p1="f_out_10"/>
+        <line p0="f_out_10" p1="f_out_11"/>
+        <line p0="f_out_11" p1="f_out_12"/>
+        <line p0="f_out_12" p1="f_out_13"/>
+        <line p0="f_out_13" p1="f_out_14"/>
+        <line p0="f_out_14" p1="f_out_15"/>
+        <line p0="f_out_15" p1="f_out_16"/>
+        <line p0="f_out_16" p1="f_out_17"/>
+        <line p0="f_out_17" p1="f_out_18"/>
+        <line p0="f_out_18" p1="f_out_19"/>
+        <line p0="f_out_19" p1="f_out_20"/>
+        <line p0="f_out_20" p1="f_out_21"/>
+        <line p0="f_out_21" p1="f_out_22"/>
+        <line p0="f_out_22" p1="f_out_23"/>
+        <line p0="f_out_23" p1="f_out_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="f_in_0" p1="f_in_1"/>
+        <line p0="f_in_1" p1="f_in_2"/>
+        <line p0="f_in_2" p1="f_in_3"/>
+        <line p0="f_in_3" p1="f_in_4"/>
+        <line p0="f_in_4" p1="f_in_5"/>
+        <line p0="f_in_5" p1="f_in_6"/>
+        <line p0="f_in_6" p1="f_in_7"/>
+        <line p0="f_in_7" p1="f_in_8"/>
+        <line p0="f_in_8" p1="f_in_9"/>
+        <line p0="f_in_9" p1="f_in_10"/>
+        <line p0="f_in_10" p1="f_in_11"/>
+        <line p0="f_in_11" p1="f_in_12"/>
+        <line p0="f_in_12" p1="f_in_13"/>
+        <line p0="f_in_13" p1="f_in_14"/>
+        <line p0="f_in_14" p1="f_in_15"/>
+        <line p0="f_in_15" p1="f_in_16"/>
+        <line p0="f_in_16" p1="f_in_17"/>
+        <line p0="f_in_17" p1="f_in_18"/>
+        <line p0="f_in_18" p1="f_in_19"/>
+        <line p0="f_in_19" p1="f_in_20"/>
+        <line p0="f_in_20" p1="f_in_21"/>
+        <line p0="f_in_21" p1="f_in_22"/>
+        <line p0="f_in_22" p1="f_in_23"/>
+        <line p0="f_in_23" p1="f_in_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_hub" distance="hub_len" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="rigid_clamp_coupling_hub_v01_od40_b12.step" schema="AP214"/>
+    <stl source="b_solid" filename="rigid_clamp_coupling_hub_v01_od40_b12.stl" format="binary"/>
+  </exports>
+</cdml>

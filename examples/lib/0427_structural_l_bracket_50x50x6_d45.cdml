@@ -1,0 +1,50 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="flange_a" value="50.00" min="20.0" max="150.0" unit="mm"/>
+    <var id="flange_b" value="50.00" min="20.0" max="150.0" unit="mm"/>
+    <var id="wall_thk" value="6.00" min="2.0" max="20.0" unit="mm"/>
+    <var id="bracket_depth" value="45.00" min="15.0" max="150.0" unit="mm"/>
+    <assert expr="flange_a > wall_thk * 2.0" message="Leg length must exceed twice wall thickness" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_l" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="v0" u="0.0" v="0.0"/>
+        <point2d id="v1" u="50.0000" v="0.0"/>
+        <point2d id="v2" u="50.0000" v="6.0000"/>
+        <point2d id="v3" u="6.0000" v="6.0000"/>
+        <point2d id="v4" u="6.0000" v="50.0000"/>
+        <point2d id="v5" u="0.0" v="50.0000"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="v0" p1="v1"/>
+        <line p0="v1" p1="v2"/>
+        <line p0="v2" p1="v3"/>
+        <line p0="v3" p1="v4"/>
+        <line p0="v4" p1="v5"/>
+        <line p0="v5" p1="v0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_l" distance="bracket_depth" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="structural_l_bracket_50x50x6_d45.step" schema="AP214"/>
+    <stl source="b_solid" filename="structural_l_bracket_50x50x6_d45.stl" format="binary"/>
+  </exports>
+</cdml>

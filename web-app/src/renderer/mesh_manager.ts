@@ -4,8 +4,8 @@ import {
   CadMeshRawBuffers,
   CadTessellatedSolidSlice,
   formatCadTopoId,
+  VisualDiffData,
 } from '../types/cad';
-import type { VisualDiffData } from '../core-shell/PluginTypes';
 
 export class MeshManager {
   public group: THREE.Group;

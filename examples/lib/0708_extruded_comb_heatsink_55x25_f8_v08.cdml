@@ -1,0 +1,93 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="heatsink_w" value="55.00" min="25.0" max="150.0" unit="mm"/>
+    <var id="fin_height" value="25.00" min="10.0" max="60.0" unit="mm"/>
+    <var id="heatsink_len" value="70.00" min="20.0" max="200.0" unit="mm"/>
+    <assert expr="fin_height > 5.0" message="Fin height must provide adequate convection area" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_heatsink" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="c0" u="0.0" v="0.0"/>
+        <point2d id="c1" u="55.0000" v="0.0"/>
+        <point2d id="c2" u="55.0000" v="5.5000"/>
+        <point2d id="fn_7_r" u="55.0000" v="30.5000"/>
+        <point2d id="fn_7_l" u="52.5938" v="30.5000"/>
+        <point2d id="fn_7_b" u="52.5938" v="5.5000"/>
+        <point2d id="fn_6_r" u="48.1250" v="30.5000"/>
+        <point2d id="fn_6_l" u="45.7188" v="30.5000"/>
+        <point2d id="fn_6_b" u="45.7188" v="5.5000"/>
+        <point2d id="fn_5_r" u="41.2500" v="30.5000"/>
+        <point2d id="fn_5_l" u="38.8438" v="30.5000"/>
+        <point2d id="fn_5_b" u="38.8438" v="5.5000"/>
+        <point2d id="fn_4_r" u="34.3750" v="30.5000"/>
+        <point2d id="fn_4_l" u="31.9688" v="30.5000"/>
+        <point2d id="fn_4_b" u="31.9688" v="5.5000"/>
+        <point2d id="fn_3_r" u="27.5000" v="30.5000"/>
+        <point2d id="fn_3_l" u="25.0938" v="30.5000"/>
+        <point2d id="fn_3_b" u="25.0938" v="5.5000"/>
+        <point2d id="fn_2_r" u="20.6250" v="30.5000"/>
+        <point2d id="fn_2_l" u="18.2188" v="30.5000"/>
+        <point2d id="fn_2_b" u="18.2188" v="5.5000"/>
+        <point2d id="fn_1_r" u="13.7500" v="30.5000"/>
+        <point2d id="fn_1_l" u="11.3438" v="30.5000"/>
+        <point2d id="fn_1_b" u="11.3438" v="5.5000"/>
+        <point2d id="fn_0_r" u="6.8750" v="30.5000"/>
+        <point2d id="fn_0_l" u="4.4688" v="30.5000"/>
+        <point2d id="fn_0_b" u="4.4688" v="5.5000"/>
+        <point2d id="c_end" u="0.0" v="5.5000"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="c0" p1="c1"/>
+        <line p0="c1" p1="c2"/>
+        <line p0="c2" p1="fn_7_r"/>
+        <line p0="fn_7_r" p1="fn_7_l"/>
+        <line p0="fn_7_l" p1="fn_7_b"/>
+        <line p0="fn_7_b" p1="fn_6_r"/>
+        <line p0="fn_6_r" p1="fn_6_l"/>
+        <line p0="fn_6_l" p1="fn_6_b"/>
+        <line p0="fn_6_b" p1="fn_5_r"/>
+        <line p0="fn_5_r" p1="fn_5_l"/>
+        <line p0="fn_5_l" p1="fn_5_b"/>
+        <line p0="fn_5_b" p1="fn_4_r"/>
+        <line p0="fn_4_r" p1="fn_4_l"/>
+        <line p0="fn_4_l" p1="fn_4_b"/>
+        <line p0="fn_4_b" p1="fn_3_r"/>
+        <line p0="fn_3_r" p1="fn_3_l"/>
+        <line p0="fn_3_l" p1="fn_3_b"/>
+        <line p0="fn_3_b" p1="fn_2_r"/>
+        <line p0="fn_2_r" p1="fn_2_l"/>
+        <line p0="fn_2_l" p1="fn_2_b"/>
+        <line p0="fn_2_b" p1="fn_1_r"/>
+        <line p0="fn_1_r" p1="fn_1_l"/>
+        <line p0="fn_1_l" p1="fn_1_b"/>
+        <line p0="fn_1_b" p1="fn_0_r"/>
+        <line p0="fn_0_r" p1="fn_0_l"/>
+        <line p0="fn_0_l" p1="fn_0_b"/>
+        <line p0="fn_0_b" p1="c_end"/>
+        <line p0="c_end" p1="c0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_heatsink" distance="heatsink_len" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="extruded_comb_heatsink_55x25_f8_v08.step" schema="AP214"/>
+    <stl source="b_solid" filename="extruded_comb_heatsink_55x25_f8_v08.stl" format="binary"/>
+  </exports>
+</cdml>

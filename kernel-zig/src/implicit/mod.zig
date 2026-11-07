@@ -5,7 +5,6 @@ pub const dual_contouring = @import("dual_contouring.zig");
 pub const sdf_vm = @import("sdf_vm.zig");
 pub const field_modulator = @import("field_modulator.zig");
 pub const dual_contour = @import("dual_contour.zig");
-pub const wasm = @import("wasm.zig");
 
 pub const Vec3 = sdf.Vec3;
 pub const SdfPrimitive = sdf.SdfPrimitive;

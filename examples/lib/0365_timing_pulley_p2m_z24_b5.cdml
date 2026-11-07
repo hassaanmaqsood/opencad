@@ -1,0 +1,176 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="tooth_pitch" value="2.00" min="1.0" max="10.0" unit="mm"/>
+    <var id="tooth_count" value="24" min="10" max="80" unit=""/>
+    <var id="bore_d" value="5.00" min="3.0" max="25.0" unit="mm"/>
+    <var id="belt_width" value="10.00" min="6.0" max="40.0" unit="mm"/>
+    <assert expr="tooth_count * tooth_pitch > bore_d * 4.0" message="Pitch perimeter must exceed bore envelope" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_pulley" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="pt_0" u="7.1394" v="0.0000"/>
+        <point2d id="pt_1" u="5.5912" v="0.7361"/>
+        <point2d id="pt_2" u="6.8962" v="1.8478"/>
+        <point2d id="pt_3" u="5.2102" v="2.1581"/>
+        <point2d id="pt_4" u="6.1829" v="3.5697"/>
+        <point2d id="pt_5" u="4.4741" v="3.4331"/>
+        <point2d id="pt_6" u="5.0483" v="5.0483"/>
+        <point2d id="pt_7" u="3.4331" v="4.4741"/>
+        <point2d id="pt_8" u="3.5697" v="6.1829"/>
+        <point2d id="pt_9" u="2.1581" v="5.2102"/>
+        <point2d id="pt_10" u="1.8478" v="6.8962"/>
+        <point2d id="pt_11" u="0.7361" v="5.5912"/>
+        <point2d id="pt_12" u="0.0000" v="7.1394"/>
+        <point2d id="pt_13" u="-0.7361" v="5.5912"/>
+        <point2d id="pt_14" u="-1.8478" v="6.8962"/>
+        <point2d id="pt_15" u="-2.1581" v="5.2102"/>
+        <point2d id="pt_16" u="-3.5697" v="6.1829"/>
+        <point2d id="pt_17" u="-3.4331" v="4.4741"/>
+        <point2d id="pt_18" u="-5.0483" v="5.0483"/>
+        <point2d id="pt_19" u="-4.4741" v="3.4331"/>
+        <point2d id="pt_20" u="-6.1829" v="3.5697"/>
+        <point2d id="pt_21" u="-5.2102" v="2.1581"/>
+        <point2d id="pt_22" u="-6.8962" v="1.8478"/>
+        <point2d id="pt_23" u="-5.5912" v="0.7361"/>
+        <point2d id="pt_24" u="-7.1394" v="0.0000"/>
+        <point2d id="pt_25" u="-5.5912" v="-0.7361"/>
+        <point2d id="pt_26" u="-6.8962" v="-1.8478"/>
+        <point2d id="pt_27" u="-5.2102" v="-2.1581"/>
+        <point2d id="pt_28" u="-6.1829" v="-3.5697"/>
+        <point2d id="pt_29" u="-4.4741" v="-3.4331"/>
+        <point2d id="pt_30" u="-5.0483" v="-5.0483"/>
+        <point2d id="pt_31" u="-3.4331" v="-4.4741"/>
+        <point2d id="pt_32" u="-3.5697" v="-6.1829"/>
+        <point2d id="pt_33" u="-2.1581" v="-5.2102"/>
+        <point2d id="pt_34" u="-1.8478" v="-6.8962"/>
+        <point2d id="pt_35" u="-0.7361" v="-5.5912"/>
+        <point2d id="pt_36" u="-0.0000" v="-7.1394"/>
+        <point2d id="pt_37" u="0.7361" v="-5.5912"/>
+        <point2d id="pt_38" u="1.8478" v="-6.8962"/>
+        <point2d id="pt_39" u="2.1581" v="-5.2102"/>
+        <point2d id="pt_40" u="3.5697" v="-6.1829"/>
+        <point2d id="pt_41" u="3.4331" v="-4.4741"/>
+        <point2d id="pt_42" u="5.0483" v="-5.0483"/>
+        <point2d id="pt_43" u="4.4741" v="-3.4331"/>
+        <point2d id="pt_44" u="6.1829" v="-3.5697"/>
+        <point2d id="pt_45" u="5.2102" v="-2.1581"/>
+        <point2d id="pt_46" u="6.8962" v="-1.8478"/>
+        <point2d id="pt_47" u="5.5912" v="-0.7361"/>
+                <point2d id="pb_0" u="2.5000" v="0.0000"/>
+        <point2d id="pb_1" u="2.3776" v="0.7725"/>
+        <point2d id="pb_2" u="2.0225" v="1.4695"/>
+        <point2d id="pb_3" u="1.4695" v="2.0225"/>
+        <point2d id="pb_4" u="0.7725" v="2.3776"/>
+        <point2d id="pb_5" u="0.0000" v="2.5000"/>
+        <point2d id="pb_6" u="-0.7725" v="2.3776"/>
+        <point2d id="pb_7" u="-1.4695" v="2.0225"/>
+        <point2d id="pb_8" u="-2.0225" v="1.4695"/>
+        <point2d id="pb_9" u="-2.3776" v="0.7725"/>
+        <point2d id="pb_10" u="-2.5000" v="0.0000"/>
+        <point2d id="pb_11" u="-2.3776" v="-0.7725"/>
+        <point2d id="pb_12" u="-2.0225" v="-1.4695"/>
+        <point2d id="pb_13" u="-1.4695" v="-2.0225"/>
+        <point2d id="pb_14" u="-0.7725" v="-2.3776"/>
+        <point2d id="pb_15" u="-0.0000" v="-2.5000"/>
+        <point2d id="pb_16" u="0.7725" v="-2.3776"/>
+        <point2d id="pb_17" u="1.4695" v="-2.0225"/>
+        <point2d id="pb_18" u="2.0225" v="-1.4695"/>
+        <point2d id="pb_19" u="2.3776" v="-0.7725"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="pt_0" p1="pt_1"/>
+        <line p0="pt_1" p1="pt_2"/>
+        <line p0="pt_2" p1="pt_3"/>
+        <line p0="pt_3" p1="pt_4"/>
+        <line p0="pt_4" p1="pt_5"/>
+        <line p0="pt_5" p1="pt_6"/>
+        <line p0="pt_6" p1="pt_7"/>
+        <line p0="pt_7" p1="pt_8"/>
+        <line p0="pt_8" p1="pt_9"/>
+        <line p0="pt_9" p1="pt_10"/>
+        <line p0="pt_10" p1="pt_11"/>
+        <line p0="pt_11" p1="pt_12"/>
+        <line p0="pt_12" p1="pt_13"/>
+        <line p0="pt_13" p1="pt_14"/>
+        <line p0="pt_14" p1="pt_15"/>
+        <line p0="pt_15" p1="pt_16"/>
+        <line p0="pt_16" p1="pt_17"/>
+        <line p0="pt_17" p1="pt_18"/>
+        <line p0="pt_18" p1="pt_19"/>
+        <line p0="pt_19" p1="pt_20"/>
+        <line p0="pt_20" p1="pt_21"/>
+        <line p0="pt_21" p1="pt_22"/>
+        <line p0="pt_22" p1="pt_23"/>
+        <line p0="pt_23" p1="pt_24"/>
+        <line p0="pt_24" p1="pt_25"/>
+        <line p0="pt_25" p1="pt_26"/>
+        <line p0="pt_26" p1="pt_27"/>
+        <line p0="pt_27" p1="pt_28"/>
+        <line p0="pt_28" p1="pt_29"/>
+        <line p0="pt_29" p1="pt_30"/>
+        <line p0="pt_30" p1="pt_31"/>
+        <line p0="pt_31" p1="pt_32"/>
+        <line p0="pt_32" p1="pt_33"/>
+        <line p0="pt_33" p1="pt_34"/>
+        <line p0="pt_34" p1="pt_35"/>
+        <line p0="pt_35" p1="pt_36"/>
+        <line p0="pt_36" p1="pt_37"/>
+        <line p0="pt_37" p1="pt_38"/>
+        <line p0="pt_38" p1="pt_39"/>
+        <line p0="pt_39" p1="pt_40"/>
+        <line p0="pt_40" p1="pt_41"/>
+        <line p0="pt_41" p1="pt_42"/>
+        <line p0="pt_42" p1="pt_43"/>
+        <line p0="pt_43" p1="pt_44"/>
+        <line p0="pt_44" p1="pt_45"/>
+        <line p0="pt_45" p1="pt_46"/>
+        <line p0="pt_46" p1="pt_47"/>
+        <line p0="pt_47" p1="pt_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="pb_0" p1="pb_1"/>
+        <line p0="pb_1" p1="pb_2"/>
+        <line p0="pb_2" p1="pb_3"/>
+        <line p0="pb_3" p1="pb_4"/>
+        <line p0="pb_4" p1="pb_5"/>
+        <line p0="pb_5" p1="pb_6"/>
+        <line p0="pb_6" p1="pb_7"/>
+        <line p0="pb_7" p1="pb_8"/>
+        <line p0="pb_8" p1="pb_9"/>
+        <line p0="pb_9" p1="pb_10"/>
+        <line p0="pb_10" p1="pb_11"/>
+        <line p0="pb_11" p1="pb_12"/>
+        <line p0="pb_12" p1="pb_13"/>
+        <line p0="pb_13" p1="pb_14"/>
+        <line p0="pb_14" p1="pb_15"/>
+        <line p0="pb_15" p1="pb_16"/>
+        <line p0="pb_16" p1="pb_17"/>
+        <line p0="pb_17" p1="pb_18"/>
+        <line p0="pb_18" p1="pb_19"/>
+        <line p0="pb_19" p1="pb_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_pulley" distance="belt_width" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="timing_pulley_p2m_z24_b5.step" schema="AP214"/>
+    <stl source="b_solid" filename="timing_pulley_p2m_z24_b5.stl" format="binary"/>
+  </exports>
+</cdml>

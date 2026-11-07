@@ -72,13 +72,6 @@ export class CadWorkerBridge {
       reject: (reason?: any) => void;
     }
   >();
-  private pendingAstCountRequests = new Map<number, { resolve: (val: number) => void; reject: (err: any) => void }>();
-  private pendingAstFormatRequests = new Map<number, { resolve: (val: string) => void; reject: (err: any) => void }>();
-  private pendingAstMergeRequests = new Map<
-    number,
-    { resolve: (val: { mergedScript: string; conflictCount: number }) => void; reject: (err: any) => void }
-  >();
-  private pendingVisualDiffRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
   private pendingCdmlEvalRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
   private pendingCdmlVarRequests = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
   private pendingCdmlStepRequests = new Map<number, { resolve: (val: string) => void; reject: (err: any) => void }>();
@@ -250,44 +243,6 @@ export class CadWorkerBridge {
           status: payload.status,
         });
       }
-    } else if (data.type === 'AST_PARSE_COUNT_RESULT') {
-      const requestId = data.requestId ?? 0;
-      const pending = this.pendingAstCountRequests.get(requestId);
-      if (pending) {
-        this.pendingAstCountRequests.delete(requestId);
-        pending.resolve(data.count ?? 0);
-      }
-    } else if (data.type === 'AST_FORMAT_RESULT') {
-      const requestId = data.requestId ?? 0;
-      const pending = this.pendingAstFormatRequests.get(requestId);
-      if (pending) {
-        this.pendingAstFormatRequests.delete(requestId);
-        pending.resolve(data.formatted ?? '');
-      }
-    } else if (data.type === 'AST_MERGE_3WAY_RESULT') {
-      const requestId = data.requestId ?? 0;
-      const pending = this.pendingAstMergeRequests.get(requestId);
-      if (pending) {
-        this.pendingAstMergeRequests.delete(requestId);
-        pending.resolve({
-          mergedScript: data.mergedScript ?? '',
-          conflictCount: data.conflictCount ?? 0,
-        });
-      }
-    } else if (data.type === 'VISUAL_DIFF_RESULT') {
-      const requestId = data.requestId ?? 0;
-      const pending = this.pendingVisualDiffRequests.get(requestId);
-      if (pending) {
-        this.pendingVisualDiffRequests.delete(requestId);
-        const raw = data.diff;
-        pending.resolve({
-          addedPositions: raw?.addedPositions ? new Float32Array(raw.addedPositions) : undefined,
-          addedIndices: raw?.addedIndices ? new Uint32Array(raw.addedIndices) : undefined,
-          removedPositions: raw?.removedPositions ? new Float32Array(raw.removedPositions) : undefined,
-          removedIndices: raw?.removedIndices ? new Uint32Array(raw.removedIndices) : undefined,
-          summary: raw?.summary,
-        });
-      }
     } else if (data.type === 'ERROR') {
       const requestId = data.requestId ?? 0;
       const pending = this.pendingRequests.get(requestId);
@@ -407,22 +362,6 @@ export class CadWorkerBridge {
     for (const [id, req] of this.pendingAssemblyRequests.entries()) {
       req.reject(errObj);
       this.pendingAssemblyRequests.delete(id);
-    }
-    for (const [id, req] of this.pendingAstCountRequests.entries()) {
-      req.reject(errObj);
-      this.pendingAstCountRequests.delete(id);
-    }
-    for (const [id, req] of this.pendingAstFormatRequests.entries()) {
-      req.reject(errObj);
-      this.pendingAstFormatRequests.delete(id);
-    }
-    for (const [id, req] of this.pendingAstMergeRequests.entries()) {
-      req.reject(errObj);
-      this.pendingAstMergeRequests.delete(id);
-    }
-    for (const [id, req] of this.pendingVisualDiffRequests.entries()) {
-      req.reject(errObj);
-      this.pendingVisualDiffRequests.delete(id);
     }
     for (const [id, req] of this.pendingCdmlEvalRequests.entries()) {
       req.reject(errObj);
@@ -622,58 +561,6 @@ export class CadWorkerBridge {
     });
   }
 
-  public async loadPluginWasm(pluginId: string, wasmBinary: ArrayBuffer): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      const handler = (e: MessageEvent) => {
-        if (e.data?.type === 'PLUGIN_WASM_LOADED' && e.data?.pluginId === pluginId) {
-          this.worker.removeEventListener('message', handler);
-          resolve(!!e.data.success);
-        }
-      };
-      this.worker.addEventListener('message', handler);
-      this.worker.postMessage({ type: 'LOAD_PLUGIN_WASM', pluginId, wasmBinary }, [wasmBinary]);
-    });
-  }
-
-  public async parseAstCount(source: string): Promise<number> {
-    const requestId = this.nextRequestId++;
-    return new Promise<number>((resolve, reject) => {
-      this.pendingAstCountRequests.set(requestId, { resolve, reject });
-      this.worker.postMessage({ type: 'AST_PARSE_COUNT', requestId, source });
-    });
-  }
-
-  public async formatAst(source: string): Promise<string> {
-    const requestId = this.nextRequestId++;
-    return new Promise<string>((resolve, reject) => {
-      this.pendingAstFormatRequests.set(requestId, { resolve, reject });
-      this.worker.postMessage({ type: 'AST_FORMAT', requestId, source });
-    });
-  }
-
-  public async mergeAst3Way(
-    base: string,
-    ours: string,
-    theirs: string
-  ): Promise<{ mergedScript: string; conflictCount: number }> {
-    const requestId = this.nextRequestId++;
-    return new Promise((resolve, reject) => {
-      this.pendingAstMergeRequests.set(requestId, { resolve, reject });
-      this.worker.postMessage({ type: 'AST_MERGE_3WAY', requestId, base, ours, theirs });
-    });
-  }
-
-  public async computeVisualDiff(
-    baseNodes: CadFeatureNode[],
-    targetNodes: CadFeatureNode[]
-  ): Promise<any> {
-    const requestId = this.nextRequestId++;
-    return new Promise((resolve, reject) => {
-      this.pendingVisualDiffRequests.set(requestId, { resolve, reject });
-      this.worker.postMessage({ type: 'COMPUTE_VISUAL_DIFF', requestId, baseNodes, targetNodes });
-    });
-  }
-
   public evalCDML(
     xml: string,
     imports?: Record<string, string>,
@@ -752,9 +639,5 @@ export class CadWorkerBridge {
     this.pendingExportStepRequests.clear();
     this.pendingExportStlRequests.clear();
     this.pendingAssemblyRequests.clear();
-    this.pendingAstCountRequests.clear();
-    this.pendingAstFormatRequests.clear();
-    this.pendingAstMergeRequests.clear();
-    this.pendingVisualDiffRequests.clear();
   }
 }

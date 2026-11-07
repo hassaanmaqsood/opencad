@@ -27,10 +27,7 @@ import { getDefaultDemoFeatureDag } from '../types/demo_dag';
 import { parseStep, exportStep } from './step_io';
 import { exportStl } from './stl_io';
 import { solveAssemblyClient } from './assembly_solver';
-import { WorkerPluginBridge } from './WorkerPluginBridge';
 import { getAssetUrl } from '../utils/assets';
-
-const workerPluginBridge = new WorkerPluginBridge();
 
 interface WasmExports {
   memory: WebAssembly.Memory;
@@ -1288,81 +1285,6 @@ self.onmessage = async (e: MessageEvent) => {
     return;
   }
 
-  // --- Wave 6B: Dynamic Workbench Plugin Handlers ---
-  if (data.type === 'LOAD_PLUGIN_WASM') {
-    const pluginId = data.pluginId ?? data.payload?.pluginId;
-    const wasmBinary = data.wasmBinary ?? data.payload?.wasmBinary;
-    const success = await workerPluginBridge.loadPluginWasm(pluginId, wasmBinary);
-    self.postMessage({
-      type: 'PLUGIN_WASM_LOADED',
-      pluginId: pluginId,
-      success,
-    });
-    return;
-  }
-
-  if (data.type === 'AST_PARSE_COUNT') {
-    const requestId = data.requestId ?? 0;
-    const count = workerPluginBridge.parseAstCount(data.source);
-    self.postMessage({
-      type: 'AST_PARSE_COUNT_RESULT',
-      requestId,
-      count,
-    });
-    return;
-  }
-
-  if (data.type === 'AST_FORMAT') {
-    const requestId = data.requestId ?? 0;
-    const formatted = workerPluginBridge.formatAst(data.source);
-    self.postMessage({
-      type: 'AST_FORMAT_RESULT',
-      requestId,
-      formatted,
-    });
-    return;
-  }
-
-  if (data.type === 'AST_MERGE_3WAY') {
-    const requestId = data.requestId ?? 0;
-    const result = workerPluginBridge.merge3Way(data.base, data.ours, data.theirs);
-    self.postMessage({
-      type: 'AST_MERGE_3WAY_RESULT',
-      requestId,
-      mergedScript: result.mergedScript,
-      conflictCount: result.conflictCount,
-    });
-    return;
-  }
-
-    if (data.type === 'COMPUTE_VISUAL_DIFF') {
-      const requestId = data.requestId ?? 0;
-      const baseNodes = data.baseNodes || [];
-      const targetNodes = data.targetNodes || cachedDagNodes;
-      const diff = workerPluginBridge.computeVisualDiff(baseNodes, targetNodes);
-
-      const transferList: Transferable[] = [];
-      if (diff.addedPositions) transferList.push(diff.addedPositions.buffer);
-      if (diff.addedIndices) transferList.push(diff.addedIndices.buffer);
-      if (diff.removedPositions) transferList.push(diff.removedPositions.buffer);
-      if (diff.removedIndices) transferList.push(diff.removedIndices.buffer);
-
-      self.postMessage(
-        {
-          type: 'VISUAL_DIFF_RESULT',
-          requestId,
-          diff: {
-            addedPositions: diff.addedPositions?.buffer,
-            addedIndices: diff.addedIndices?.buffer,
-            removedPositions: diff.removedPositions?.buffer,
-            removedIndices: diff.removedIndices?.buffer,
-            summary: diff.summary,
-          },
-        },
-        transferList
-      );
-      return;
-    }
   } catch (err: any) {
     const errorMsg = err?.stack || err?.message || String(err);
     console.error(`[cad.worker] Internal exception during message "${data.type}":`, errorMsg, err);

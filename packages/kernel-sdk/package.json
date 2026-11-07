@@ -20,22 +20,6 @@
     "./core": {
       "import": "./dist/core.js",
       "types": "./dist/core.d.ts"
-    },
-    "./sheetmetal": {
-      "import": "./dist/sheetmetal.js",
-      "types": "./dist/sheetmetal.d.ts"
-    },
-    "./fea-flexure": {
-      "import": "./dist/fea_flexure.js",
-      "types": "./dist/fea_flexure.d.ts"
-    },
-    "./implicit": {
-      "import": "./dist/implicit.js",
-      "types": "./dist/implicit.d.ts"
-    },
-    "./cam-hlr": {
-      "import": "./dist/cam_hlr.js",
-      "types": "./dist/cam_hlr.d.ts"
     }
   },
   "files": [

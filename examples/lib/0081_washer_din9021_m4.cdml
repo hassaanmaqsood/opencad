@@ -1,0 +1,135 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="inner_dia" value="4.30" min="3.44" max="5.16" unit="mm"/>
+    <var id="outer_dia" value="12.00" min="9.60" max="14.40" unit="mm"/>
+    <var id="thk" value="1.00" min="0.50" max="2.00" unit="mm"/>
+    <assert expr="outer_dia > inner_dia" message="Washer OD must exceed ID" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_washer" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="vo_0" u="6.0000" v="0.0000"/>
+        <point2d id="vo_1" u="5.7956" v="1.5529"/>
+        <point2d id="vo_2" u="5.1962" v="3.0000"/>
+        <point2d id="vo_3" u="4.2426" v="4.2426"/>
+        <point2d id="vo_4" u="3.0000" v="5.1962"/>
+        <point2d id="vo_5" u="1.5529" v="5.7956"/>
+        <point2d id="vo_6" u="0.0000" v="6.0000"/>
+        <point2d id="vo_7" u="-1.5529" v="5.7956"/>
+        <point2d id="vo_8" u="-3.0000" v="5.1962"/>
+        <point2d id="vo_9" u="-4.2426" v="4.2426"/>
+        <point2d id="vo_10" u="-5.1962" v="3.0000"/>
+        <point2d id="vo_11" u="-5.7956" v="1.5529"/>
+        <point2d id="vo_12" u="-6.0000" v="0.0000"/>
+        <point2d id="vo_13" u="-5.7956" v="-1.5529"/>
+        <point2d id="vo_14" u="-5.1962" v="-3.0000"/>
+        <point2d id="vo_15" u="-4.2426" v="-4.2426"/>
+        <point2d id="vo_16" u="-3.0000" v="-5.1962"/>
+        <point2d id="vo_17" u="-1.5529" v="-5.7956"/>
+        <point2d id="vo_18" u="-0.0000" v="-6.0000"/>
+        <point2d id="vo_19" u="1.5529" v="-5.7956"/>
+        <point2d id="vo_20" u="3.0000" v="-5.1962"/>
+        <point2d id="vo_21" u="4.2426" v="-4.2426"/>
+        <point2d id="vo_22" u="5.1962" v="-3.0000"/>
+        <point2d id="vo_23" u="5.7956" v="-1.5529"/>
+                <point2d id="vi_0" u="2.1500" v="0.0000"/>
+        <point2d id="vi_1" u="2.0767" v="0.5565"/>
+        <point2d id="vi_2" u="1.8620" v="1.0750"/>
+        <point2d id="vi_3" u="1.5203" v="1.5203"/>
+        <point2d id="vi_4" u="1.0750" v="1.8620"/>
+        <point2d id="vi_5" u="0.5565" v="2.0767"/>
+        <point2d id="vi_6" u="0.0000" v="2.1500"/>
+        <point2d id="vi_7" u="-0.5565" v="2.0767"/>
+        <point2d id="vi_8" u="-1.0750" v="1.8620"/>
+        <point2d id="vi_9" u="-1.5203" v="1.5203"/>
+        <point2d id="vi_10" u="-1.8620" v="1.0750"/>
+        <point2d id="vi_11" u="-2.0767" v="0.5565"/>
+        <point2d id="vi_12" u="-2.1500" v="0.0000"/>
+        <point2d id="vi_13" u="-2.0767" v="-0.5565"/>
+        <point2d id="vi_14" u="-1.8620" v="-1.0750"/>
+        <point2d id="vi_15" u="-1.5203" v="-1.5203"/>
+        <point2d id="vi_16" u="-1.0750" v="-1.8620"/>
+        <point2d id="vi_17" u="-0.5565" v="-2.0767"/>
+        <point2d id="vi_18" u="-0.0000" v="-2.1500"/>
+        <point2d id="vi_19" u="0.5565" v="-2.0767"/>
+        <point2d id="vi_20" u="1.0750" v="-1.8620"/>
+        <point2d id="vi_21" u="1.5203" v="-1.5203"/>
+        <point2d id="vi_22" u="1.8620" v="-1.0750"/>
+        <point2d id="vi_23" u="2.0767" v="-0.5565"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="vo_0" p1="vo_1"/>
+        <line p0="vo_1" p1="vo_2"/>
+        <line p0="vo_2" p1="vo_3"/>
+        <line p0="vo_3" p1="vo_4"/>
+        <line p0="vo_4" p1="vo_5"/>
+        <line p0="vo_5" p1="vo_6"/>
+        <line p0="vo_6" p1="vo_7"/>
+        <line p0="vo_7" p1="vo_8"/>
+        <line p0="vo_8" p1="vo_9"/>
+        <line p0="vo_9" p1="vo_10"/>
+        <line p0="vo_10" p1="vo_11"/>
+        <line p0="vo_11" p1="vo_12"/>
+        <line p0="vo_12" p1="vo_13"/>
+        <line p0="vo_13" p1="vo_14"/>
+        <line p0="vo_14" p1="vo_15"/>
+        <line p0="vo_15" p1="vo_16"/>
+        <line p0="vo_16" p1="vo_17"/>
+        <line p0="vo_17" p1="vo_18"/>
+        <line p0="vo_18" p1="vo_19"/>
+        <line p0="vo_19" p1="vo_20"/>
+        <line p0="vo_20" p1="vo_21"/>
+        <line p0="vo_21" p1="vo_22"/>
+        <line p0="vo_22" p1="vo_23"/>
+        <line p0="vo_23" p1="vo_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="vi_0" p1="vi_1"/>
+        <line p0="vi_1" p1="vi_2"/>
+        <line p0="vi_2" p1="vi_3"/>
+        <line p0="vi_3" p1="vi_4"/>
+        <line p0="vi_4" p1="vi_5"/>
+        <line p0="vi_5" p1="vi_6"/>
+        <line p0="vi_6" p1="vi_7"/>
+        <line p0="vi_7" p1="vi_8"/>
+        <line p0="vi_8" p1="vi_9"/>
+        <line p0="vi_9" p1="vi_10"/>
+        <line p0="vi_10" p1="vi_11"/>
+        <line p0="vi_11" p1="vi_12"/>
+        <line p0="vi_12" p1="vi_13"/>
+        <line p0="vi_13" p1="vi_14"/>
+        <line p0="vi_14" p1="vi_15"/>
+        <line p0="vi_15" p1="vi_16"/>
+        <line p0="vi_16" p1="vi_17"/>
+        <line p0="vi_17" p1="vi_18"/>
+        <line p0="vi_18" p1="vi_19"/>
+        <line p0="vi_19" p1="vi_20"/>
+        <line p0="vi_20" p1="vi_21"/>
+        <line p0="vi_21" p1="vi_22"/>
+        <line p0="vi_22" p1="vi_23"/>
+        <line p0="vi_23" p1="vi_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_washer" distance="thk" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="washer_din9021_m4.step" schema="AP214"/>
+    <stl source="b_solid" filename="washer_din9021_m4.stl" format="binary"/>
+  </exports>
+</cdml>

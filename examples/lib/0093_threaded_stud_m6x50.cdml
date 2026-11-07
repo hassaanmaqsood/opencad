@@ -1,0 +1,76 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="stud_d" value="6.00" min="4.80" max="7.20" unit="mm"/>
+    <var id="stud_l" value="50.00" min="25.00" max="75.00" unit="mm"/>
+    <expr id="stud_r" expr="stud_d / 2.0"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_stud" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="v_0" u="3.0000" v="0.0000"/>
+        <point2d id="v_1" u="2.8532" v="0.9271"/>
+        <point2d id="v_2" u="2.4271" v="1.7634"/>
+        <point2d id="v_3" u="1.7634" v="2.4271"/>
+        <point2d id="v_4" u="0.9271" v="2.8532"/>
+        <point2d id="v_5" u="0.0000" v="3.0000"/>
+        <point2d id="v_6" u="-0.9271" v="2.8532"/>
+        <point2d id="v_7" u="-1.7634" v="2.4271"/>
+        <point2d id="v_8" u="-2.4271" v="1.7634"/>
+        <point2d id="v_9" u="-2.8532" v="0.9271"/>
+        <point2d id="v_10" u="-3.0000" v="0.0000"/>
+        <point2d id="v_11" u="-2.8532" v="-0.9271"/>
+        <point2d id="v_12" u="-2.4271" v="-1.7634"/>
+        <point2d id="v_13" u="-1.7634" v="-2.4271"/>
+        <point2d id="v_14" u="-0.9271" v="-2.8532"/>
+        <point2d id="v_15" u="-0.0000" v="-3.0000"/>
+        <point2d id="v_16" u="0.9271" v="-2.8532"/>
+        <point2d id="v_17" u="1.7634" v="-2.4271"/>
+        <point2d id="v_18" u="2.4271" v="-1.7634"/>
+        <point2d id="v_19" u="2.8532" v="-0.9271"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="v_0" p1="v_1"/>
+        <line p0="v_1" p1="v_2"/>
+        <line p0="v_2" p1="v_3"/>
+        <line p0="v_3" p1="v_4"/>
+        <line p0="v_4" p1="v_5"/>
+        <line p0="v_5" p1="v_6"/>
+        <line p0="v_6" p1="v_7"/>
+        <line p0="v_7" p1="v_8"/>
+        <line p0="v_8" p1="v_9"/>
+        <line p0="v_9" p1="v_10"/>
+        <line p0="v_10" p1="v_11"/>
+        <line p0="v_11" p1="v_12"/>
+        <line p0="v_12" p1="v_13"/>
+        <line p0="v_13" p1="v_14"/>
+        <line p0="v_14" p1="v_15"/>
+        <line p0="v_15" p1="v_16"/>
+        <line p0="v_16" p1="v_17"/>
+        <line p0="v_17" p1="v_18"/>
+        <line p0="v_18" p1="v_19"/>
+        <line p0="v_19" p1="v_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_stud" distance="stud_l" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="threaded_stud_m6x50.step" schema="AP214"/>
+    <stl source="b_solid" filename="threaded_stud_m6x50.stl" format="binary"/>
+  </exports>
+</cdml>

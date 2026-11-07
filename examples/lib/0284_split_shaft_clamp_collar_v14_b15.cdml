@@ -1,0 +1,135 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="collar_bore" value="15.00" min="12.00" max="18.00" unit="mm"/>
+    <var id="collar_od" value="33.00" min="26.40" max="39.60" unit="mm"/>
+    <var id="collar_w" value="15.00" min="7.50" max="22.50" unit="mm"/>
+    <assert expr="collar_od > collar_bore * 1.5" message="Collar OD must provide sufficient wall thickness" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_collar" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="co_0" u="16.5000" v="0.0000"/>
+        <point2d id="co_1" u="15.9378" v="4.2705"/>
+        <point2d id="co_2" u="14.2894" v="8.2500"/>
+        <point2d id="co_3" u="11.6673" v="11.6673"/>
+        <point2d id="co_4" u="8.2500" v="14.2894"/>
+        <point2d id="co_5" u="4.2705" v="15.9378"/>
+        <point2d id="co_6" u="0.0000" v="16.5000"/>
+        <point2d id="co_7" u="-4.2705" v="15.9378"/>
+        <point2d id="co_8" u="-8.2500" v="14.2894"/>
+        <point2d id="co_9" u="-11.6673" v="11.6673"/>
+        <point2d id="co_10" u="-14.2894" v="8.2500"/>
+        <point2d id="co_11" u="-15.9378" v="4.2705"/>
+        <point2d id="co_12" u="-16.5000" v="0.0000"/>
+        <point2d id="co_13" u="-15.9378" v="-4.2705"/>
+        <point2d id="co_14" u="-14.2894" v="-8.2500"/>
+        <point2d id="co_15" u="-11.6673" v="-11.6673"/>
+        <point2d id="co_16" u="-8.2500" v="-14.2894"/>
+        <point2d id="co_17" u="-4.2705" v="-15.9378"/>
+        <point2d id="co_18" u="-0.0000" v="-16.5000"/>
+        <point2d id="co_19" u="4.2705" v="-15.9378"/>
+        <point2d id="co_20" u="8.2500" v="-14.2894"/>
+        <point2d id="co_21" u="11.6673" v="-11.6673"/>
+        <point2d id="co_22" u="14.2894" v="-8.2500"/>
+        <point2d id="co_23" u="15.9378" v="-4.2705"/>
+                <point2d id="ci_0" u="7.5000" v="0.0000"/>
+        <point2d id="ci_1" u="7.2444" v="1.9411"/>
+        <point2d id="ci_2" u="6.4952" v="3.7500"/>
+        <point2d id="ci_3" u="5.3033" v="5.3033"/>
+        <point2d id="ci_4" u="3.7500" v="6.4952"/>
+        <point2d id="ci_5" u="1.9411" v="7.2444"/>
+        <point2d id="ci_6" u="0.0000" v="7.5000"/>
+        <point2d id="ci_7" u="-1.9411" v="7.2444"/>
+        <point2d id="ci_8" u="-3.7500" v="6.4952"/>
+        <point2d id="ci_9" u="-5.3033" v="5.3033"/>
+        <point2d id="ci_10" u="-6.4952" v="3.7500"/>
+        <point2d id="ci_11" u="-7.2444" v="1.9411"/>
+        <point2d id="ci_12" u="-7.5000" v="0.0000"/>
+        <point2d id="ci_13" u="-7.2444" v="-1.9411"/>
+        <point2d id="ci_14" u="-6.4952" v="-3.7500"/>
+        <point2d id="ci_15" u="-5.3033" v="-5.3033"/>
+        <point2d id="ci_16" u="-3.7500" v="-6.4952"/>
+        <point2d id="ci_17" u="-1.9411" v="-7.2444"/>
+        <point2d id="ci_18" u="-0.0000" v="-7.5000"/>
+        <point2d id="ci_19" u="1.9411" v="-7.2444"/>
+        <point2d id="ci_20" u="3.7500" v="-6.4952"/>
+        <point2d id="ci_21" u="5.3033" v="-5.3033"/>
+        <point2d id="ci_22" u="6.4952" v="-3.7500"/>
+        <point2d id="ci_23" u="7.2444" v="-1.9411"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="co_0" p1="co_1"/>
+        <line p0="co_1" p1="co_2"/>
+        <line p0="co_2" p1="co_3"/>
+        <line p0="co_3" p1="co_4"/>
+        <line p0="co_4" p1="co_5"/>
+        <line p0="co_5" p1="co_6"/>
+        <line p0="co_6" p1="co_7"/>
+        <line p0="co_7" p1="co_8"/>
+        <line p0="co_8" p1="co_9"/>
+        <line p0="co_9" p1="co_10"/>
+        <line p0="co_10" p1="co_11"/>
+        <line p0="co_11" p1="co_12"/>
+        <line p0="co_12" p1="co_13"/>
+        <line p0="co_13" p1="co_14"/>
+        <line p0="co_14" p1="co_15"/>
+        <line p0="co_15" p1="co_16"/>
+        <line p0="co_16" p1="co_17"/>
+        <line p0="co_17" p1="co_18"/>
+        <line p0="co_18" p1="co_19"/>
+        <line p0="co_19" p1="co_20"/>
+        <line p0="co_20" p1="co_21"/>
+        <line p0="co_21" p1="co_22"/>
+        <line p0="co_22" p1="co_23"/>
+        <line p0="co_23" p1="co_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="ci_0" p1="ci_1"/>
+        <line p0="ci_1" p1="ci_2"/>
+        <line p0="ci_2" p1="ci_3"/>
+        <line p0="ci_3" p1="ci_4"/>
+        <line p0="ci_4" p1="ci_5"/>
+        <line p0="ci_5" p1="ci_6"/>
+        <line p0="ci_6" p1="ci_7"/>
+        <line p0="ci_7" p1="ci_8"/>
+        <line p0="ci_8" p1="ci_9"/>
+        <line p0="ci_9" p1="ci_10"/>
+        <line p0="ci_10" p1="ci_11"/>
+        <line p0="ci_11" p1="ci_12"/>
+        <line p0="ci_12" p1="ci_13"/>
+        <line p0="ci_13" p1="ci_14"/>
+        <line p0="ci_14" p1="ci_15"/>
+        <line p0="ci_15" p1="ci_16"/>
+        <line p0="ci_16" p1="ci_17"/>
+        <line p0="ci_17" p1="ci_18"/>
+        <line p0="ci_18" p1="ci_19"/>
+        <line p0="ci_19" p1="ci_20"/>
+        <line p0="ci_20" p1="ci_21"/>
+        <line p0="ci_21" p1="ci_22"/>
+        <line p0="ci_22" p1="ci_23"/>
+        <line p0="ci_23" p1="ci_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_collar" distance="collar_w" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="split_shaft_clamp_collar_v14_b15.step" schema="AP214"/>
+    <stl source="b_solid" filename="split_shaft_clamp_collar_v14_b15.stl" format="binary"/>
+  </exports>
+</cdml>

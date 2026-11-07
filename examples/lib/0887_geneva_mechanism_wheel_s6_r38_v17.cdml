@@ -1,0 +1,118 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="wheel_radius" value="38.00" min="20.0" max="150.0" unit="mm"/>
+    <var id="wheel_thk" value="10.00" min="4.0" max="30.0" unit="mm"/>
+    <assert expr="wheel_radius > 15.0" message="Wheel radius must safely accommodate slot depth" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_geneva" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="gw_0" u="38.0000" v="0.0000"/>
+        <point2d id="gw_1" u="36.7052" v="9.8351"/>
+        <point2d id="gw_2" u="32.9090" v="19.0000"/>
+        <point2d id="gw_3" u="26.8701" v="26.8701"/>
+        <point2d id="gw_4" u="19.0000" v="32.9090"/>
+        <point2d id="gw_5" u="9.8351" v="36.7052"/>
+        <point2d id="gw_6" u="0.0000" v="38.0000"/>
+        <point2d id="gw_7" u="-9.8351" v="36.7052"/>
+        <point2d id="gw_8" u="-19.0000" v="32.9090"/>
+        <point2d id="gw_9" u="-26.8701" v="26.8701"/>
+        <point2d id="gw_10" u="-32.9090" v="19.0000"/>
+        <point2d id="gw_11" u="-36.7052" v="9.8351"/>
+        <point2d id="gw_12" u="-38.0000" v="0.0000"/>
+        <point2d id="gw_13" u="-36.7052" v="-9.8351"/>
+        <point2d id="gw_14" u="-32.9090" v="-19.0000"/>
+        <point2d id="gw_15" u="-26.8701" v="-26.8701"/>
+        <point2d id="gw_16" u="-19.0000" v="-32.9090"/>
+        <point2d id="gw_17" u="-9.8351" v="-36.7052"/>
+        <point2d id="gw_18" u="-0.0000" v="-38.0000"/>
+        <point2d id="gw_19" u="9.8351" v="-36.7052"/>
+        <point2d id="gw_20" u="19.0000" v="-32.9090"/>
+        <point2d id="gw_21" u="26.8701" v="-26.8701"/>
+        <point2d id="gw_22" u="32.9090" v="-19.0000"/>
+        <point2d id="gw_23" u="36.7052" v="-9.8351"/>
+                <point2d id="gb_0" u="8.0000" v="0.0000"/>
+        <point2d id="gb_1" u="7.3910" v="3.0615"/>
+        <point2d id="gb_2" u="5.6569" v="5.6569"/>
+        <point2d id="gb_3" u="3.0615" v="7.3910"/>
+        <point2d id="gb_4" u="0.0000" v="8.0000"/>
+        <point2d id="gb_5" u="-3.0615" v="7.3910"/>
+        <point2d id="gb_6" u="-5.6569" v="5.6569"/>
+        <point2d id="gb_7" u="-7.3910" v="3.0615"/>
+        <point2d id="gb_8" u="-8.0000" v="0.0000"/>
+        <point2d id="gb_9" u="-7.3910" v="-3.0615"/>
+        <point2d id="gb_10" u="-5.6569" v="-5.6569"/>
+        <point2d id="gb_11" u="-3.0615" v="-7.3910"/>
+        <point2d id="gb_12" u="-0.0000" v="-8.0000"/>
+        <point2d id="gb_13" u="3.0615" v="-7.3910"/>
+        <point2d id="gb_14" u="5.6569" v="-5.6569"/>
+        <point2d id="gb_15" u="7.3910" v="-3.0615"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="gw_0" p1="gw_1"/>
+        <line p0="gw_1" p1="gw_2"/>
+        <line p0="gw_2" p1="gw_3"/>
+        <line p0="gw_3" p1="gw_4"/>
+        <line p0="gw_4" p1="gw_5"/>
+        <line p0="gw_5" p1="gw_6"/>
+        <line p0="gw_6" p1="gw_7"/>
+        <line p0="gw_7" p1="gw_8"/>
+        <line p0="gw_8" p1="gw_9"/>
+        <line p0="gw_9" p1="gw_10"/>
+        <line p0="gw_10" p1="gw_11"/>
+        <line p0="gw_11" p1="gw_12"/>
+        <line p0="gw_12" p1="gw_13"/>
+        <line p0="gw_13" p1="gw_14"/>
+        <line p0="gw_14" p1="gw_15"/>
+        <line p0="gw_15" p1="gw_16"/>
+        <line p0="gw_16" p1="gw_17"/>
+        <line p0="gw_17" p1="gw_18"/>
+        <line p0="gw_18" p1="gw_19"/>
+        <line p0="gw_19" p1="gw_20"/>
+        <line p0="gw_20" p1="gw_21"/>
+        <line p0="gw_21" p1="gw_22"/>
+        <line p0="gw_22" p1="gw_23"/>
+        <line p0="gw_23" p1="gw_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="gb_0" p1="gb_1"/>
+        <line p0="gb_1" p1="gb_2"/>
+        <line p0="gb_2" p1="gb_3"/>
+        <line p0="gb_3" p1="gb_4"/>
+        <line p0="gb_4" p1="gb_5"/>
+        <line p0="gb_5" p1="gb_6"/>
+        <line p0="gb_6" p1="gb_7"/>
+        <line p0="gb_7" p1="gb_8"/>
+        <line p0="gb_8" p1="gb_9"/>
+        <line p0="gb_9" p1="gb_10"/>
+        <line p0="gb_10" p1="gb_11"/>
+        <line p0="gb_11" p1="gb_12"/>
+        <line p0="gb_12" p1="gb_13"/>
+        <line p0="gb_13" p1="gb_14"/>
+        <line p0="gb_14" p1="gb_15"/>
+        <line p0="gb_15" p1="gb_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_geneva" distance="wheel_thk" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="geneva_mechanism_wheel_s6_r38_v17.step" schema="AP214"/>
+    <stl source="b_solid" filename="geneva_mechanism_wheel_s6_r38_v17.stl" format="binary"/>
+  </exports>
+</cdml>

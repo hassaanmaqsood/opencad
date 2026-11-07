@@ -1,0 +1,19 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="cell_dim" value="27.50" min="5.0" max="50.0" unit="mm"/>
+    <var id="octree_res" value="5" min="3" max="6" unit=""/>
+    <expr id="domain_bound" expr="cell_dim / 2.0"/>
+    <assert expr="cell_dim > 2.0" message="Cell dimension must be positive" level="error"/>
+  </defs>
+  <body>
+    <implicit id="tpms_lattice" domain_min="vec3(-13.75, -13.75, -13.75)" domain_max="vec3(13.75, 13.75, 13.75)" octree_depth="5">
+      <scalar_field expr="cos(x) + cos(y) + cos(z) - 0.15"/>
+    </implicit>
+  </body>
+  <exports>
+    <tessellate source="tpms_lattice" linear_deflection="0.005" angular_deflection="0.05"/>
+    <step source="tpms_lattice" filename="tpms_schwarz_p_cell_27mm_d5_v080.step" schema="AP214"/>
+    <stl source="tpms_lattice" filename="tpms_schwarz_p_cell_27mm_d5_v080.stl" format="binary"/>
+  </exports>
+</cdml>

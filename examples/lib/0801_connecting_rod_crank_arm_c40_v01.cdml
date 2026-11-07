@@ -1,0 +1,82 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="center_dist" value="40.00" min="30.0" max="250.0" unit="mm"/>
+    <var id="arm_thk" value="6.00" min="4.0" max="30.0" unit="mm"/>
+    <assert expr="center_dist > 20.0" message="Center-to-center distance must maintain kinematic ratio" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_arm" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="v0" u="0.0" v="-12.0000"/>
+        <point2d id="v1" u="40.0000" v="-8.0000"/>
+        <point2d id="v2" u="48.0000" v="0.0"/>
+        <point2d id="v3" u="40.0000" v="8.0000"/>
+        <point2d id="v4" u="0.0" v="12.0000"/>
+        <point2d id="v5" u="-12.0000" v="0.0"/>
+                <point2d id="bb_0" u="9.0000" v="0.0000"/>
+        <point2d id="bb_1" u="8.3149" v="3.4442"/>
+        <point2d id="bb_2" u="6.3640" v="6.3640"/>
+        <point2d id="bb_3" u="3.4442" v="8.3149"/>
+        <point2d id="bb_4" u="0.0000" v="9.0000"/>
+        <point2d id="bb_5" u="-3.4442" v="8.3149"/>
+        <point2d id="bb_6" u="-6.3640" v="6.3640"/>
+        <point2d id="bb_7" u="-8.3149" v="3.4442"/>
+        <point2d id="bb_8" u="-9.0000" v="0.0000"/>
+        <point2d id="bb_9" u="-8.3149" v="-3.4442"/>
+        <point2d id="bb_10" u="-6.3640" v="-6.3640"/>
+        <point2d id="bb_11" u="-3.4442" v="-8.3149"/>
+        <point2d id="bb_12" u="-0.0000" v="-9.0000"/>
+        <point2d id="bb_13" u="3.4442" v="-8.3149"/>
+        <point2d id="bb_14" u="6.3640" v="-6.3640"/>
+        <point2d id="bb_15" u="8.3149" v="-3.4442"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="v0" p1="v1"/>
+        <line p0="v1" p1="v2"/>
+        <line p0="v2" p1="v3"/>
+        <line p0="v3" p1="v4"/>
+        <line p0="v4" p1="v5"/>
+        <line p0="v5" p1="v0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="bb_0" p1="bb_1"/>
+        <line p0="bb_1" p1="bb_2"/>
+        <line p0="bb_2" p1="bb_3"/>
+        <line p0="bb_3" p1="bb_4"/>
+        <line p0="bb_4" p1="bb_5"/>
+        <line p0="bb_5" p1="bb_6"/>
+        <line p0="bb_6" p1="bb_7"/>
+        <line p0="bb_7" p1="bb_8"/>
+        <line p0="bb_8" p1="bb_9"/>
+        <line p0="bb_9" p1="bb_10"/>
+        <line p0="bb_10" p1="bb_11"/>
+        <line p0="bb_11" p1="bb_12"/>
+        <line p0="bb_12" p1="bb_13"/>
+        <line p0="bb_13" p1="bb_14"/>
+        <line p0="bb_14" p1="bb_15"/>
+        <line p0="bb_15" p1="bb_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_arm" distance="arm_thk" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="connecting_rod_crank_arm_c40_v01.step" schema="AP214"/>
+    <stl source="b_solid" filename="connecting_rod_crank_arm_c40_v01.stl" format="binary"/>
+  </exports>
+</cdml>

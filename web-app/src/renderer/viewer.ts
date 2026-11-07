@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CadMeshRawBuffers, CadTessellatedSolidSlice, SubShapeSelection } from '../types/cad';
-import type { VisualDiffData } from '../core-shell/PluginTypes';
+import { CadMeshRawBuffers, CadTessellatedSolidSlice, SubShapeSelection, VisualDiffData } from '../types/cad';
 import { CadWorkerBridge } from '../worker/worker_bridge';
 import { FpsCounter } from './fps_counter';
 import { MeshManager } from './mesh_manager';

@@ -67,6 +67,18 @@ export type SubShapeSelection =
       label?: string;
     };
 
+export interface VisualDiffData {
+  addedPositions?: Float32Array;
+  addedIndices?: Uint32Array;
+  removedPositions?: Float32Array;
+  removedIndices?: Uint32Array;
+  summary?: {
+    addedFaces: number;
+    removedFaces: number;
+    deltaVolumeApprox: number;
+  };
+}
+
 /* ------------------------------------------------------------------------- */
 /* Wave 2: 2D Parametric Sketch Constraint Solver Types                      */
 /* ------------------------------------------------------------------------- */

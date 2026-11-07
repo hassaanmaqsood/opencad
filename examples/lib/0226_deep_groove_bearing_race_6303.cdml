@@ -1,0 +1,135 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="bore_d" value="17.00" min="13.60" max="20.40" unit="mm"/>
+    <var id="outer_d" value="47.00" min="37.60" max="56.40" unit="mm"/>
+    <var id="width_b" value="14.00" min="11.20" max="21.00" unit="mm"/>
+    <assert expr="outer_d > bore_d" message="Outer ring diameter must exceed bore" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_bearing" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="bo_0" u="23.5000" v="0.0000"/>
+        <point2d id="bo_1" u="22.6993" v="6.0822"/>
+        <point2d id="bo_2" u="20.3516" v="11.7500"/>
+        <point2d id="bo_3" u="16.6170" v="16.6170"/>
+        <point2d id="bo_4" u="11.7500" v="20.3516"/>
+        <point2d id="bo_5" u="6.0822" v="22.6993"/>
+        <point2d id="bo_6" u="0.0000" v="23.5000"/>
+        <point2d id="bo_7" u="-6.0822" v="22.6993"/>
+        <point2d id="bo_8" u="-11.7500" v="20.3516"/>
+        <point2d id="bo_9" u="-16.6170" v="16.6170"/>
+        <point2d id="bo_10" u="-20.3516" v="11.7500"/>
+        <point2d id="bo_11" u="-22.6993" v="6.0822"/>
+        <point2d id="bo_12" u="-23.5000" v="0.0000"/>
+        <point2d id="bo_13" u="-22.6993" v="-6.0822"/>
+        <point2d id="bo_14" u="-20.3516" v="-11.7500"/>
+        <point2d id="bo_15" u="-16.6170" v="-16.6170"/>
+        <point2d id="bo_16" u="-11.7500" v="-20.3516"/>
+        <point2d id="bo_17" u="-6.0822" v="-22.6993"/>
+        <point2d id="bo_18" u="-0.0000" v="-23.5000"/>
+        <point2d id="bo_19" u="6.0822" v="-22.6993"/>
+        <point2d id="bo_20" u="11.7500" v="-20.3516"/>
+        <point2d id="bo_21" u="16.6170" v="-16.6170"/>
+        <point2d id="bo_22" u="20.3516" v="-11.7500"/>
+        <point2d id="bo_23" u="22.6993" v="-6.0822"/>
+                <point2d id="bi_0" u="8.5000" v="0.0000"/>
+        <point2d id="bi_1" u="8.2104" v="2.2000"/>
+        <point2d id="bi_2" u="7.3612" v="4.2500"/>
+        <point2d id="bi_3" u="6.0104" v="6.0104"/>
+        <point2d id="bi_4" u="4.2500" v="7.3612"/>
+        <point2d id="bi_5" u="2.2000" v="8.2104"/>
+        <point2d id="bi_6" u="0.0000" v="8.5000"/>
+        <point2d id="bi_7" u="-2.2000" v="8.2104"/>
+        <point2d id="bi_8" u="-4.2500" v="7.3612"/>
+        <point2d id="bi_9" u="-6.0104" v="6.0104"/>
+        <point2d id="bi_10" u="-7.3612" v="4.2500"/>
+        <point2d id="bi_11" u="-8.2104" v="2.2000"/>
+        <point2d id="bi_12" u="-8.5000" v="0.0000"/>
+        <point2d id="bi_13" u="-8.2104" v="-2.2000"/>
+        <point2d id="bi_14" u="-7.3612" v="-4.2500"/>
+        <point2d id="bi_15" u="-6.0104" v="-6.0104"/>
+        <point2d id="bi_16" u="-4.2500" v="-7.3612"/>
+        <point2d id="bi_17" u="-2.2000" v="-8.2104"/>
+        <point2d id="bi_18" u="-0.0000" v="-8.5000"/>
+        <point2d id="bi_19" u="2.2000" v="-8.2104"/>
+        <point2d id="bi_20" u="4.2500" v="-7.3612"/>
+        <point2d id="bi_21" u="6.0104" v="-6.0104"/>
+        <point2d id="bi_22" u="7.3612" v="-4.2500"/>
+        <point2d id="bi_23" u="8.2104" v="-2.2000"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="bo_0" p1="bo_1"/>
+        <line p0="bo_1" p1="bo_2"/>
+        <line p0="bo_2" p1="bo_3"/>
+        <line p0="bo_3" p1="bo_4"/>
+        <line p0="bo_4" p1="bo_5"/>
+        <line p0="bo_5" p1="bo_6"/>
+        <line p0="bo_6" p1="bo_7"/>
+        <line p0="bo_7" p1="bo_8"/>
+        <line p0="bo_8" p1="bo_9"/>
+        <line p0="bo_9" p1="bo_10"/>
+        <line p0="bo_10" p1="bo_11"/>
+        <line p0="bo_11" p1="bo_12"/>
+        <line p0="bo_12" p1="bo_13"/>
+        <line p0="bo_13" p1="bo_14"/>
+        <line p0="bo_14" p1="bo_15"/>
+        <line p0="bo_15" p1="bo_16"/>
+        <line p0="bo_16" p1="bo_17"/>
+        <line p0="bo_17" p1="bo_18"/>
+        <line p0="bo_18" p1="bo_19"/>
+        <line p0="bo_19" p1="bo_20"/>
+        <line p0="bo_20" p1="bo_21"/>
+        <line p0="bo_21" p1="bo_22"/>
+        <line p0="bo_22" p1="bo_23"/>
+        <line p0="bo_23" p1="bo_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="bi_0" p1="bi_1"/>
+        <line p0="bi_1" p1="bi_2"/>
+        <line p0="bi_2" p1="bi_3"/>
+        <line p0="bi_3" p1="bi_4"/>
+        <line p0="bi_4" p1="bi_5"/>
+        <line p0="bi_5" p1="bi_6"/>
+        <line p0="bi_6" p1="bi_7"/>
+        <line p0="bi_7" p1="bi_8"/>
+        <line p0="bi_8" p1="bi_9"/>
+        <line p0="bi_9" p1="bi_10"/>
+        <line p0="bi_10" p1="bi_11"/>
+        <line p0="bi_11" p1="bi_12"/>
+        <line p0="bi_12" p1="bi_13"/>
+        <line p0="bi_13" p1="bi_14"/>
+        <line p0="bi_14" p1="bi_15"/>
+        <line p0="bi_15" p1="bi_16"/>
+        <line p0="bi_16" p1="bi_17"/>
+        <line p0="bi_17" p1="bi_18"/>
+        <line p0="bi_18" p1="bi_19"/>
+        <line p0="bi_19" p1="bi_20"/>
+        <line p0="bi_20" p1="bi_21"/>
+        <line p0="bi_21" p1="bi_22"/>
+        <line p0="bi_22" p1="bi_23"/>
+        <line p0="bi_23" p1="bi_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_bearing" distance="width_b" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="deep_groove_bearing_race_6303.step" schema="AP214"/>
+    <stl source="b_solid" filename="deep_groove_bearing_race_6303.stl" format="binary"/>
+  </exports>
+</cdml>

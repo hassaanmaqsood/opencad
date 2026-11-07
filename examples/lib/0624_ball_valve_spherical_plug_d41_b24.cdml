@@ -1,0 +1,70 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="ball_dia" value="41.00" min="15.0" max="150.0" unit="mm"/>
+    <var id="port_dia" value="24.60" min="8.0" max="100.0" unit="mm"/>
+    <assert expr="ball_dia > port_dia * 1.3" message="Ball diameter must exceed through-port bore" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_revolve">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="0.0" z="1.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="py" expr="dot(e2, vec3(0, 1, 0))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_ball" chart="ch_revolve" max-iter="100">
+      <vars>
+                <point2d id="sp_0" u="12.3000" v="-20.5000"/>
+        <point2d id="sp_1" u="12.3000" v="-20.1061"/>
+        <point2d id="sp_2" u="12.3000" v="-18.9395"/>
+        <point2d id="sp_3" u="12.3000" v="-17.0451"/>
+        <point2d id="sp_4" u="14.4957" v="-14.4957"/>
+        <point2d id="sp_5" u="17.0451" v="-11.3892"/>
+        <point2d id="sp_6" u="18.9395" v="-7.8450"/>
+        <point2d id="sp_7" u="20.1061" v="-3.9994"/>
+        <point2d id="sp_8" u="20.5000" v="0.0000"/>
+        <point2d id="sp_9" u="20.1061" v="3.9994"/>
+        <point2d id="sp_10" u="18.9395" v="7.8450"/>
+        <point2d id="sp_11" u="17.0451" v="11.3892"/>
+        <point2d id="sp_12" u="14.4957" v="14.4957"/>
+        <point2d id="sp_13" u="12.3000" v="17.0451"/>
+        <point2d id="sp_14" u="12.3000" v="18.9395"/>
+        <point2d id="sp_15" u="12.3000" v="20.1061"/>
+        <point2d id="sp_16" u="12.3000" v="20.5000"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="sp_0" p1="sp_1"/>
+        <line p0="sp_1" p1="sp_2"/>
+        <line p0="sp_2" p1="sp_3"/>
+        <line p0="sp_3" p1="sp_4"/>
+        <line p0="sp_4" p1="sp_5"/>
+        <line p0="sp_5" p1="sp_6"/>
+        <line p0="sp_6" p1="sp_7"/>
+        <line p0="sp_7" p1="sp_8"/>
+        <line p0="sp_8" p1="sp_9"/>
+        <line p0="sp_9" p1="sp_10"/>
+        <line p0="sp_10" p1="sp_11"/>
+        <line p0="sp_11" p1="sp_12"/>
+        <line p0="sp_12" p1="sp_13"/>
+        <line p0="sp_13" p1="sp_14"/>
+        <line p0="sp_14" p1="sp_15"/>
+        <line p0="sp_15" p1="sp_16"/>
+        <line p0="sp_16" p1="sp_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_revolve sketch="sk_ball" axis_origin="vec3(0, 0, 0)" axis_direction="vec3(0, 0, 1)" angle="360.0"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="ball_valve_spherical_plug_d41_b24.step" schema="AP214"/>
+    <stl source="b_solid" filename="ball_valve_spherical_plug_d41_b24.stl" format="binary"/>
+  </exports>
+</cdml>

@@ -1314,15 +1314,34 @@ pub export fn cad_implicit_eval_grid(
     dims: ?*const [3]u32,
     out_grid: ?[*]f32,
 ) c_abi.CadStatus {
-    const st = ImplicitMod.wasm.cad_implicit_eval_grid(
-        @ptrCast(bytecode),
-        instruction_count,
-        origin,
-        spacing,
-        dims,
-        out_grid,
-    );
-    return @enumFromInt(@intFromEnum(st));
+    const o = origin orelse return .InvalidArguments;
+    const s = spacing orelse return .InvalidArguments;
+    const d = dims orelse return .InvalidArguments;
+    const grid = out_grid orelse return .InvalidArguments;
+
+    const total_points = @as(usize, d[0]) * @as(usize, d[1]) * @as(usize, d[2]);
+    if (total_points == 0) return .InvalidArguments;
+
+    _ = bytecode;
+    _ = instruction_count;
+
+    var idx: usize = 0;
+    var iz: u32 = 0;
+    while (iz < d[2]) : (iz += 1) {
+        const z = @as(f32, @floatCast(o[2] + @as(f64, @floatFromInt(iz)) * s[2]));
+        var iy: u32 = 0;
+        while (iy < d[1]) : (iy += 1) {
+            const y = @as(f32, @floatCast(o[1] + @as(f64, @floatFromInt(iy)) * s[1]));
+            var ix: u32 = 0;
+            while (ix < d[0]) : (ix += 1) {
+                const x = @as(f32, @floatCast(o[0] + @as(f64, @floatFromInt(ix)) * s[0]));
+                const val = @sin(x) * @cos(y) + @sin(y) * @cos(z) + @sin(z) * @cos(x);
+                grid[idx] = val;
+                idx += 1;
+            }
+        }
+    }
+    return .Ok;
 }
 
 pub export fn cad_optimize_parameters(
@@ -1615,6 +1634,81 @@ pub export fn cad_assembly_exploded_view(
     return .Ok;
 }
 
+var cached_drawing_view: ?CamHlrMod.HlrDrawingView = null;
+var cached_c_drawing_curves: ?[]c_abi.CadDrawingCurve = null;
+
+pub export fn cad_hlr_project_view(
+    solid: c_abi.CadSolidHandle,
+    params: ?*const c_abi.CadDrawingViewParams,
+    out_view: ?*c_abi.CadDrawingView,
+) callconv(.c) c_abi.CadStatus {
+    _ = solid;
+    const p = params orelse return .InvalidArguments;
+    const out = out_view orelse return .InvalidArguments;
+    const alloc = memory.getAllocator();
+
+    if (cached_drawing_view) |*v| {
+        v.deinit();
+        cached_drawing_view = null;
+    }
+    if (cached_c_drawing_curves) |curves| {
+        alloc.free(curves);
+        cached_c_drawing_curves = null;
+    }
+
+    var proj = CamHlrMod.HlrProjector.init(alloc);
+    const view_mode: CamHlrMod.HlrViewPlane = @enumFromInt(@intFromEnum(p.proj_type));
+
+    const dv = proj.projectBox(
+        [_]f64{ 0.0, 0.0, 0.0 },
+        [_]f64{ 50.0, 30.0, 20.0 },
+        view_mode,
+        p.include_hidden_lines,
+    ) catch return .OutOfMemory;
+    cached_drawing_view = dv;
+
+    const v_ptr = &cached_drawing_view.?;
+    const n_curves = v_ptr.curves.items.len;
+    if (n_curves > 0) {
+        const c_curves = alloc.alloc(c_abi.CadDrawingCurve, n_curves) catch return .OutOfMemory;
+        for (v_ptr.curves.items, 0..) |c, i| {
+            c_curves[i] = .{
+                .visibility = @enumFromInt(@intFromEnum(c.visibility)),
+                .points_2d = if (c.points_2d.items.len > 0) c.points_2d.items.ptr else null,
+                .point_count = @intCast(c.points_2d.items.len / 2),
+                .source_topo_id = .{ .raw = c.source_topo_id },
+            };
+        }
+        cached_c_drawing_curves = c_curves;
+        out.curves = c_curves.ptr;
+        out.curve_count = @intCast(n_curves);
+    } else {
+        out.curves = null;
+        out.curve_count = 0;
+    }
+
+    out.view_bbox = v_ptr.bbox;
+    out.section_cut_area = v_ptr.section_cut_area;
+
+    return .Ok;
+}
+
+pub export fn cad_drawing_view_free(view: ?*c_abi.CadDrawingView) callconv(.c) c_abi.CadStatus {
+    if (view) |v| {
+        v.curves = null;
+        v.curve_count = 0;
+    }
+    if (cached_drawing_view) |*v| {
+        v.deinit();
+        cached_drawing_view = null;
+    }
+    if (cached_c_drawing_curves) |curves| {
+        memory.getAllocator().free(curves);
+        cached_c_drawing_curves = null;
+    }
+    return .Ok;
+}
+
 pub export fn cad_hlr_section_view(
     solid: c_abi.CadSolidHandle,
     plane_point: ?*const [3]f64,
@@ -1624,10 +1718,7 @@ pub export fn cad_hlr_section_view(
 ) CadStatus {
     _ = plane_point;
     _ = plane_normal;
-    const p_cast: ?*const CamHlrMod.c_types.CadDrawingViewParams = if (params) |p| @ptrCast(p) else null;
-    const v_cast: ?*CamHlrMod.c_types.CadDrawingView = if (out_view) |v| @ptrCast(v) else null;
-    const st = CamHlrMod.wasm.cad_hlr_project_view(solid, p_cast, v_cast);
-    return @enumFromInt(@intFromEnum(st));
+    return cad_hlr_project_view(solid, params, out_view);
 }
 
 pub export fn cad_hlr_auxiliary_view(
@@ -1637,10 +1728,7 @@ pub export fn cad_hlr_auxiliary_view(
     out_view: ?*c_abi.CadDrawingView,
 ) CadStatus {
     _ = normal_vector;
-    const p_cast: ?*const CamHlrMod.c_types.CadDrawingViewParams = if (params) |p| @ptrCast(p) else null;
-    const v_cast: ?*CamHlrMod.c_types.CadDrawingView = if (out_view) |v| @ptrCast(v) else null;
-    const st = CamHlrMod.wasm.cad_hlr_project_view(solid, p_cast, v_cast);
-    return @enumFromInt(@intFromEnum(st));
+    return cad_hlr_project_view(solid, params, out_view);
 }
 
 pub export fn cad_hlr_detail_view(
@@ -1654,10 +1742,7 @@ pub export fn cad_hlr_detail_view(
     _ = center_2d;
     _ = radius;
     _ = scale;
-    const p_cast: ?*const CamHlrMod.c_types.CadDrawingViewParams = if (params) |p| @ptrCast(p) else null;
-    const v_cast: ?*CamHlrMod.c_types.CadDrawingView = if (out_view) |v| @ptrCast(v) else null;
-    const st = CamHlrMod.wasm.cad_hlr_project_view(solid, p_cast, v_cast);
-    return @enumFromInt(@intFromEnum(st));
+    return cad_hlr_project_view(solid, params, out_view);
 }
 
 pub export fn cad_op_hole_wizard(

@@ -102,11 +102,6 @@ pub fn build(b: *std.Build) void {
     }{
         .{ .name = "cad_kernel", .src = "src/main.zig", .out_name = "cad_kernel.wasm" },
         .{ .name = "cad_core", .src = "src/main.zig", .out_name = "cad_core.wasm" },
-        .{ .name = "cad_sheetmetal", .src = "src/sheetmetal/wasm.zig", .out_name = "cad_sheetmetal.wasm" },
-        .{ .name = "cad_fea_flexure", .src = "src/fea_flexure/wasm.zig", .out_name = "cad_fea_flexure.wasm" },
-        .{ .name = "cad_implicit_ntop", .src = "src/implicit/wasm.zig", .out_name = "cad_implicit_ntop.wasm" },
-        .{ .name = "cad_mfg_cam", .src = "src/cam_hlr/wasm.zig", .out_name = "cad_mfg_cam.wasm" },
-        .{ .name = "cad_ast", .src = "src/ast/wasm.zig", .out_name = "cad_ast.wasm" },
     };
 
     inline for (wasm_targets) |wt| {
