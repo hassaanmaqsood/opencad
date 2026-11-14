@@ -48,7 +48,7 @@ export class MeshManager {
 
     // 2. Feature / Sharp Edge Lines Material (Avoid wireframes: hidden)
     const edgeMaterial = new THREE.LineBasicMaterial({
-      color: 0x14130f,
+      color: 0x050F1F,
       linewidth: 1,
       depthTest: true,
     });

@@ -1,7 +1,8 @@
 import './style.css';
 import { EditorView, basicSetup } from 'codemirror';
 import { xml } from '@codemirror/lang-xml';
-import { oneDark } from '@codemirror/theme-one-dark';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { CadViewer } from './renderer/viewer';
 import { CadWorkerBridge } from './worker/worker_bridge';
 import { LilController } from './ui/lil_controller';
@@ -724,6 +725,47 @@ async function initApp() {
     }, 200);
   };
 
+  // Cream Light Theme for CodeMirror 6 matching OpenCAD Design System
+  const openCadLightTheme = EditorView.theme({
+    '&': {
+      backgroundColor: '#FAF7F3',
+      color: '#050F1F',
+      fontFamily: "'Courier New', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    },
+    '.cm-content': {
+      caretColor: '#0A2351',
+    },
+    '.cm-cursor, .cm-dropCursor': {
+      borderLeftColor: '#0A2351',
+    },
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+      backgroundColor: 'rgba(10, 35, 81, 0.14)',
+    },
+    '.cm-activeLine': {
+      backgroundColor: 'rgba(200, 192, 180, 0.18)',
+    },
+    '.cm-gutters': {
+      backgroundColor: '#F5F0E8',
+      color: '#6B6560',
+      borderRight: '1px solid #C8C0B4',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: '#EDE6DB',
+      color: '#0A2351',
+    },
+  }, { dark: false });
+
+  const openCadLightHighlight = HighlightStyle.define([
+    { tag: tags.tagName, color: '#0A2351', fontWeight: '700' },
+    { tag: tags.angleBracket, color: '#6B6560' },
+    { tag: tags.attributeName, color: '#050F1F', fontWeight: '600' },
+    { tag: tags.attributeValue, color: '#0A5C38' },
+    { tag: tags.string, color: '#0A5C38' },
+    { tag: tags.number, color: '#0A2351' },
+    { tag: tags.comment, color: '#6B6560', fontStyle: 'italic' },
+    { tag: tags.processingInstruction, color: '#6B6560' },
+  ]);
+
   // Mount CodeMirror 6 in #codemirror-mount
   let editorView: EditorView | null = null;
   if (codemirrorMount) {
@@ -732,7 +774,8 @@ async function initApp() {
       extensions: [
         basicSetup,
         xml(),
-        oneDark,
+        openCadLightTheme,
+        syntaxHighlighting(openCadLightHighlight),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !isInternalSync) {

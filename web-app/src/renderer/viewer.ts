@@ -57,7 +57,7 @@ export class CadViewer {
     });
     this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.setClearColor(0x121316, 1.0); // Neutral dark slate canvas background
+    this.renderer.setClearColor(0xFAF7F3, 1.0); // Cream Light canvas background
 
     // 2. Initialize Scene
     this.scene = new THREE.Scene();
@@ -79,7 +79,7 @@ export class CadViewer {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
     this.scene.add(ambientLight);
 
-    const hemiLight = new THREE.HemisphereLight(0xE6EDF3, 0x121316, 0.45);
+    const hemiLight = new THREE.HemisphereLight(0xFAF7F3, 0xC8C0B4, 0.55);
     hemiLight.position.set(0, 20, 0);
     this.scene.add(hemiLight);
 

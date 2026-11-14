@@ -1,83 +1,39 @@
 /* ========================================================================== */
-/* OpenCAD Minimalist Design System Tokens (WCAG AA/AAA Compliant)           */
+/* OpenCAD Design System Tokens (Cream & Navy Light Theme)                    */
 /* ========================================================================== */
 
 :root {
-  /* Gentle, accessible Dark Theme (Default for CAD) */
-  --paper: #121316;
-  --surface: #1A1D21;
-  --surface-2: #22262C;
-  --surface-hover: #2A3038;
-  --ink: #E6EDF3;
-  --ink-2: #9DA7B3;
-  --ink-3: #6E7681;
-  --line: #2D323B;
-  --line-subtle: rgba(255, 255, 255, 0.08);
-  --line-strong: #484F58;
+  /* Light Theme Palette from OpenCAD Design System */
+  --paper: #FAF7F3;
+  --surface: #F5F0E8;
+  --surface-2: #EDE6DB;
+  --surface-hover: #E4DDD0;
+  --ink: #050F1F;
+  --ink-2: #0A2351;
+  --ink-3: #6B6560;
+  --line: #C8C0B4;
+  --line-subtle: rgba(10, 35, 81, 0.08);
+  --line-strong: #0A2351;
 
-  /* Accent & Meaning Vocabulary (Calibrated for accessible contrast without glare) */
-  --accent: #58A6FF;
-  --accent-subtle: rgba(88, 166, 255, 0.15);
-  --state-nominal: #3FB950;
-  --state-caution: #D29922;
-  --state-fault: #F85149;
-  --state-offline: #6E7681;
-  --state-linked: #58A6FF;
+  /* Accent & Semantic Vocabulary */
+  --accent: #0A2351;
+  --accent-subtle: rgba(10, 35, 81, 0.10);
+  --state-nominal: #0A5C38;
+  --state-caution: #9A6700;
+  --state-fault: #8B1A1A;
+  --state-offline: #6B6560;
+  --state-linked: #0A2351;
 
-  /* Typography: High-Precision Google Fonts */
-  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', SFMono-Regular, Menlo, monospace;
+  /* Typography: Display Arial Black, Body System Sans, Mono Courier New */
+  --font-display: 'Arial Black', 'Arial', system-ui, -apple-system, sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'Courier New', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Corner Radii */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-full: 9999px;
-}
-
-:root[data-theme="light"] {
-  --paper: #F6F8FA;
-  --surface: #FFFFFF;
-  --surface-2: #F0F2F5;
-  --surface-hover: #E4E7EB;
-  --ink: #1F2328;
-  --ink-2: #57606A;
-  --ink-3: #8C959F;
-  --line: #D0D7DE;
-  --line-subtle: rgba(0, 0, 0, 0.06);
-  --line-strong: #8C959F;
-
-  --accent: #0969DA;
-  --accent-subtle: rgba(9, 105, 218, 0.12);
-  --state-nominal: #1A7F37;
-  --state-caution: #9A6700;
-  --state-fault: #CF222E;
-  --state-offline: #8C959F;
-  --state-linked: #0969DA;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --paper: #F6F8FA;
-    --surface: #FFFFFF;
-    --surface-2: #F0F2F5;
-    --surface-hover: #E4E7EB;
-    --ink: #1F2328;
-    --ink-2: #57606A;
-    --ink-3: #8C959F;
-    --line: #D0D7DE;
-    --line-subtle: rgba(0, 0, 0, 0.06);
-    --line-strong: #8C959F;
-
-    --accent: #0969DA;
-    --accent-subtle: rgba(9, 105, 218, 0.12);
-    --state-nominal: #1A7F37;
-    --state-caution: #9A6700;
-    --state-fault: #CF222E;
-    --state-offline: #8C959F;
-    --state-linked: #0969DA;
-  }
 }
 
 /* ========================================================================== */
@@ -388,15 +344,15 @@ html, body {
 
 /* Diagnostic Details Drawer (Collapsible & Expandable) */
 .diagnostic-drawer {
-  background: #141113;
-  border-top: 1px solid #7F1D1D;
-  border-bottom: 1px solid #7F1D1D;
+  background: #FAF7F3;
+  border-top: 1px solid #8B1A1A;
+  border-bottom: 1px solid #C8C0B4;
   padding: 10px 14px;
   font-family: var(--font-mono);
   font-size: 11px;
   max-height: 240px;
   overflow-y: auto;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 -4px 12px rgba(5, 15, 31, 0.08);
   z-index: 10;
   flex-shrink: 0;
 }
@@ -406,7 +362,7 @@ html, body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
-  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  border-bottom: 1px solid rgba(139, 26, 26, 0.2);
   padding-bottom: 6px;
 }
 
@@ -426,8 +382,8 @@ html, body {
 }
 
 .diag-badge-err {
-  background: #EF4444;
-  color: #FFFFFF;
+  background: #8B1A1A;
+  color: #FAF7F3;
 }
 
 .diagnostic-actions {
@@ -436,9 +392,9 @@ html, body {
 }
 
 .btn-diag-action {
-  background: #1F2937;
-  border: 1px solid #374151;
-  color: #E5E7EB;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
   font-family: var(--font-mono);
   font-size: 10px;
   padding: 2px 8px;
@@ -448,8 +404,8 @@ html, body {
 }
 
 .btn-diag-action:hover {
-  background: #374151;
-  color: #FFFFFF;
+  background: var(--surface-hover);
+  color: var(--ink);
 }
 
 .diag-row {
@@ -466,7 +422,7 @@ html, body {
 }
 
 .diag-val {
-  color: #FCA5A5;
+  color: #8B1A1A;
   word-break: break-all;
 }
 
@@ -475,11 +431,11 @@ html, body {
 }
 
 .diag-raw-pre {
-  background: #0B0A0C;
-  border: 1px solid #2D1515;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 6px 8px;
-  color: #FECACA;
+  color: var(--ink);
   font-family: var(--font-mono);
   font-size: 10px;
   overflow-x: auto;
@@ -557,9 +513,9 @@ html, body {
 }
 
 .btn-diag-toggle {
-  background: #7F1D1D;
-  border: 1px solid #B91C1C;
-  color: #FEE2E2;
+  background: rgba(139, 26, 26, 0.10);
+  border: 1px solid #8B1A1A;
+  color: #8B1A1A;
   font-family: var(--font-mono);
   font-size: 10px;
   padding: 2px 7px;
@@ -569,8 +525,8 @@ html, body {
 }
 
 .btn-diag-toggle:hover {
-  background: #991B1B;
-  color: #FFFFFF;
+  background: #8B1A1A;
+  color: #FAF7F3;
 }
 
 .status-timing {
@@ -644,13 +600,13 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: rgba(18, 20, 24, 0.88);
+  background: rgba(245, 240, 232, 0.92);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
   padding: 5px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px rgba(5, 15, 31, 0.10);
   user-select: none;
 }
 
@@ -671,9 +627,9 @@ html, body {
 }
 
 .dock-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #FFFFFF;
-  border-color: rgba(255, 255, 255, 0.18);
+  background: var(--surface-hover);
+  color: var(--ink);
+  border-color: var(--line);
 }
 
 .dock-btn:active {
@@ -681,15 +637,15 @@ html, body {
 }
 
 .dock-btn.active {
-  background: rgba(56, 139, 253, 0.2);
-  color: #58A6FF;
-  border-color: rgba(56, 139, 253, 0.45);
+  background: #0A2351;
+  color: #FAF7F3;
+  border-color: #0A2351;
 }
 
 .dock-btn.active:hover {
-  background: rgba(56, 139, 253, 0.32);
-  color: #79B8FF;
-  border-color: rgba(56, 139, 253, 0.6);
+  background: #050F1F;
+  color: #FAF7F3;
+  border-color: #050F1F;
 }
 
 .dock-label {
@@ -712,16 +668,15 @@ html, body {
   color: var(--ink-2);
   pointer-events: none;
   user-select: none;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
 .telemetry-brand {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 900;
   font-size: 11px;
-  color: var(--ink);
+  color: var(--ink-2);
   letter-spacing: 0.04em;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .telemetry-item {
@@ -775,12 +730,12 @@ body.embed-mode #viewport-container {
   max-height: calc(100% - 130px);
   overflow-y: auto;
   overflow-x: hidden;
-  background: rgba(22, 25, 29, 0.94) !important;
+  background: rgba(245, 240, 232, 0.95) !important;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid var(--line) !important;
   border-radius: var(--radius-md) !important;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 28px rgba(5, 15, 31, 0.12);
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink);
@@ -788,23 +743,62 @@ body.embed-mode #viewport-container {
   box-sizing: border-box;
   user-select: none;
 
-  --background-color: rgba(22, 25, 29, 0.94);
-  --text-color: #E6EDF3;
-  --title-background-color: rgba(30, 35, 42, 0.95);
-  --title-text-color: #F0F6FC;
-  --widget-color: #21262D;
-  --hover-color: #30363D;
-  --focus-color: #388BFD;
-  --number-color: #79C0FF;
-  --string-color: #7EE787;
-  --font-family: var(--font-sans);
-  --font-family-mono: var(--font-mono);
+  --background-color: #F5F0E8 !important;
+  --text-color: #050F1F !important;
+  --title-background-color: #EDE6DB !important;
+  --title-text-color: #0A2351 !important;
+  --widget-color: #FAF7F3 !important;
+  --hover-color: #E4DDD0 !important;
+  --focus-color: #0A2351 !important;
+  --number-color: #0A2351 !important;
+  --string-color: #0A5C38 !important;
+  --font-family: var(--font-sans) !important;
+  --font-family-mono: var(--font-mono) !important;
   --font-size: 11px;
   --input-font-size: 11px;
   --padding: 5px;
   --spacing: 5px;
   --widget-height: 22px;
   --name-width: 44%;
+}
+
+/* Force light-theme contrast on lil-gui internal elements (overrides runtime-injected lil-gui CSS) */
+.lil-gui .title {
+  color: #0A2351 !important;
+  background: #EDE6DB !important;
+  border-bottom: 1px solid #C8C0B4 !important;
+}
+
+.lil-gui .controller .name {
+  color: #050F1F !important;
+}
+
+.lil-gui .controller.number .slider {
+  background: #FAF7F3 !important;
+  border: 1px solid #C8C0B4 !important;
+}
+
+.lil-gui .controller.number .slider .fill {
+  background: #0A2351 !important;
+}
+
+.lil-gui .controller input {
+  background: #FAF7F3 !important;
+  color: #0A2351 !important;
+  border: 1px solid #C8C0B4 !important;
+}
+
+.lil-gui .controller.function button {
+  background: #FAF7F3 !important;
+  color: #0A2351 !important;
+  border: 1px solid #C8C0B4 !important;
+  font-weight: 600 !important;
+}
+
+.lil-gui .controller.function button:hover {
+  background: #0A2351 !important;
+  color: #FAF7F3 !important;
+  border-color: #0A2351 !important;
 }
 
 /* Important: Nested lil-gui elements are folders! They must remain in normal vertical flow! */
@@ -874,13 +868,13 @@ body.embed-mode #viewport-container {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: rgba(30, 34, 40, 0.85) !important;
+  background: var(--surface-2) !important;
   border-bottom: 1px solid var(--line) !important;
   font-family: var(--font-display) !important;
-  font-weight: 600;
+  font-weight: 900;
   font-size: 11px;
   letter-spacing: 0.02em;
-  color: var(--ink) !important;
+  color: var(--ink-2) !important;
 }
 
 .lil-title {
