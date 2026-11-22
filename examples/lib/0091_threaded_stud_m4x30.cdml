@@ -3,7 +3,9 @@
   <defs>
     <var id="stud_d" value="4.00" min="3.20" max="4.80" unit="mm"/>
     <var id="stud_l" value="30.00" min="15.00" max="45.00" unit="mm"/>
+    <var id="pitch" value="0.70" min="0.35" max="1.40" unit="mm"/>
     <expr id="stud_r" expr="stud_d / 2.0"/>
+    <expr id="turns" expr="stud_l / pitch"/>
   </defs>
   <body>
     <chart id="ch_xy">
@@ -20,29 +22,25 @@
     </chart>
     <sketch id="sk_stud" chart="ch_xy" max-iter="100">
       <vars>
-                <point2d id="v_0" u="2.0000" v="0.0000"/>
-        <point2d id="v_1" u="1.9021" v="0.6180"/>
-        <point2d id="v_2" u="1.6180" v="1.1756"/>
-        <point2d id="v_3" u="1.1756" v="1.6180"/>
-        <point2d id="v_4" u="0.6180" v="1.9021"/>
-        <point2d id="v_5" u="0.0000" v="2.0000"/>
-        <point2d id="v_6" u="-0.6180" v="1.9021"/>
-        <point2d id="v_7" u="-1.1756" v="1.6180"/>
-        <point2d id="v_8" u="-1.6180" v="1.1756"/>
-        <point2d id="v_9" u="-1.9021" v="0.6180"/>
-        <point2d id="v_10" u="-2.0000" v="0.0000"/>
-        <point2d id="v_11" u="-1.9021" v="-0.6180"/>
-        <point2d id="v_12" u="-1.6180" v="-1.1756"/>
-        <point2d id="v_13" u="-1.1756" v="-1.6180"/>
-        <point2d id="v_14" u="-0.6180" v="-1.9021"/>
-        <point2d id="v_15" u="-0.0000" v="-2.0000"/>
-        <point2d id="v_16" u="0.6180" v="-1.9021"/>
-        <point2d id="v_17" u="1.1756" v="-1.6180"/>
-        <point2d id="v_18" u="1.6180" v="-1.1756"/>
-        <point2d id="v_19" u="1.9021" v="-0.6180"/>
+        <point2d id="v_0" u="2.0000" v="0.0000"/>
+        <point2d id="v_1" u="1.8327" v="0.7591"/>
+        <point2d id="v_2" u="1.3697" v="1.3697"/>
+        <point2d id="v_3" u="0.7146" v="1.7253"/>
+        <point2d id="v_4" u="0.0000" v="1.7853"/>
+        <point2d id="v_5" u="-0.6518" v="1.5735"/>
+        <point2d id="v_6" u="-1.1551" v="1.1551"/>
+        <point2d id="v_7" u="-1.4662" v="0.6073"/>
+        <point2d id="v_8" u="-1.5706" v="0.0000"/>
+        <point2d id="v_9" u="-1.4662" v="-0.6073"/>
+        <point2d id="v_10" u="-1.1551" v="-1.1551"/>
+        <point2d id="v_11" u="-0.6518" v="-1.5735"/>
+        <point2d id="v_12" u="-0.0000" v="-1.7853"/>
+        <point2d id="v_13" u="0.7146" v="-1.7253"/>
+        <point2d id="v_14" u="1.3697" v="-1.3697"/>
+        <point2d id="v_15" u="1.8327" v="-0.7591"/>
       </vars>
       <wire id="w_outer" closed="true" role="outer">
-                <line p0="v_0" p1="v_1"/>
+        <line p0="v_0" p1="v_1"/>
         <line p0="v_1" p1="v_2"/>
         <line p0="v_2" p1="v_3"/>
         <line p0="v_3" p1="v_4"/>
@@ -57,15 +55,16 @@
         <line p0="v_12" p1="v_13"/>
         <line p0="v_13" p1="v_14"/>
         <line p0="v_14" p1="v_15"/>
-        <line p0="v_15" p1="v_16"/>
-        <line p0="v_16" p1="v_17"/>
-        <line p0="v_17" p1="v_18"/>
-        <line p0="v_18" p1="v_19"/>
-        <line p0="v_19" p1="v_0"/>
+        <line p0="v_15" p1="v_0"/>
       </wire>
     </sketch>
     <brep id="b_solid">
-      <solid_extrude sketch="sk_stud" distance="stud_l" direction="vec3(0, 0, 1)"/>
+      <sweep id="sw_thread" sketch="sk_stud" cap-ends="true">
+        <trajectory>
+          <translate x="0" y="0" z-expr="ref(stud_l) * v"/>
+          <rotate axis="0 0 1" angle-expr="2 * PI * ref(turns) * v"/>
+        </trajectory>
+      </sweep>
     </brep>
   </body>
   <exports>

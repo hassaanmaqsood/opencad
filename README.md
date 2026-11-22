@@ -12,7 +12,7 @@
 
 ## Stability Notice
 
-OpenCAD is in active development. Core operations pass verification tests, but four modules remain experimental:
+OpenCAD is in active development. Core operations pass verification tests, but five areas remain experimental:
 
 1. **Nonlinear Constraint Solver:**
    The solver handles simple orthogonal profiles and convex shapes. Sketches with over-constrained dimensions or near-collinear tangent lines may fail to converge.
@@ -23,7 +23,10 @@ OpenCAD is in active development. Core operations pass verification tests, but f
 3. **Edge Fillets:**
    Rolling-ball fillets operate on uniform convex and concave edges. Apex corners and variable-radius sweeps with high curvature may fail.
 
-4. **CDML Schema:**
+4. **Helical Threads and `cad_op_thread`:**
+   CDML models build threads through revolved ridge profiles or helical `SE(3)` sweeps. Those sweeps scale station density to stay inside the 1 MiB tessellation buffer. However, the standalone C-ABI function `cad_op_thread` remains an unimplemented stub until full B-Rep helical boolean cutting is ready.
+
+5. **CDML Schema:**
    The XML schema and language bindings will evolve before version 2.1. Do not expect long-term API stability yet.
 
 ---

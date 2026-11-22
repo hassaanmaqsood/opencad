@@ -1288,18 +1288,54 @@ fn constructBrepSolid(ev: *DocumentEvaluator, node: *const XmlNode, out_err_code
             .e2 = Vec3d.init(0.0, 1.0, 0.0),
         };
 
-        // Evaluate trajectory steps across v in [0, 1]
-        var has_rotate = false;
-        if (sw_node.findChild("trajectory")) |tr_node| {
-            if (tr_node.findChild("rotate") != null) has_rotate = true;
-        }
-        const n_stations: usize = if (has_rotate) 9 else 2;
-        var steps = try alloc.alloc(surface_brep.TrajectoryStep, n_stations);
-        defer alloc.free(steps);
-
         var v_map = std.StringHashMap(u32).init(alloc);
         defer v_map.deinit();
         try v_map.put("v", 0);
+
+        // Evaluate trajectory steps across v in [0, 1]
+        var has_rotate = false;
+        var explicit_stations: ?usize = null;
+        var angle_span: f64 = 0.0;
+        if (sw_node.getAttr("stations")) |st_str| {
+            explicit_stations = std.fmt.parseInt(usize, st_str, 10) catch null;
+        }
+        if (sw_node.findChild("trajectory")) |tr_node| {
+            if (explicit_stations == null) {
+                if (tr_node.getAttr("stations")) |st_str| {
+                    explicit_stations = std.fmt.parseInt(usize, st_str, 10) catch null;
+                }
+            }
+            if (tr_node.findChild("rotate")) |r_node| {
+                has_rotate = true;
+                if (r_node.getAttr("angle-expr") orelse r_node.getAttr("angle")) |ang_str| {
+                    if (autodiff.compileExpressionFull(alloc, ang_str, .residual, &v_map, &ev.const_values, null)) |ce| {
+                        var mut_ce = ce;
+                        defer mut_ce.deinit();
+                        const a0 = mut_ce.evalScalar(&[_]f64{0.0});
+                        const a1 = mut_ce.evalScalar(&[_]f64{1.0});
+                        angle_span = @abs(a1 - a0);
+                    } else |_| {}
+                }
+            }
+        }
+        if (sk.outer_loops.items.len == 0) {
+            out_err_code.* = types.ERR_PROFILE_INVALID;
+            return error.ProfileInvalid;
+        }
+        var total_m: usize = sk.outer_loops.items[0].samples.items.len;
+        for (sk.hole_loops.items) |hl| total_m += hl.samples.items.len;
+        const max_budget_stations: usize = @min(@as(usize, 641), @max(@as(usize, 17), 900_000 / (96 * @max(@as(usize, 3), total_m))));
+
+        const clamped_span = if (std.math.isFinite(angle_span)) @min(angle_span, 80.0 * std.math.pi) else 0.0;
+        const auto_stations: usize = @as(usize, @intFromFloat(@ceil(clamped_span / (std.math.pi / 8.0)))) + 1;
+        const n_stations: usize = if (explicit_stations) |s|
+            @min(max_budget_stations, @max(@as(usize, 2), s))
+        else if (has_rotate)
+            @min(max_budget_stations, @max(@as(usize, 17), auto_stations))
+        else
+            2;
+        var steps = try alloc.alloc(surface_brep.TrajectoryStep, n_stations);
+        defer alloc.free(steps);
 
         for (0..n_stations) |k| {
             const v_val = @as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(n_stations - 1));
