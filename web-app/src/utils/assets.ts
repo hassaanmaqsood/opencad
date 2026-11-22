@@ -8,6 +8,9 @@
  */
 
 export function getAssetUrl(filename: string): string {
+  if (/^(https?:|data:|blob:)/i.test(filename)) {
+    return filename;
+  }
   const clean = filename.replace(/^\.\//, '').replace(/^\//, '');
   const loc = typeof window !== 'undefined' ? window.location : (typeof self !== 'undefined' ? self.location : null);
   if (!loc) {

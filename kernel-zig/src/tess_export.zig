@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const memory = @import("memory.zig");
 const memory_map = @import("memory_map.zig");
 const surface_brep = @import("surface_brep.zig");
@@ -7,6 +8,16 @@ const nurbs = @import("geom/nurbs.zig");
 
 pub const Vec3d = nurbs.Vec3d;
 pub const BRepSolid = surface_brep.BRepSolid;
+
+// Reusable dynamic heap buffer for meshes whose payload exceeds TESS_INLINE_MAX_BYTES (> 1 MiB)
+var dynamic_tess_buf: ?[]align(8) u8 = null;
+
+pub fn freeDynamicTessBuffer() void {
+    if (dynamic_tess_buf) |buf| {
+        memory.persistent_allocator.free(buf);
+        dynamic_tess_buf = null;
+    }
+}
 
 // Shared memory scratch export storage
 pub var export_step_len: usize = 0;
@@ -158,68 +169,103 @@ pub fn solid_tessellate(
         max_x = 0; max_y = 0; max_z = 0;
     }
 
-    // Header layout at 0x0F0000 (128 bytes aligned)
-    const pos_offset: u32 = 0x0F0080;
-    const nrm_offset: u32 = pos_offset + v_count * 3 * 4;
-    const idx_offset: u32 = nrm_offset + v_count * 3 * 4;
-    const face_offset: u32 = (idx_offset + tri_count * 3 * 4 + 7) & ~@as(u32, 7);
+    // Header layout pinned at 0x0F0000 (128 bytes aligned).
+    // Tier 1 (<= 1 MiB): payload placed inline at 0x0F0080..0x1F0000.
+    // Tier 2 (> 1 MiB): payload placed in reusable heap buffer (>= 0x600000).
+    const pos_bytes: u32 = v_count * 3 * 4;
+    const nrm_bytes: u32 = v_count * 3 * 4;
+    const idx_bytes: u32 = tri_count * 3 * 4;
+    const face_bytes: u32 = tri_count * 24;
+    const aligned_pre_face: u32 = (pos_bytes + nrm_bytes + idx_bytes + 7) & ~@as(u32, 7);
+    const total_payload_bytes: u32 = aligned_pre_face + face_bytes;
 
-    const total_len = (face_offset + tri_count * 24) - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
-    const mem_slice = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, total_len + 128);
+    var base_offset: u32 = @intCast(memory_map.TESS_INLINE_PAYLOAD_OFFSET);
+    var is_heap_spillover: u32 = 0;
 
-    // Write header
-    std.mem.writeInt(u32, mem_slice[0x00..0x04], @intCast(solid_h & 0xFFFFFFFF), .little);
-    std.mem.writeInt(u32, mem_slice[0x04..0x08], v_count, .little);
-    std.mem.writeInt(u32, mem_slice[0x08..0x0C], tri_count, .little);
-    std.mem.writeInt(u32, mem_slice[0x0C..0x10], pos_offset, .little);
-    std.mem.writeInt(u32, mem_slice[0x10..0x14], nrm_offset, .little);
-    std.mem.writeInt(u32, mem_slice[0x14..0x18], idx_offset, .little);
-    std.mem.writeInt(u32, mem_slice[0x18..0x1C], face_offset, .little);
-    std.mem.writeInt(u32, mem_slice[0x1C..0x20], @as(u32, @intCast((solid_h >> 32) & 0xFFFFFFFF)), .little); // solid_h upper bits
+    if (total_payload_bytes > memory_map.TESS_INLINE_MAX_BYTES) {
+        is_heap_spillover = 1;
+        if (builtin.target.cpu.arch == .wasm32) {
+            const needed: usize = @as(usize, total_payload_bytes) + 16;
+            if (dynamic_tess_buf) |existing| {
+                if (existing.len < needed) {
+                    memory.persistent_allocator.free(existing);
+                    dynamic_tess_buf = memory.persistent_allocator.alignedAlloc(u8, .@"8", needed) catch return;
+                }
+            } else {
+                dynamic_tess_buf = memory.persistent_allocator.alignedAlloc(u8, .@"8", needed) catch return;
+            }
+            base_offset = @intCast(@intFromPtr(dynamic_tess_buf.?.ptr));
+        } else {
+            base_offset = @intCast(memory_map.HEAP_BASE_OFFSET);
+        }
+    }
+
+    const pos_offset: u32 = base_offset;
+    const nrm_offset: u32 = pos_offset + pos_bytes;
+    const idx_offset: u32 = nrm_offset + nrm_bytes;
+    const face_offset: u32 = (idx_offset + idx_bytes + 7) & ~@as(u32, 7);
+    const actual_payload_len: u32 = (face_offset + face_bytes) - base_offset;
+
+    const hdr_slice = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, memory_map.TESS_HEADER_SIZE);
+
+    // Write 128-byte header at 0x0F0000
+    std.mem.writeInt(u32, hdr_slice[0x00..0x04], @intCast(solid_h & 0xFFFFFFFF), .little);
+    std.mem.writeInt(u32, hdr_slice[0x04..0x08], v_count, .little);
+    std.mem.writeInt(u32, hdr_slice[0x08..0x0C], tri_count, .little);
+    std.mem.writeInt(u32, hdr_slice[0x0C..0x10], pos_offset, .little);
+    std.mem.writeInt(u32, hdr_slice[0x10..0x14], nrm_offset, .little);
+    std.mem.writeInt(u32, hdr_slice[0x14..0x18], idx_offset, .little);
+    std.mem.writeInt(u32, hdr_slice[0x18..0x1C], face_offset, .little);
+    std.mem.writeInt(u32, hdr_slice[0x1C..0x20], @as(u32, @intCast((solid_h >> 32) & 0xFFFFFFFF)), .little); // solid_h upper bits
 
     // Bounding box at 0x20 (6 * 8 = 48 bytes)
     const bbox = [_]f64{ min_x, min_y, min_z, max_x, max_y, max_z };
     for (bbox, 0..) |b, i| {
-        std.mem.writeInt(u64, mem_slice[0x20 + i * 8 ..][0..8], @bitCast(b), .little);
+        std.mem.writeInt(u64, hdr_slice[0x20 + i * 8 ..][0..8], @bitCast(b), .little);
     }
+    // Hybrid spillover telemetry at 0x50..0x58
+    std.mem.writeInt(u32, hdr_slice[0x50..0x54], is_heap_spillover, .little);
+    std.mem.writeInt(u32, hdr_slice[0x54..0x58], actual_payload_len, .little);
+
+    const payload_slice = memory_map.getMemorySlice(base_offset, actual_payload_len);
 
     // Write positions (f32)
-    var p_cur: usize = pos_offset - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
+    var p_cur: usize = 0;
     for (mesh.vertices.items) |v| {
         const x_f32: f32 = @floatCast(v.x);
         const y_f32: f32 = @floatCast(v.y);
         const z_f32: f32 = @floatCast(v.z);
-        std.mem.writeInt(u32, mem_slice[p_cur..][0..4], @bitCast(x_f32), .little);
-        std.mem.writeInt(u32, mem_slice[p_cur + 4 ..][0..4], @bitCast(y_f32), .little);
-        std.mem.writeInt(u32, mem_slice[p_cur + 8 ..][0..4], @bitCast(z_f32), .little);
+        std.mem.writeInt(u32, payload_slice[p_cur..][0..4], @bitCast(x_f32), .little);
+        std.mem.writeInt(u32, payload_slice[p_cur + 4 ..][0..4], @bitCast(y_f32), .little);
+        std.mem.writeInt(u32, payload_slice[p_cur + 8 ..][0..4], @bitCast(z_f32), .little);
         p_cur += 12;
     }
 
     // Write normals (f32)
-    var n_cur: usize = nrm_offset - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
+    var n_cur: usize = nrm_offset - base_offset;
     for (mesh.normals.items) |n| {
         const x_f32: f32 = @floatCast(n.x);
         const y_f32: f32 = @floatCast(n.y);
         const z_f32: f32 = @floatCast(n.z);
-        std.mem.writeInt(u32, mem_slice[n_cur..][0..4], @bitCast(x_f32), .little);
-        std.mem.writeInt(u32, mem_slice[n_cur + 4 ..][0..4], @bitCast(y_f32), .little);
-        std.mem.writeInt(u32, mem_slice[n_cur + 8 ..][0..4], @bitCast(z_f32), .little);
+        std.mem.writeInt(u32, payload_slice[n_cur..][0..4], @bitCast(x_f32), .little);
+        std.mem.writeInt(u32, payload_slice[n_cur + 4 ..][0..4], @bitCast(y_f32), .little);
+        std.mem.writeInt(u32, payload_slice[n_cur + 8 ..][0..4], @bitCast(z_f32), .little);
         n_cur += 12;
     }
 
     // Write indices (u32)
-    var i_cur: usize = idx_offset - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
+    var i_cur: usize = idx_offset - base_offset;
     for (mesh.indices.items) |idx| {
-        std.mem.writeInt(u32, mem_slice[i_cur..][0..4], idx, .little);
+        std.mem.writeInt(u32, payload_slice[i_cur..][0..4], idx, .little);
         i_cur += 4;
     }
 
     // Write face IDs (192-bit / 3 * u64 TopoId per triangle)
-    var f_cur: usize = face_offset - @as(u32, @intCast(memory_map.TESS_BUFFER_OFFSET));
+    var f_cur: usize = face_offset - base_offset;
     for (mesh.triangle_to_topo_id.items) |fid| {
-        std.mem.writeInt(u64, mem_slice[f_cur..][0..8], fid.words[0], .little);
-        std.mem.writeInt(u64, mem_slice[f_cur + 8 ..][0..8], fid.words[1], .little);
-        std.mem.writeInt(u64, mem_slice[f_cur + 16 ..][0..8], fid.words[2], .little);
+        std.mem.writeInt(u64, payload_slice[f_cur..][0..8], fid.words[0], .little);
+        std.mem.writeInt(u64, payload_slice[f_cur + 8 ..][0..8], fid.words[1], .little);
+        std.mem.writeInt(u64, payload_slice[f_cur + 16 ..][0..8], fid.words[2], .little);
         f_cur += 24;
     }
 
@@ -549,9 +595,64 @@ pub fn solid_export_stl(solid_h: u64, binary: bool, out_buf: *std.ArrayList(u8))
     const len = @min(out_buf.items.len, STL_MAX_SCRATCH_BYTES);
     export_stl_len = len;
 
-    // Copy to scratch memory at STL_EXPORT_OFFSET (0x670000)
+    // Copy to scratch memory at STL_EXPORT_OFFSET (0x4F0000)
     const scratch = memory_map.getMemorySlice(STL_EXPORT_OFFSET, len);
     @memcpy(scratch, out_buf.items[0..len]);
 
     return @intCast(len);
+}
+
+test "Hybrid fixed/dynamic tessellation buffer spillover (> 1 MiB)" {
+    const alloc = std.testing.allocator;
+    memory_map.initControlBlock();
+
+    // Sentinel at FIELD_BUFFER_OFFSET (0x1F0000) must remain completely untouched
+    const sentinel: u32 = 0xCAFEBABE;
+    const field_slice = memory_map.getMemorySlice(memory_map.FIELD_BUFFER_OFFSET, 4);
+    std.mem.writeInt(u32, field_slice[0..4], sentinel, .little);
+
+    // 1. Tier 1 small mesh (<= 1 MiB) -> inline at 0x0F0080
+    var small = BRepSolid.init(alloc, 9001);
+    defer small.deinit();
+    try small.vertices.append(alloc, Vec3d.init(1.0, 2.0, 3.0));
+    try small.vertices.append(alloc, Vec3d.init(4.0, 5.0, 6.0));
+    try small.vertices.append(alloc, Vec3d.init(7.0, 8.0, 9.0));
+    try small.normals.append(alloc, Vec3d.init(0.0, 0.0, 1.0));
+    try small.normals.append(alloc, Vec3d.init(0.0, 0.0, 1.0));
+    try small.normals.append(alloc, Vec3d.init(0.0, 0.0, 1.0));
+    try small.addTriangle(0, 1, 2, surface_brep.makeTopoId(9001, surface_brep.SUBSHAPE_FACE, 1), .{});
+
+    const h_small: u64 = 9001;
+    try surface_brep.solid_brep_store.put(h_small, small);
+    defer _ = surface_brep.solid_brep_store.fetchRemove(h_small);
+
+    solid_tessellate(h_small, 0.05, 0.1);
+    const hdr1 = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, memory_map.TESS_HEADER_SIZE);
+    try std.testing.expectEqual(@as(u32, 0x0F0080), std.mem.readInt(u32, hdr1[0x0C..0x10], .little));
+    try std.testing.expectEqual(@as(u32, 0), std.mem.readInt(u32, hdr1[0x50..0x54], .little));
+
+    // 2. Tier 2 large mesh (> 1 MiB: 30,000 triangles = 1,080,072 bytes) -> heap spillover (>= 0x600000)
+    var large = BRepSolid.init(alloc, 9002);
+    defer large.deinit();
+    for (0..3) |vi| {
+        try large.vertices.append(alloc, Vec3d.init(@floatFromInt(vi), 1.0, 2.0));
+        try large.normals.append(alloc, Vec3d.init(0.0, 1.0, 0.0));
+    }
+    for (0..30000) |_| {
+        try large.addTriangle(0, 1, 2, surface_brep.makeTopoId(9002, surface_brep.SUBSHAPE_FACE, 1), .{});
+    }
+
+    const h_large: u64 = 9002;
+    try surface_brep.solid_brep_store.put(h_large, large);
+    defer _ = surface_brep.solid_brep_store.fetchRemove(h_large);
+
+    solid_tessellate(h_large, 0.05, 0.1);
+    const hdr2 = memory_map.getMemorySlice(memory_map.TESS_BUFFER_OFFSET, memory_map.TESS_HEADER_SIZE);
+    const pos_off2 = std.mem.readInt(u32, hdr2[0x0C..0x10], .little);
+    const face_off2 = std.mem.readInt(u32, hdr2[0x18..0x1C], .little);
+    try std.testing.expectEqual(@as(u32, 30000), std.mem.readInt(u32, hdr2[0x08..0x0C], .little));
+    try std.testing.expect(pos_off2 >= memory_map.HEAP_BASE_OFFSET);
+    try std.testing.expectEqual(@as(u32, 0), face_off2 & 7);
+    try std.testing.expectEqual(@as(u32, 1), std.mem.readInt(u32, hdr2[0x50..0x54], .little));
+    try std.testing.expectEqual(sentinel, std.mem.readInt(u32, memory_map.getMemorySlice(memory_map.FIELD_BUFFER_OFFSET, 4)[0..4], .little));
 }

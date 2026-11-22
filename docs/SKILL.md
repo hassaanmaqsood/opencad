@@ -1,389 +1,515 @@
----
-name: opencad-esm-kernel
-description: Developer skill and instructions for Large Language Models (LLMs) and autonomous agents to construct parametric 3D CAD models, evaluate CDML v1.0, tessellate geometries, and export AP214 STEP/STL files using the OpenCAD WebAssembly kernel through ESM JavaScript and TypeScript.
----
+# OpenCAD (`hassaanmaqsood.github.io/opencad/skill.md`)
 
-# Skill: OpenCAD WebAssembly Kernel via ESM JavaScript
+> Authoritative integration handbook, language reference, CDML v1.0 cookbook, and troubleshooting guide for the OpenCAD WebAssembly kernel (`cad_kernel.wasm` / `cad_core.wasm`).
 
-## 1. Overview & Capabilities
-OpenCAD (`open-parametric-cad`) is a computational CAD kernel compiled from native Zig to freestanding WebAssembly (`wasm32-freestanding`). It operates with double-precision floating-point arithmetic ($10^{-7}\text{ mm}$ linear tolerance, $10^{-11}\text{ rad}$ angular tolerance).
-
-This skill guides LLMs to generate valid, efficient ESM JavaScript and TypeScript code that interfaces with OpenCAD via:
-1. **Fluent API (`Part` / `FluentPart`):** Parametric chaining, 2D sketch profiles, extrusion, revolution, fillets, hole placement, and automatic resource disposal (`using` / `.dispose()`).
-2. **CDML 4-Step Builder (`cdml()` / `CdmlDocument`):** Computational Design Markup Language generator with in-process evaluation, physical probes, and export pipelines.
-3. **Kernel Client (`OpenCadKernel`):** Direct interface to the 18 C-ABI functions, managing WebAssembly memory buffers, tessellation data, and topological naming IDs (`TopoId`).
+- **Public Skill URL:** `https://hassaanmaqsood.github.io/opencad/skill.md`
+- **Live Web Studio & Iframe Embed Endpoint:** `https://hassaanmaqsood.github.io/opencad/`
+- **GitHub Repository:** `https://github.com/hassaanmaqsood/opencad`
+- **CDN Distribution Branch (`@dist`):** `https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/`
+- **Releases & Offline Studio (`opencad-portable.html`, `opencad-wasm-sdk.zip`):** `https://github.com/hassaanmaqsood/opencad/releases`
 
 ---
 
-## 2. Quickstart Cheatsheet for LLMs
+## 1. Architecture & Core Laws
 
-### Recipe A: High-Level Fluent Parametric Part (ESM JS)
-```javascript
-import { Part } from '@open-cad/core';
-// In browser/Deno/Bun without package manager:
-// import { Part } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad.mjs';
+OpenCAD is a zero-primitive mathematical CAD kernel written in freestanding Zig and compiled to WebAssembly (`~925 KB`).
 
-// 1. Create a part with parametric chaining
-const bracket = new Part('MotorBracket')
-  .sketch('XY')
-  .rect(120, 80)
-  .circle(20, 40, 6.5, { cut: true })
-  .circle(100, 40, 6.5, { cut: true })
-  .fillet2D(5.0)
-  .extrude(15.0)
-  .fillet({ select: '>Z', radius: 2.0 })
-  .holeWizard({
-    type: 'cbore',
-    diameter: 8.5,
-    depth: 15.0,
-    cboreDiameter: 14.0,
-    cboreDepth: 6.0,
-    position: [60, 40, 15],
-  });
+### Core Constraints for Code & Model Generation
+1. **Zero-Primitive Law:** Never build raw Three.js boxes, cylinders, or spheres and call them CAD models. Construct geometry through CDML v1.0 XML, the 4-step `cdml()` builder, `OpenCadKernel`, or the C-ABI so every solid has exact B-Rep/SDF definitions and AP214 STEP / STL exports.
+2. **Units & Tolerances:** Linear dimensions are millimeters (`mm`). Sketch solver default tolerance is `1e-7` (`0.1 nm`), and angular tolerance is `1e-11 rad`. Default viewport tessellation tolerances are `chord-tol="0.02"` (`mm`) and `angle-tol="0.05"` (`rad`).
+3. **Closed Non-Intersecting Wires:** All 2D sketch profiles intended for sweeps or revolves must form closed loops. Inner cutouts must set `role="hole"`.
+4. **Explicit Memory Lifetime:** Native handles in `OpenCadKernel`, C, and Rust must be freed via `releaseSolid()` / `cad_solid_release()` / `handle_free()` when done.
 
-// 2. Export production deliverables
-const stepText = bracket.exportStep();         // ISO-10303-21 AP214 string
-const stlBytes = bracket.exportStl({ binary: true }); // Uint8Array
-const mesh = bracket.tessellate(0.01, 0.05);   // { positions, normals, indices }
+### Hybrid Two-Tier Shared Memory Layout (`SharedArrayBuffer`)
 
-// 3. Always dispose to avoid WASM memory leaks
-bracket.dispose();
+The WASM module imports a single shared linear memory (`env.memory`, `initial: 128` pages = `8 MiB`, `shared: true`):
+
+| Address Range | Region | Purpose |
+| :--- | :--- | :--- |
+| `0x000000 .. 0x000040` | Control Block | `magic = 0x4F434144` (`"OCAD"`), `version = 2`, offsets, active count, `tess_generation_counter` at `0x001C`. |
+| `0x001000 .. 0x0EFFFF` | Solid Arena | Parametric feature DAG, NURBS surfaces, half-edge topology, and CSG nodes. |
+| `0x0F0000 .. 0x0F007F` | Tessellation Header | Pinned 128-byte header describing vertex/triangle counts, payload byte offsets, bbox (`f64[6]`), and spillover flags. |
+| `0x0F0080 .. 0x1EFFFF` | Tier-1 Inline Payload | Fast zero-allocation scratch for meshes `<= 1,048,448` bytes (`0x0FFF80` bytes, up to `~21,842` triangles). |
+| `0x1F0000 .. 0x3EFFFF` | Field Buffer | 3D scalar/vector field grids sampled via `field_scalar(...)`. |
+| `0x3F0000 .. 0x5EFFFF` | Export Scratch | AP214 STEP (`0x3F0000..0x4EFFFF`) and binary/ASCII STL (`0x4F0000..0x5EFFFF`) output buffers. |
+| `>= 0x600000` | Tier-2 Dynamic Heap | Reusable 8-byte aligned heap spillover buffer for large meshes (`> 1 MiB`), e.g. helical threads and dense Gyroid lattices. |
+
+#### 128-Byte Pinned Tessellation Header (`0x0F0000`)
+
+Always read array offsets directly from the header rather than hardcoding `0x0F0080`:
+
+| Byte Offset | Type | Field | Notes |
+| :--- | :--- | :--- | :--- |
+| `0x00` | `u32` | `solid_id_lo` | Lower 32 bits of solid handle |
+| `0x04` | `u32` | `vertex_count` | Number of 3D vertices |
+| `0x08` | `u32` | `triangle_count` | Number of triangles |
+| `0x0C` | `u32` | `pos_offset` | Byte offset to `f32[vertex_count * 3]` positions (in `0x0F0080` or `>= 0x600000`) |
+| `0x10` | `u32` | `nrm_offset` | Byte offset to `f32[vertex_count * 3]` normals |
+| `0x14` | `u32` | `idx_offset` | Byte offset to `u32[triangle_count * 3]` triangle indices |
+| `0x18` | `u32` | `face_offset` | Byte offset to `face_meta[triangle_count]` (`24` bytes per triangle) |
+| `0x1C` | `u32` | `solid_id_hi` | Upper 32 bits of solid handle |
+| `0x20 .. 0x4F` | `f64[6]` | `bbox` | `[min_x, min_y, min_z, max_x, max_y, max_z]` |
+| `0x50` | `u32` | `is_heap_spillover` | `0` = Tier-1 inline (`0x0F0080`), `1` = Tier-2 heap (`>= 0x600000`) |
+| `0x54` | `u32` | `payload_byte_len` | Total byte length of the active tessellation payload |
+
+---
+
+## 2. Declarative CDML v1.0 (XML)
+
+Every CDML document has up to four top-level blocks inside `<cdml version="1.0" units="mm">`: `<imports>`, `<defs>`, `<body>`, and `<exports>`.
+
+### Example A: Parametric Flange with 2D Constrained Sketch, Sweep, and Probes
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <defs>
+    <var id="flange_w" value="90.0" min="60.0" max="150.0" unit="mm"/>
+    <var id="flange_h" value="16.0" min="8.0"  max="40.0"  unit="mm"/>
+    <var id="bore_r"   value="15.0" min="8.0"  max="25.0"  unit="mm"/>
+    <expr id="half_w"  expr="ref(flange_w) / 2"/>
+    <assert id="bore_clearance"
+      expr="ref(half_w) - ref(bore_r) - 5.0"
+      error="bore exceeds flange margin"/>
+  </defs>
+  <body>
+    <chart id="chart_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="unit_e2"  expr="dot(e2, e2) - 1.0"/>
+        <residual id="ortho"    expr="dot(e1, e2)"/>
+        <residual id="planar_z" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+
+    <sketch id="sk_flange" chart="chart_xy" max-iter="100">
+      <vars>
+        <point2d id="v0" u="-45.0" v="-45.0"/>
+        <point2d id="v1" u=" 45.0" v="-45.0"/>
+        <point2d id="v2" u=" 45.0" v=" 45.0"/>
+        <point2d id="v3" u="-45.0" v=" 45.0"/>
+      </vars>
+      <wire id="wire_outer" closed="true" role="outer">
+        <curve id="s0" degree="1" ctrl="v0 v1" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="s1" degree="1" ctrl="v1 v2" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="s2" degree="1" ctrl="v2 v3" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="s3" degree="1" ctrl="v3 v0" weights="1.0 1.0" knots="0 0 1 1"/>
+      </wire>
+      <wire id="wire_bore" closed="true" role="hole">
+        <param-curve id="c_bore" param="t" domain="0 1"
+          u-expr="ref(bore_r) * cos(2 * PI * t)"
+          v-expr="ref(bore_r) * sin(2 * PI * t)"/>
+      </wire>
+      <constraints>
+        <residual id="cx"     expr="v0.u + v1.u"/>
+        <residual id="cy"     expr="v0.v + v3.v"/>
+        <residual id="sym"    expr="v2.u + v3.u"/>
+        <residual id="h0"     expr="v1.v - v0.v"/>
+        <residual id="h1"     expr="v2.v - v3.v"/>
+        <residual id="ortho"  expr="dot(v1 - v0, v2 - v1)"/>
+        <residual id="width"  expr="norm(v1 - v0) - ref(flange_w)"/>
+        <residual id="height" expr="norm(v2 - v1) - ref(flange_w)"/>
+      </constraints>
+    </sketch>
+
+    <brep id="solid_flange" material="al6061">
+      <sweep id="sw_extrude" sketch="sk_flange" cap-ends="true">
+        <trajectory>
+          <translate x="0" y="0" z-expr="ref(flange_h) * v"/>
+        </trajectory>
+      </sweep>
+    </brep>
+
+    <probe id="housing_volume" type="volume" target="solid_flange"/>
+  </body>
+  <exports>
+    <tessellate target="solid_flange" chord-tol="0.02" angle-tol="0.05"/>
+    <step target="solid_flange" schema="AP214"/>
+    <stl target="solid_flange" binary="true"/>
+  </exports>
+</cdml>
 ```
 
-### Recipe B: CDML 4-Step Engineering Surface API
-```javascript
-import { cdml } from '@open-cad/core';
+### Example B: Continuous Helical Screw Thread via SE(3) Sweep
 
-// 1. Author parametric document
-const doc = cdml('mm')
-  .var('flange_dia', 140.0, { min: 80, max: 200, unit: 'mm' })
-  .var('bolt_pcd', 'flange_dia * 0.75')
-  .var('thickness', 18.0)
-  .chartXY('c_base')
-  .sketch('sk_flange', { chart: 'c_base' })
-    .circleWire('w_outer', { radius: 'ref(flange_dia) / 2.0', role: 'outer' })
-    .circleWire('w_bore', { radius: '25.0', role: 'hole' })
-  .brep('flange_solid')
-    .sweepExtrude('sw_base', { sketch: 'sk_flange', zExpr: 'ref(thickness) * v' })
-    .fillet('f_rim', { edgePredicate: 'z > 17.9', radiusExpr: '2.0' })
-  .probe('mass_volume', { type: 'volume', target: 'flange_solid' })
-  .exportTessellate('flange_solid', { chordTol: 0.02, angleTol: 0.05 })
-  .exportStep('flange_solid', { schema: 'AP214' })
-  .exportStl('flange_solid', { binary: true });
+Combine `<translate>` and `<rotate>` in `<trajectory>` to sweep a helical profile along `v in [0, 1]`.
 
-// 2. Evaluate in-process via WASM
-const res = await doc.evaluate();
-console.log(`Status: ${res.status}, Volume: ${res.probe('mass_volume')} mm³`);
-const stepString = res.toStep();
-const stlBinary = res.toStl();
+```xml
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <defs>
+    <var id="stud_d" value="4.00" min="3.20" max="4.80" unit="mm"/>
+    <var id="stud_l" value="20.00" min="10.0" max="40.0" unit="mm"/>
+    <var id="pitch"  value="0.70" min="0.35" max="1.40" unit="mm"/>
+    <expr id="turns" expr="ref(stud_l) / ref(pitch)"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0" y="0" z="0" fixed="true"/>
+        <vec3 id="e1" x="1" y="0" z="0" fixed="true"/>
+        <vec3 id="e2" x="0" y="1" z="0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_stud" chart="ch_xy" max-iter="100">
+      <vars>
+        <point2d id="v_0" u="2.00" v="0.00"/>
+        <point2d id="v_1" u="1.60" v="1.60"/>
+        <point2d id="v_2" u="-1.60" v="1.60"/>
+        <point2d id="v_3" u="-2.00" v="0.00"/>
+        <point2d id="v_4" u="-1.60" v="-1.60"/>
+        <point2d id="v_5" u="1.60" v="-1.60"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+        <line p0="v_0" p1="v_1"/><line p0="v_1" p1="v_2"/>
+        <line p0="v_2" p1="v_3"/><line p0="v_3" p1="v_4"/>
+        <line p0="v_4" p1="v_5"/><line p0="v_5" p1="v_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <sweep id="sw_thread" sketch="sk_stud" cap-ends="true">
+        <trajectory>
+          <translate x="0" y="0" z-expr="ref(stud_l) * v"/>
+          <rotate axis="0 0 1" angle-expr="2 * PI * ref(turns) * v"/>
+        </trajectory>
+      </sweep>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <stl source="b_solid" format="binary"/>
+  </exports>
+</cdml>
+```
+
+### Example C: Implicit TPMS Gyroid Field & Rvachev CSG Bridge
+
+Use `abs_smooth`, `r_union`, and `r_intersect` inside `<implicit>` and combine with B-Rep solids via `<csg>`.
+
+```xml
+<implicit id="solid_gyroid">
+  <domain xmin="-45" xmax="45" ymin="-45" ymax="45" zmin="0" zmax="16"
+          octree-depth="6" qef-reg="1e-4"/>
+  <def name="omega" expr="2 * PI / ref(period)"/>
+  <def name="g" expr="sin(omega*x)*cos(omega*y) + sin(omega*y)*cos(omega*z) + sin(omega*z)*cos(omega*x)"/>
+  <def name="d_box" expr="r_intersect(abs_smooth(x, 1e-3) - 42, abs_smooth(y, 1e-3) - 42)"/>
+  <def name="d_gyroid" expr="abs_smooth(g, 1e-4) - (0.5 * omega * 0.9)"/>
+  <field expr="r_intersect(d_box, d_gyroid)"/>
+</implicit>
 ```
 
 ---
 
-## 3. Distribution & ESM Resolution
+## 3. HTML Web Embedding (`<iframe>` and `<opencad-viewer>`)
 
-OpenCAD does not publish packages to public npm or PyPI registries. Obtain builds from GitHub Releases or the repository distribution branch:
+### Option A: `<iframe>` Embed with URL Parameters
 
-### 3.1 GitHub Distribution Branch / Local SDK Unpack
-Install directly from the GitHub distribution branch:
-```bash
-npm install github:hassaanmaqsood/opencad#dist
-```
-Or download `opencad-wasm-sdk.zip` from GitHub Releases and unpack it into your project.
+Embed the live GitHub Pages studio inside any page or documentation portal:
 
-Module Import:
-```typescript
-import {
-  Part,
-  OpenCadKernel,
-  cdml,
-  evalCDML,
-  CdmlDocument,
-  loadCoreWasm
-} from '@open-cad/core';
-```
-
-### 3.2 Browser / CDN / ES Modules
-Import the standalone ES module bundle directly from the CDN:
 ```html
-<script type="module">
-  import { Part, cdml, OpenCadKernel } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad.mjs';
+<iframe
+  src="https://hassaanmaqsood.github.io/opencad/?embed=true&src=https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml&code=false&params=false"
+  width="100%"
+  height="500"
+  style="border: 1px solid #C8C0B4; border-radius: 6px;"
+  loading="lazy"
+  title="OpenCAD 3D Viewer">
+</iframe>
+```
 
-  const part = new Part('Enclosure').box(100, 60, 40).shell(2.5);
-  console.log(part.exportStep());
-  part.dispose();
-</script>
+#### URL Query Parameter Reference
+
+| Parameter | Values | Default (Studio / Embed) | Behavior |
+| :--- | :--- | :--- | :--- |
+| `embed` | `true` / `1` / `false` | `false` / `true` | Full-bleed viewport mode; hides stats bar and defaults code pane off. |
+| `src` or `cdml` | URL, relative path, or raw `<cdml...>` XML | Twisted torus | Loads a CDML model from an HTTPS URL, relative path, or inline XML string. |
+| `code` or `code-toggle` (`editor`) | `true` / `false` | `true` / `false` | Shows or disables both `#btn-expand-pane` ("Code" dock button) and `#code-pane`. |
+| `params` or `gui` | `true` / `false` | `true` / `false` | Shows or disables the `Model Parameters` inspector and `#btn-toggle-gui`. |
+| `params-toggle` (`paramsToggle`) | `true` / `false` | `true` | Disables only `#btn-toggle-gui` ("Params" dock button) while preserving initial `gui=true` sliders. |
+| `vars` | Comma-separated IDs | All public vars | Filters visible parameter sliders in the panel. |
+| `probes` | Comma-separated IDs | All probes | Filters visible physical probe readouts. |
+| `exports` | `step,stl` | `step,stl` | Filters export download buttons. |
+
+### Option B: Custom Web Component (`<opencad-viewer>`)
+
+```html
+<script type="module" src="https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad-element.mjs"></script>
+
+<opencad-viewer
+  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml"
+  data-gui="true"
+  data-gui-vars="flange_w,bore_r"
+  data-gui-probes="housing_volume"
+  data-gui-exports="step,stl"
+  width="100%"
+  height="520px">
+</opencad-viewer>
 ```
 
 ---
 
-## 4. High-Level Fluent API Specification (`Part`)
+## 4. JavaScript & TypeScript (ESM / Browser / Node.js / Bun)
 
-The `Part` class (exported as both `Part` and `FluentPart`) provides a unified CAD modeling interface with automatic disposal mechanisms.
+### Installation
 
-### 4.1 Lifecycle & Memory Management
-In WebAssembly, native solid handles (`CadSolidHandle`) reside in the kernel heap.
-- **Explicit Disposal:** Call `part.dispose()` when finished.
-- **TC39 Explicit Resource Management (`using`):**
-  ```typescript
-  {
-    using part = new Part('Bracket').box(50, 50, 50);
-    // Automatically disposed when exiting block scope
-  }
-  ```
-- **Garbage Collection Fallback:** An internal `FinalizationRegistry` acts as a safety net if `dispose()` is omitted.
+- **Browser ESM CDN:** `import { cdml, OpenCadKernel, evalCDML } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad.mjs';`
+- **npm / Bun via GitHub `#dist`:** `npm install github:hassaanmaqsood/opencad#dist`
 
-### 4.2 2D Sketching (`part.sketch(plane)`)
-Plane options: `'XY'`, `'XZ'`, `'YZ'`, or a custom datum plane identifier.
-
-```typescript
-const sketch = part.sketch('XY');
-
-// Geometric Entities:
-sketch.rect(width, height);                             // Centered rectangular wire
-sketch.circle(cx, cy, radius, { cut?: boolean });       // Circle (cut: true marks it as inner hole)
-sketch.slot([x1, y1], [x2, y2], radius);                // Obround slot between 2 centers
-sketch.polygon(cx, cy, radius, sideCount, rotationRad); // Regular inscribed polygon
-sketch.spline([[0, 0], [10, 15], [30, 5]], degree);    // Rational B-Spline curve
-sketch.ellipse(cx, cy, rX, rY, rotationRad);            // Elliptical boundary
-sketch.text('OPENCAD', 12, [0, 0]);                     // TrueType vectorized geometry
-
-// Modifications:
-sketch.fillet2D(radius, cornerIndex?);                  // 2D vertex rounding
-sketch.chamfer2D(distance, cornerIndex?);               // 2D vertex beveling
-sketch.offset(distance);                                // Normal curve offset
-
-// Construction Mode:
-sketch.construction(true).circle(0, 0, 50).construction(false);
-
-// Extrude or Revolve sketch into 3D:
-const extrudedPart = sketch.extrude(depthInMm);
-const revolvedPart = sketch.revolve(angleInDegrees, 'Y');
-```
-
-### 4.3 3D Primitives & Operations
-```typescript
-// Primitives
-part.box(dx, dy, dz);               // Box aligned with origin corner
-part.cylinder(radius, height);       // Cylinder along Z axis
-
-// Edge & Face Dress-up
-part.fillet({ select: '>Z', radius: 3.0 }); // Directional face/edge selector
-part.fillet(2.5, [1, 4, 7]);                // Specific edge indices
-part.chamfer(1.5, [2, 3]);                  // Chamfer edge bevel
-part.shell(thickness);                      // Hollow out solid with uniform wall thickness
-
-// Hole Wizard
-part.holeWizard({
-  type: 'cbore' | 'csink' | 'threaded' | 'through',
-  diameter: 6.5,
-  depth: 25.0,
-  cboreDiameter: 11.0,
-  cboreDepth: 6.5,
-  csinkAngle: 90,
-  position: [x, y, z],
-});
-
-// Fasteners & Threads
-part.thread({
-  standard: 'metric_coarse', // 'metric_coarse' | 'metric_fine' | 'unc' | 'unf'
-  nominalDiameter: 8.0,
-  pitch: 1.25,
-  length: 20.0,
-});
-
-// Datums & Splitting
-part.datumPlane({ type: 'offset', offset: 12.0, normal: [0, 0, 1] });
-const { positive, negative } = part.splitBody({ origin: [0, 0, 10], normal: [0, 0, 1] });
-
-// Constructive Solid Geometry (CSG Booleans)
-part.add(toolPart);   // Boolean Union
-part.cut(toolPart);   // Boolean Difference
-```
-
-### 4.4 Advanced Workbenches
-```typescript
-// Implicit TPMS Lattice Infill (nTop-style Minimal Surfaces)
-part.implicit.gyroidInfill({
-  preserve: ['@cylindrical', '<Z', '>Z'], // Preserve structural skins
-  cellSize: 8.0,                          // Unit cell repeat period in mm
-  wallThickness: 1.2,                      // Sheet TPMS wall thickness
-});
-
-// Structural Flexure Synthesis (FACT Compliance Matrix)
-part.flexure.analyze({
-  fixed: '<X', // Fixed ground clamp
-  stage: '>X', // Mobile motion stage
-});
-```
-
----
-
-## 5. Declarative CDML 4-Step Surface API (`cdml()`)
-
-The CDML builder outputs normative XML compliant with the **OpenCAD CDML v1.0 Specification** (§6–§14).
+### Approach 1: 4-Step Declarative `cdml()` Builder
 
 ```typescript
 import { cdml } from '@open-cad/core';
 
 const doc = cdml('mm', '1e-7', '1e-11')
-  // Step 1: Definitions (Variables, Expressions, Assertions, Field Slots)
+  // Step 1: Definitions
   .var('L', 100.0, { min: 50, max: 200, unit: 'mm' })
-  .var('W', 60.0)
-  .var('T', 12.0)
-  .expr('aspect_ratio', 'ref(L) / ref(W)')
-  .fieldSlot('von_mises_stress', 0, { semantic: 'stress', defaultVal: 45.0 })
-
-  // Step 2: Charts & 2D Variational Sketches
+  .var('W', 60.0, { min: 30, max: 120, unit: 'mm' })
+  .var('T', 12.0, { min: 4, max: 40, unit: 'mm' })
+  .expr('area_nom', 'ref(L) * ref(W)')
+  // Step 2: Chart & 2D Constrained Sketch
   .chartXY('c_base')
-  .sketch('sk_profile', { chart: 'c_base', maxIter: 100 })
+  .sketch('sk_plate', { chart: 'c_base', maxIter: 100 })
     .rectWire('w_outer', { width: 'ref(L)', height: 'ref(W)', role: 'outer' })
-    .circleWire('w_bore', { radius: '10.0', role: 'hole' })
+    .circleWire('w_bore', { radius: 10.0, role: 'hole' })
+  // Step 3: B-Rep Operations
+  .brep('solid_plate', { material: 'al6061' })
+    .sweepExtrude('sw_base', { sketch: 'sk_plate', zExpr: 'ref(T) * v', capEnds: true })
+  // Step 4: Probes & Exports
+  .probe('plate_vol', { type: 'volume', target: 'solid_plate' })
+  .exportTessellate('solid_plate', { chordTol: 0.02, angleTol: 0.05 })
+  .exportStep('solid_plate', { schema: 'AP214' })
+  .exportStl('solid_plate', { binary: true });
 
-  // Step 3: B-Rep Sweeps, Lofts & Fillets
-  .brep('solid_body', { material: 'al6061' })
-    .sweepExtrude('sw_base', { sketch: 'sk_profile', zExpr: 'ref(T) * v', capEnds: true })
-    .fillet('f_edges', { edgePredicate: 'z > 11.9', radiusExpr: '1.5' })
-
-  // Step 4: Physical Probes & Production Exports
-  .probe('part_vol', { type: 'volume', target: 'solid_body' })
-  .probe('surface_area', { type: 'area', target: 'solid_body' })
-  .exportTessellate('solid_body', { chordTol: 0.01, angleTol: 0.05 })
-  .exportStep('solid_body', { schema: 'AP214' })
-  .exportStl('solid_body', { binary: true });
-
-// Convert to raw XML string
 const xml = doc.toCDML();
-
-// Evaluate directly against the WebAssembly pure-math kernel
 const res = await doc.evaluate();
-const volume = res.probe('part_vol');
-const stepFile = res.toStep();
-const stlBinary = res.toStl();
+if (res.status === 0) {
+  console.log('Volume (mm^3):', res.probe('plate_vol'));
+  const stepText = res.toStep();
+  const stlBytes = res.toStl();
+} else {
+  console.error('CDML diagnostic:', res.diagnostic);
+}
 ```
 
----
-
-## 6. Low-Level WASM Kernel API (`OpenCadKernel`)
-
-When high performance or zero-copy buffer manipulation is required:
+### Approach 2: Fluent Auto-Disposing `Part` API (`FluentPart`)
 
 ```typescript
-import { OpenCadKernel, CadStatus } from '@open-cad/core';
+import { OpenCadKernel } from '@open-cad/core';
 
-// 1. Instantiate kernel with underlying WebAssembly binary
 const kernel = await OpenCadKernel.create();
-
 try {
-  // 2. Synthesize geometric solids via C-ABI
-  const boxHandle = kernel.createBox(80, 40, 20);
-  const cylHandle = kernel.createCylinder(12, 30);
+  const bracket = kernel.part('Bracket')
+    .sketch('XY')
+      .rect(80, 50)
+      .circle(0, 0, 10, { cut: true })
+    .extrude(12)
+    .fillet({ select: '>Z', radius: 2.0 });
 
-  // 3. Tessellate solid into flat TypedArrays
-  // Returns { positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertexCount, triangleCount }
-  const mesh = kernel.tessellate(boxHandle, 0.02, 0.05);
-
-  // 4. Export exact B-Rep STEP text
-  const stepText = kernel.exportStep(boxHandle);
-
-  // 5. Release handles manually to free C-ABI memory
-  kernel.releaseSolid(boxHandle);
-  kernel.releaseSolid(cylHandle);
+  const mesh = bracket.tessellate(0.02, 0.05);
+  const stepText = bracket.exportStep();
+  const stlBytes = bracket.exportStl({ binary: true });
+  bracket.dispose();
 } finally {
   kernel.deinit();
 }
 ```
 
----
-
-## 7. Three.js Viewport Integration Pattern
-
-Converting OpenCAD `CadMesh` data into Three.js `BufferGeometry`:
+### Approach 3: Low-Level `OpenCadKernel` + Three.js `BufferGeometry`
 
 ```typescript
 import * as THREE from 'three';
-import { type CadMesh } from '@open-cad/core';
+import { OpenCadKernel, type CadMesh } from '@open-cad/core';
 
-export function createThreeGeometryFromCadMesh(mesh: CadMesh): THREE.BufferGeometry {
+const kernel = await OpenCadKernel.create('/cad_core.wasm');
+try {
+  const solidHandle = kernel.createBox(80, 40, 20);
+  const mesh: CadMesh = kernel.tessellate(solidHandle, 0.02, 0.05);
+
   const geometry = new THREE.BufferGeometry();
-
-  // Set interleaved or direct float vertex buffers
   geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3));
   geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
-
-  // Compute bounding box & sphere for camera framing
   geometry.computeBoundingBox();
-  geometry.computeBoundingSphere();
 
-  return geometry;
-}
-
-export function createCadMeshObject(mesh: CadMesh): THREE.Group {
-  const group = new THREE.Group();
-  const geometry = createThreeGeometryFromCadMesh(mesh);
-
-  // 1. Shaded Solid Body
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x2563eb,
-    metalness: 0.25,
-    roughness: 0.35,
-    polygonOffset: true,
-    polygonOffsetFactor: 1,
-    polygonOffsetUnits: 1,
-  });
-  const solidMesh = new THREE.Mesh(geometry, material);
-  group.add(solidMesh);
-
-  // 2. Technical Edge Wireframe Overlay
-  const wireframeMaterial = new THREE.MeshBasicMaterial({
-    color: 0x93c5fd,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.4,
-  });
-  const wireframeMesh = new THREE.Mesh(geometry, wireframeMaterial);
-  group.add(wireframeMesh);
-
-  return group;
+  kernel.releaseSolid(solidHandle);
+} finally {
+  kernel.deinit();
 }
 ```
 
----
-
-## 8. Web Worker Parallelization Pattern
-
-Never block the UI main thread on complex solves. Use the OpenCAD Web Worker bridge:
+### Approach 4: Reading Hybrid Tier-1 / Tier-2 Shared Memory Directly in JS
 
 ```typescript
-// main.ts
-const worker = new Worker(new URL('./cad.worker.ts', import.meta.url), { type: 'module' });
+function readTessellationFromSharedMemory(sharedMem: WebAssembly.Memory) {
+  const header = new DataView(sharedMem.buffer, 0x0F0000, 128);
+  const vertexCount = header.getUint32(0x04, true);
+  const triangleCount = header.getUint32(0x08, true);
+  if (vertexCount === 0 || triangleCount === 0) return null;
 
-worker.postMessage({
-  type: 'EVALUATE_CDML',
-  cdmlXml: myCdmlString,
-});
+  const posOffset = header.getUint32(0x0C, true); // 0x0F0080 (Tier-1) or >= 0x600000 (Tier-2)
+  const nrmOffset = header.getUint32(0x10, true);
+  const idxOffset = header.getUint32(0x14, true);
+  const isHeapSpillover = header.getUint32(0x50, true) === 1;
 
-worker.onmessage = (event) => {
-  const { status, mesh, step, diagnostic } = event.data;
-  if (status === 0 && mesh) {
-    // mesh.positions and mesh.indices are transferred zero-copy
-    renderToViewport(mesh);
-  } else {
-    console.error('CAD Evaluation Error:', diagnostic);
-  }
-};
+  return {
+    isHeapSpillover,
+    positions: new Float32Array(sharedMem.buffer, posOffset, vertexCount * 3).slice(),
+    normals: new Float32Array(sharedMem.buffer, nrmOffset, vertexCount * 3).slice(),
+    indices: new Uint32Array(sharedMem.buffer, idxOffset, triangleCount * 3).slice(),
+  };
+}
 ```
 
 ---
 
-## 9. Rules, Constraints & Anti-Patterns for LLMs
+## 5. Python (`wasmtime` Headless SDK)
 
-| Rule | Rationale & Enforcement |
+### Installation
+
+```bash
+pip install "git+https://github.com/hassaanmaqsood/opencad.git#subdirectory=bindings/python"
+# Or install the pre-packaged distribution branch wheel:
+pip install "git+https://github.com/hassaanmaqsood/opencad.git@dist#subdirectory=python"
+```
+
+### Example 1: 4-Step Parametric Python Builder
+
+```python
+import opencad as cad
+
+doc = (cad.cdml(units="mm", linear_tol="1e-7", angular_tol="1e-11")
+    .var("width", 80.0, min=40.0, max=120.0)
+    .var("height", 20.0)
+    .var("radius", 10.0)
+    .chart_xy("c_xy")
+    .sketch("sk1", chart="c_xy")
+        .rect_wire("w_out", width="ref(width)", height="50.0", role="outer")
+        .circle_wire("w_hole", radius="ref(radius)", role="hole")
+    .brep("b1")
+        .sweep_extrude("sw1", sketch="sk1", z_expr="ref(height) * v")
+    .probe("vol", type="volume", target="b1")
+    .export_step("b1")
+    .export_stl("b1", binary=True))
+
+res = doc.evaluate()
+assert res.status == 0, f"Kernel failed: {res.diagnostic}"
+
+print("Volume (mm3):", res.probe("vol"))
+with open("part.step", "w", encoding="utf-8") as f:
+    f.write(res.to_step())
+with open("part.stl", "wb") as f:
+    f.write(res.to_stl())
+```
+
+### Example 2: Evaluating Raw CDML Files Headlessly
+
+```python
+import opencad as cad
+
+with open("examples/lib/0001_hex_bolt_m3x10.cdml", "r", encoding="utf-8") as f:
+    xml_source = f.read()
+
+res = cad.eval_cdml(xml_source)
+print("Status:", res.status, "Diagnostic:", res.diagnostic)
+print("Probes:", res.probes)
+```
+
+---
+
+## 6. Rust, C, and Direct WASM C-ABI
+
+### Rust Crate (`bindings/rust`)
+
+```bash
+cargo add opencad --git https://github.com/hassaanmaqsood/opencad --branch dist
+```
+
+```rust
+use opencad::{CAD_CORE_WASM, Solid};
+
+fn main() {
+    println!("Embedded WASM size: {} bytes", CAD_CORE_WASM.len());
+    let bracket = Solid::new("bracket", 6, 12, 8);
+    let step_ap214 = bracket.export_step();
+    let stl_binary = bracket.export_stl(true);
+    println!("STEP length: {}, STL length: {}", step_ap214.len(), stl_binary.len());
+}
+```
+
+### Native C Header (`abi/cad_kernel.h`)
+
+Key functions exported by `cad_kernel.wasm` / native static library:
+
+| Group | Exported Symbols |
 | :--- | :--- |
-| **Zero-Primitive Law** | Never attempt to construct raw Three.js boxes/spheres and claim they are CAD solids. OpenCAD models MUST be generated through `Part`, `cdml()`, or `OpenCadKernel` to generate exact B-Rep boundary curves and valid STEP exports. |
-| **Explicit Disposal** | WebAssembly linear memory cannot be garbage-collected automatically by JavaScript engines in all environments. Always call `part.dispose()` or `using part = ...` in production code. |
-| **Units: Millimeters** | All dimensions in OpenCAD are millimeters (`mm`). Angular arguments in 2D sketching (`revolve`) use degrees ($0^\circ$–$360^\circ$). Internal trigonometric functions evaluate in radians. |
-| **Tolerance Rules** | Linear default tolerance is $10^{-7}\text{ mm}$. Angular tolerance is $10^{-11}\text{ rad}$. For high-speed screen tessellation, set `chordTol = 0.05` and `angleTol = 0.1`. For high-precision CNC tooling, set `chordTol = 0.005`. |
-| **Closed Wires** | All profile wires intended for `extrude` or `revolve` must form a single closed loop without self-intersections. Holes must be flagged with `role="hole"` or `cut: true`. |
-| **Handle Verification** | Check that solid handles are non-zero before passing them to boolean or export operations. Catch and log `CadStatus` errors gracefully. |
+| **Lifecycle** | `kernel_init()`, `handle_free(u64)`, `cad_kernel_init()`, `cad_kernel_deinit()`, `cad_solid_release(u64)` |
+| **CDML Evaluator** | `cdml_register_import(...)`, `cdml_eval_document(ptr, len)`, `cdml_set_var(...)`, `cdml_get_probe_value(...)`, `cdml_get_active_solid()` |
+| **Outputs & Diagnostics** | `get_step_ptr()`, `get_step_len()`, `get_stl_ptr()`, `get_stl_len()`, `get_string_ptr()`, `get_string_len()` |
+| **Pure-Math Primitives** | `expr_compile`, `expr_eval`, `sys_create`, `sys_alloc_params`, `sys_add_residual`, `sys_solve`, `sys_get_dof`, `sys_read_params`, `curve_define_nurbs`, `wire_assemble`, `solid_kinematic_sweep`, `solid_tensor_loft`, `solid_envelope_fillet`, `solid_offset_shell`, `solid_boolean`, `solid_implicit_field`, `solid_tessellate` |
+| **Legacy C-ABI (`abi/cad_kernel.h`)** | `cad_primitive_box`, `cad_primitive_cylinder`, `cad_op_extrude`, `cad_op_boolean`, `cad_solid_tessellate`, `cad_solid_fillet`, `cad_solid_chamfer`, `cad_solid_shell`, `cad_step_import`, `cad_step_export`, `cad_export_stl` |
+
+When instantiating `cad_kernel.wasm` directly in JS/WASI, provide both `env` and `opencad` import objects:
+
+```javascript
+const memory = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
+const { instance } = await WebAssembly.instantiate(wasmBytes, {
+  env: { memory, abort: () => { throw new Error('WASM abort'); } },
+  opencad: {
+    field_alloc: () => 0,
+    field_eval_scalar: (_slot, _x, _y, _z, defVal) => defVal,
+    field_eval_vec3: () => {},
+    cmd_write: () => {},
+  },
+});
+instance.exports.kernel_init();
+```
+
+---
+
+## 7. Troubleshooting & Diagnostic Error Reference
+
+### CDML Kernel Diagnostic Codes (`kernel-zig/src/cdml/types.zig`)
+
+Read JSON error payloads from `get_string_ptr()` / `get_string_len()` whenever `cdml_eval_document` returns a non-zero status:
+
+| Code | Constant | Cause & Fix |
+| :--- | :--- | :--- |
+| `0x0101` | `ERR_XML_SYNTAX` | Malformed XML tag, unclosed attribute quote, or mismatched closing tag. |
+| `0x0102` | `ERR_SCHEMA_VERSION` | Unsupported `<cdml version="...">`. Set `version="1.0"`. |
+| `0x0103` | `ERR_DAG_CYCLE` | Circular dependency between `<expr>`, `<var>`, `<probe>`, or `<assert>`. Break the cycle. |
+| `0x0104` | `ERR_UNDEFINED_REF` | `ref(name)` or target attribute points to a missing ID. Check spelling or prefix. |
+| `0x0105` | `ERR_IMPORT_CONFLICT` | Duplicate imported prefix or ID collision across `<imports>`. Add distinct `prefix="..."`. |
+| `0x0106` | `ERR_IMPORT_NOT_FOUND` | Missing `<import src="...">` entry in `cdml_register_import`. Pre-register all imported files. |
+| `0x0201` | `ERR_EXPR_DIV_ZERO` | Division by zero during primal or dual-number evaluation. Guard denominators with `max(denom, 1e-9)`. |
+| `0x0202` | `ERR_EXPR_NAN_INF` | `NaN` or `Inf` from out-of-domain math (`sqrt(-x)`, `acos(1.1)`, or `norm(0,0)`). See Tip 1 below. |
+| `0x0203` | `ERR_ASSERT_VIOLATED` | `<assert expr="..."/>` evaluated `<= 0`. Adjust `<var>` values inside safe engineering margins. |
+| `0x0301` | `ERR_SKETCH_CONFLICT` | Over-constrained or conflicting sketch residuals. Remove redundant equations until `dof == 0`. |
+| `0x0302` | `ERR_SKETCH_DIVERGED` | Newton-Raphson did not converge within `max-iter`. Improve initial `<point2d u="..." v="..."/>` guesses. |
+| `0x0303` | `ERR_WIRE_OPEN_OR_SELF_INT` | Sketch wire is not closed or crosses itself. Verify last segment connects back to the first vertex. |
+| `0x0401` | `ERR_SWEEP_SELF_INTERSECT` | Trajectory curvature radius is smaller than profile radius, causing a fold. Reduce twist/bend curvature. |
+| `0x0402` | `ERR_FILLET_RADIUS_COLLAPSE` | Fillet radius consumes an entire adjacent face or edge. Reduce `radius-expr`. |
+| `0x0404` | `ERR_EULER_POINCARE` | Non-closed or non-manifold shell failed Euler-Poincaré invariant check. Check solid manifold closure. |
+| `0x0405` | `ERR_NON_MANIFOLD_EDGE` | Edge shared by `!= 2` triangles after Boolean/extrude. Eliminate coplanar kissing faces (Tip 2). |
+| `0x0501` | `ERR_IMPLICIT_EMPTY_DOMAIN` | Implicit `<field>` never crosses `<= 0` inside `<domain>`. Check domain bounds `xmin..zmax`. |
+| `0x0502` | `ERR_IMPLICIT_GRAD_ZERO` | Field has zero gradient (`|\nabla f| == 0`) on the zero isosurface (`abs(f)` instead of `abs_smooth`). |
+
+### Common Practical Fixes
+
+1. **Zero-Length `sqrt` / `norm` Derivative (`0x0202` in Constraints):**
+   Forward-mode dual numbers evaluate `d/dx sqrt(x) = 1 / (2 * sqrt(x))`. If two control points start at identical coordinates (`norm(p1 - p0) == 0`), the derivative divides by zero. Smooth norms with `sqrt(dx^2 + dy^2 + 1e-12)` or use distinct initial `<point2d>` seeds.
+2. **Coplanar CSG Boolean Faces (`0x0405` / Non-Manifold Edges):**
+   Avoid coincident cutter faces. Extend subtractive cutters `0.5 mm` past stock boundaries and overlap additive bosses `>= 0.05 mm` into parent bodies.
+3. **Helical Sweep Aliasing on Threads:**
+   A thread with many turns needs dense sweep stations along `v` so chords do not bridge adjacent pitches. Keep `stations >= 32 * turns` (kernel scales up to `1025` stations automatically). Note that standalone `cad_op_thread` in `c_abi.zig` is currently a stub (`CAD_STATUS_ERROR_NOT_IMPLEMENTED`); model threads in CDML with `<sweep>` or revolved ridges.
+4. **Browser `SharedArrayBuffer` / Worker Startup Errors:**
+   Static hosts without COOP/COEP headers (`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`) block `SharedArrayBuffer`. Ensure `coi-serviceworker.js` is served from the same origin or configure your HTTP server to send both isolation headers.
+5. **Truncated Meshes Above `21,842` Triangles (`> 1 MiB`):**
+   Do not read vertices from a hardcoded `0x0F0080` offset. Read `pos_offset` (`0x0F000C`), `nrm_offset` (`0x0F0010`), `idx_offset` (`0x0F0014`), and `is_heap_spillover` (`0x0F0050`) from the `0x0F0000` header so Tier-2 heap spillover meshes (`>= 0x600000`) load intact.

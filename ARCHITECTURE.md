@@ -24,11 +24,11 @@ OpenCAD is an open-source, web-first computational engineering and parametric CA
 |   +-------------------------------------------------------------------------------+   |
 |   | 0x000000: ControlBlock (64B: Magic "OCAD" 0x4F434144, Version 2, GenCounter)  |   |
 |   | 0x001000: Solid Arena        (0x001000 .. 0x0F0000)                           |   |
-|   | 0x0F0000: Tessellation Buf   (0x0F0000 .. 0x1F0000: Pos, Nrm, Idx, 24B TopoId)|   |
+|   | 0x0F0000: Tessellation Buf   (0x0F0000 .. 0x1F0000: 128B Header + <=1MiB Data)|   |
 |   | 0x1F0000: Voxel Field Buffer (0x1F0000 .. 0x3F0000: 3D Scalar/Vec3 FEA Fields)|   |
 |   | 0x3F0000: STEP Scratch Buf   (0x3F0000 .. 0x4F0000: Welded AP214 CLOSED_SHELL)|   |
 |   | 0x4F0000: STL Scratch Buf    (0x4F0000 .. 0x5F0000: Binary / ASCII STL)       |   |
-|   | 0x600000: WASM Global & Heap Base (wasm.global_base = 0x600000)               |   |
+|   | 0x600000: WASM Global & Heap (>0x600000: Dynamic >1MiB Tess Spillover Heap)   |   |
 |   +-------------------------------------------------------------------------------+   |
 |                      ^                                         ^                      |
 |                      | Zero-Copy Read/Write                    | Zero-Copy Field I/O  |
@@ -68,10 +68,11 @@ All WASM modules (`cad_kernel.wasm` and secondary extensions such as `ext_field_
 | :--- | :--- | :--- |
 | `0x000000 .. 0x000040` | `CONTROL_BLOCK_OFFSET` | 64-byte `ControlBlock`: `magic = 0x4F434144` (`"OCAD"`), `version = 2`, buffer offsets, `active_solid_count`, and `tess_generation_counter` (`0x001C`). |
 | `0x001000 .. 0x0F0000` | `SOLID_ARENA_OFFSET` | Persistent solid metadata arena. |
-| `0x0F0000 .. 0x1F0000` | `TESS_BUFFER_OFFSET` | 128-byte header (`solid_id`, `v_count`, `tri_count`, `pos_offset = 0x0F0080`, `nrm_offset`, `idx_offset`, 8-byte aligned `face_offset`, `tess_gen`, `bbox_min/max`), followed by contiguous `f32` positions, `f32` normals, `u32` triangle indices, and 24-byte `TopoId` face records. |
+| `0x0F0000 .. 0x1F0000` | `TESS_BUFFER_OFFSET` | Hybrid fixed/dynamic header-payload layout: 128-byte header pinned at `0x0F0000` (`solid_id`, `v_count`, `tri_count`, `pos_offset`, `nrm_offset`, `idx_offset`, 8-byte aligned `face_offset`, `tess_gen`, `bbox_min/max`, plus `is_heap_spillover` at `0x50` and `payload_byte_len` at `0x54`). Payloads $\le 1\text{ MiB}$ (`0x0FFF80` bytes) sit inline at `0x0F0080..0x1F0000`; larger payloads spill dynamically onto an 8-byte aligned heap buffer at `>= 0x600000` while keeping the header pointers and `0x1F0000` isolated. |
 | `0x1F0000 .. 0x3F0000` | `FIELD_BUFFER_OFFSET` | 3D voxel scalar/vector field slots (`field_count`, slot descriptors with `grid_x/y/z`, `world_origin`, `voxel_size`, and `f32` voxel arrays). |
 | `0x3F0000 .. 0x4F0000` | `STEP_EXPORT_OFFSET` | ISO-10303-21 AP214 STEP output buffer (`get_step_ptr`, `get_step_len`). |
 | `0x4F0000 .. 0x5F0000` | `STL_EXPORT_OFFSET` | Binary/ASCII STL output buffer (`get_stl_ptr`, `get_stl_len`). |
+| `>= 0x600000` | `HEAP_BASE_OFFSET` | WASM global base and Tier 2 dynamic tessellation spillover heap (`dynamic_tess_buf`) for meshes exceeding `0x0FFF80` bytes (`> ~21.8k` triangles). |
 
 ### 2.2 The 18 Canonical Pure-Math C-ABI Functions (`kernel-zig/src/main_wasm.zig`)
 

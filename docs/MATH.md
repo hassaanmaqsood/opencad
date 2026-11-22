@@ -213,7 +213,7 @@ pub fn evalTrajectoryPoint(
 ```
 
 - **Linear extrusion:** $\mathbf{R}(v) = \mathbf{I}$ and $\mathbf{d}(v) = (0, 0, H v)^T$.
-- **Revolve or helix:** Coupled rotation $\mathbf{R}_z(\theta v)$ and axial translation $\mathbf{d}(v) = (0, 0, p v)^T$. On rotating sweeps, [evaluator.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/cdml/evaluator.zig) scales station count at 16 steps per $2\pi$ revolution to prevent aliasing. It also clamps stations to keep the mesh inside the 1 MiB tessellation buffer.
+- **Revolve or helix:** Coupled rotation $\mathbf{R}_z(\theta v)$ and axial translation $\mathbf{d}(v) = (0, 0, p v)^T$. On rotating sweeps, [evaluator.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/cdml/evaluator.zig) scales station count at 16 steps per $2\pi$ revolution (up to `1025` steps) to prevent aliasing. Large sweeps that exceed 1 MiB automatically spill onto the dynamic WASM heap above `0x600000`.
 - **Rolling-ball edge fillets:** `solid_envelope_fillet` in [surface_brep.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/surface_brep.zig) selects edges through geometric predicates such as `abs(tz) > 0.999 and x^2 + y^2 > ref(infill_r)^2`. It builds tangent canal surfaces of radius $r$ and returns `ERR_FILLET_RADIUS_COLLAPSE` (`0x0402`) when $r \cdot \kappa_{\text{edge}} \ge 1 - \varepsilon_{\text{lin}}$.
 
 Meanwhile, the default starter model loaded in the web studio (`DEFAULT_TORUS_CDML` in [main.ts](https://github.com/hassaanmaqsood/opencad/blob/main/web-app/src/main.ts)) shows how the implicit side handles twisted geometry. It defines a twisted square-section toroidal ring with a flat $z \ge 0$ build-plate base in 28 lines of CDML using `r_intersect` and `abs_smooth`:
@@ -304,10 +304,13 @@ Most browser CAD tools isolate geometry and simulation in separate heaps and pas
 | :--- | :--- | :--- |
 | `0x000000 .. 0x000040` | `CONTROL_BLOCK_OFFSET` | 64-byte `ControlBlock` (`magic = 0x4F434144` `"OCAD"`, `version = 2`, arena offsets, `tess_generation_counter`). |
 | `0x001000 .. 0x0F0000` | `SOLID_ARENA_OFFSET` | Persistent solid metadata, B-Rep tables, CSG trees, and SSA tapes. |
-| `0x0F0000 .. 0x1F0000` | `TESS_BUFFER_OFFSET` | 128-byte header followed by flat `f32` positions, `f32` normals, `u32` triangle indices, and 24-byte `TopoId` records. |
+| `0x0F0000 .. 0x1F0000` | `TESS_BUFFER_OFFSET` | Pinned 128-byte header (`0x0F0000..0x0F0080`) plus inline `f32`/`u32`/`TopoId` payload up to `1 MiB` (`0x0F0080..0x1F0000`). |
 | `0x1F0000 .. 0x3F0000` | `FIELD_BUFFER_OFFSET` | 3D voxel scalar and vector fields written by external WASM extensions (`extension_tick`). |
 | `0x3F0000 .. 0x4F0000` | `STEP_EXPORT_OFFSET` | Welded ISO-10303-21 AP214 STEP `CLOSED_SHELL` output buffer ([tess_export.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/tess_export.zig)). |
 | `0x4F0000 .. 0x5F0000` | `STL_EXPORT_OFFSET` | Binary and ASCII STL output buffer. |
+| `>= 0x600000` | `HEAP_BASE_OFFSET` | Reusable 8-byte aligned heap spillover buffer for meshes exceeding `1 MiB` (`> ~21.8k` triangles). |
+
+To handle dense geometry without overflowing into `0x1F0000`, [tess_export.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/tess_export.zig) uses a **hybrid fixed/dynamic header-payload layout**. The 128-byte header always stays pinned at `0x0F0000`. Meshes up to `0x0FFF80` bytes (`1,048,448` bytes) write inline at `0x0F0080`. Larger meshes allocate a reusable 8-byte aligned slice above `0x600000`, write those heap addresses into `pos_offset`..`face_offset`, and set `is_heap_spillover = 1` at `0x0F0050`. All JS and Zig readers dereference those header pointers unchanged.
 
 Inside CDML, an expression can call `field_scalar(slot, x, y, z, default)` (`OpCode.FieldSample = 0x40`). In [autodiff.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/autodiff.zig), `sampleFieldTrilinearDual` samples the shared Field Buffer at `0x1F0000` with trilinear interpolation and exact trilinear dual derivatives.
 

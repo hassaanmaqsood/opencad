@@ -98,6 +98,7 @@ const pkgJson = {
     "opencad-element.mjs",
     "cad_core.wasm",
     "README.md",
+    "skill.md",
     "examples",
     "python",
     "rust"
@@ -325,6 +326,12 @@ fs.copyFileSync(path.resolve(distPublishDir, 'opencad.d.ts'), path.resolve(cdnDi
 fs.copyFileSync(path.resolve(distPublishDir, 'opencad-element.mjs'), path.resolve(cdnDir, 'opencad-element.mjs'));
 fs.copyFileSync(wasmSrc, path.resolve(cdnDir, 'cad_core.wasm'));
 fs.copyFileSync(path.resolve(distPublishDir, 'opencad-portable.html'), path.resolve(rootDir, 'web-app/dist/opencad-portable.html'));
+
+const skillSrc = path.resolve(rootDir, 'docs/SKILL.md');
+if (fs.existsSync(skillSrc)) {
+  fs.copyFileSync(skillSrc, path.resolve(distPublishDir, 'skill.md'));
+  fs.copyFileSync(skillSrc, path.resolve(rootDir, 'web-app/dist/skill.md'));
+}
 
 console.log('[dist-publish] Assembly complete! Staged artifacts:');
 fs.readdirSync(distPublishDir).forEach(f => {

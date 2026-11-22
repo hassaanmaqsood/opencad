@@ -133,6 +133,7 @@ pub export fn cad_kernel_deinit() CadStatus {
     wasm_step_export_buf = .empty;
     wasm_stl_export_buf.deinit(alloc);
     wasm_stl_export_buf = .empty;
+    tess_export.freeDynamicTessBuffer();
 
     main_wasm.deinitWasmBuffers();
     return .Ok;

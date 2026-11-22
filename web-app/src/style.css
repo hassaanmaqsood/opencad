@@ -699,17 +699,18 @@ html, body {
 }
 
 /* ========================================================================== */
-/* Embed Mode (100% Full-Bleed Viewport)                                     */
+/* Embed Mode & URL Toggle Controls                                           */
 /* ========================================================================== */
-body.embed-mode #code-pane,
-body.embed-mode #pane-splitter,
-body.embed-mode #btn-expand-pane,
-body.embed-mode #viewport-stats {
+body.embed-mode #viewport-stats,
+body.hide-code-toggle #code-pane,
+body.hide-code-toggle #pane-splitter,
+body.hide-code-toggle #btn-expand-pane,
+body.hide-params-toggle #btn-toggle-gui {
   display: none !important;
 }
 
 body.embed-mode #app-container,
-body.embed-mode #viewport-container {
+body.hide-code-toggle #viewport-container {
   width: 100vw !important;
   height: 100dvh !important;
   flex: 1 !important;

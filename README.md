@@ -24,7 +24,7 @@ OpenCAD is in active development. Core operations pass verification tests, but f
    Rolling-ball fillets operate on uniform convex and concave edges. Apex corners and variable-radius sweeps with high curvature may fail.
 
 4. **Helical Threads and `cad_op_thread`:**
-   CDML models build threads through revolved ridge profiles or helical `SE(3)` sweeps. Those sweeps scale station density to stay inside the 1 MiB tessellation buffer. However, the standalone C-ABI function `cad_op_thread` remains an unimplemented stub until full B-Rep helical boolean cutting is ready.
+   CDML models build threads through revolved ridge profiles or helical `SE(3)` sweeps. Those sweeps scale station density up to `1025` steps and spill large meshes onto the WASM heap above `0x600000`. However, the standalone C-ABI function `cad_op_thread` remains an unimplemented stub until full B-Rep helical boolean cutting is ready.
 
 5. **CDML Schema:**
    The XML schema and language bindings will evolve before version 2.1. Do not expect long-term API stability yet.
@@ -42,7 +42,7 @@ OpenCAD generates solids from mathematical equations and sweeps. The engine cont
    An XML format that defines parametric variables, 2D sketches, 3D sweeps, physical probes, and file exports.
 
 3. **Shared Memory (`SharedArrayBuffer`):**
-   A single linear memory buffer between 0x000000 and 0x5F0000. It transfers tessellation data directly to WebGL without data copies.
+   A single linear memory buffer (`0x000000..0x5F0000` fixed regions plus dynamic heap above `0x600000`). The 128-byte header stays pinned at `0x0F0000`. Meshes up to 1 MiB stay inline at `0x0F0080`, while larger meshes spill onto the heap above `0x600000` without copying data to WebGL.
 
 4. **Web Studio and Embed Viewer:**
    A browser application with a split code editor and a Three.js 3D viewport. The viewer embeds into web pages through a custom HTML element.
@@ -115,8 +115,48 @@ const result = kernel.evaluateCdml(xmlString);
 #### Option C: Unpack the Release SDK Archive
 Download `opencad-wasm-sdk.zip` from the latest release. Extract the archive into your project directory.
 
-### 3. Embed 3D Models with the Web Component
+### 3. Embed 3D Models (Iframe and Web Component)
 
+#### Option A: Embed with an HTML Iframe
+Embed the live studio in any web page or documentation site with an `<iframe>` tag:
+
+```html
+<iframe
+  src="https://hassaanmaqsood.github.io/opencad/?embed=true&src=https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml&code=false&params=false"
+  width="100%"
+  height="500"
+  style="border: 1px solid #C8C0B4; border-radius: 6px;"
+  loading="lazy"
+  title="OpenCAD 3D Model">
+</iframe>
+```
+
+Use these URL query parameters to control the embedded view:
+
+| Parameter | Values | Effect |
+| :--- | :--- | :--- |
+| `embed` | `true` / `false` | Hides the code editor pane and renders a full-bleed 3D viewport. |
+| `src` or `cdml` | URL or XML string | Loads a CDML model file from an HTTPS URL or inline XML string. |
+| `code` or `code-toggle` | `true` / `false` | Hides or shows the Code toggle button and the editor pane. |
+| `params` or `gui` | `true` / `false` | Hides or shows the Parameters panel and its toggle button. |
+| `params-toggle` | `true` / `false` | Hides or shows the Parameters toggle button in the dock. |
+| `vars` | Comma-separated IDs | Filters which variables appear in the Parameters panel. |
+| `probes` | Comma-separated IDs | Filters which physical probes appear in the Parameters panel. |
+| `exports` | `step`, `stl` | Filters which export buttons appear in the Parameters panel. |
+
+Add `gui=true` and `params-toggle=false` when you want fixed parameter sliders without a hide button:
+
+```html
+<iframe
+  src="https://hassaanmaqsood.github.io/opencad/?embed=true&src=https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml&gui=true&code-toggle=false&params-toggle=false&vars=flange_w,bore_r&exports=stl"
+  width="100%"
+  height="500"
+  style="border: 0;"
+  title="OpenCAD Parametric Flange">
+</iframe>
+```
+
+#### Option B: Embed with the Web Component
 Load the custom element from the CDN:
 
 ```html
@@ -124,9 +164,9 @@ Load the custom element from the CDN:
 
 <!-- Embedded 3D viewer -->
 <opencad-viewer
-  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/examples/lib/0001_bracket.cdml"
+  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml"
   data-gui="true"
-  data-gui-vars="width,height,radius"
+  data-gui-vars="flange_w,flange_h,bore_r"
   data-gui-exports="step,stl">
 </opencad-viewer>
 ```
@@ -252,5 +292,5 @@ Execute all verification gates:
 
 - [**ARCHITECTURE.md**](./ARCHITECTURE.md) — Technical description of linear memory, C-ABI functions, constraint solver, and contouring algorithms.
 - [**CDML v1.0 Specification**](./docs/CDML%20v1.0%20%E2%80%94%20Computational%20Design%20Markup%20Language%20Format%20Specification.md) — Specification for the Computational Design Markup Language.
-- [**Skill Guide (`docs/SKILL.md`)**](./docs/SKILL.md) — Integration handbook for language models using the kernel through JavaScript modules.
+- [**Skill Guide (`docs/SKILL.md` / public `skill.md`)**](https://hassaanmaqsood.github.io/opencad/skill.md) — Complete usage, troubleshooting, and code examples for all languages ([repo copy](./docs/SKILL.md)).
 - [**API Header (`abi/cad_kernel.h`)**](./abi/cad_kernel.h) — C header file defining kernel functions and data structures.

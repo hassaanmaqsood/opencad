@@ -1324,9 +1324,9 @@ fn constructBrepSolid(ev: *DocumentEvaluator, node: *const XmlNode, out_err_code
         }
         var total_m: usize = sk.outer_loops.items[0].samples.items.len;
         for (sk.hole_loops.items) |hl| total_m += hl.samples.items.len;
-        const max_budget_stations: usize = @min(@as(usize, 641), @max(@as(usize, 17), 900_000 / (96 * @max(@as(usize, 3), total_m))));
+        const max_budget_stations: usize = @min(@as(usize, 1025), @max(@as(usize, 17), 4_000_000 / (96 * @max(@as(usize, 3), total_m))));
 
-        const clamped_span = if (std.math.isFinite(angle_span)) @min(angle_span, 80.0 * std.math.pi) else 0.0;
+        const clamped_span = if (std.math.isFinite(angle_span)) @min(angle_span, 128.0 * std.math.pi) else 0.0;
         const auto_stations: usize = @as(usize, @intFromFloat(@ceil(clamped_span / (std.math.pi / 8.0)))) + 1;
         const n_stations: usize = if (explicit_stations) |s|
             @min(max_budget_stations, @max(@as(usize, 2), s))

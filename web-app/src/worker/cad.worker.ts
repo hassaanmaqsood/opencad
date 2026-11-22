@@ -267,6 +267,9 @@ let scratchCursor = 0x300000;
 function writeWasmString(str: string): { ptr: number; len: number } {
   const bytes = new TextEncoder().encode(str);
   scratchCursor = (scratchCursor + 15) & ~15;
+  if (scratchCursor + bytes.length + 32 > 0x3F0000) {
+    scratchCursor = 0x300000;
+  }
   const ptr = scratchCursor;
   new Uint8Array(sharedWasmMemory.buffer).set(bytes, ptr);
   scratchCursor += bytes.length + 16;
@@ -336,7 +339,7 @@ function parseExportsFromXml(xml: string): string[] {
 }
 
 function readTessellationFromSharedMemory() {
-  const ctrlView = new DataView(sharedWasmMemory.buffer, 0x0F0000, 64);
+  const ctrlView = new DataView(sharedWasmMemory.buffer, 0x0F0000, 128);
   const solidId = ctrlView.getUint32(0x00, true);
   const vertexCount = ctrlView.getUint32(0x04, true);
   const triangleCount = ctrlView.getUint32(0x08, true);

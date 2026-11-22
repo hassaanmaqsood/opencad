@@ -10,6 +10,11 @@ pub const TESS_BUFFER_OFFSET: usize = 0x0F0000;
 pub const FIELD_BUFFER_OFFSET: usize = 0x1F0000;
 pub const SCRATCH_OFFSET: usize = 0x3F0000;
 
+pub const TESS_HEADER_SIZE: usize = 0x80;
+pub const TESS_INLINE_PAYLOAD_OFFSET: usize = TESS_BUFFER_OFFSET + TESS_HEADER_SIZE; // 0x0F0080
+pub const TESS_INLINE_MAX_BYTES: usize = FIELD_BUFFER_OFFSET - TESS_INLINE_PAYLOAD_OFFSET; // 0x0FFF80
+pub const HEAP_BASE_OFFSET: usize = 0x600000;
+
 pub const ControlBlock = extern struct {
     magic: u32 = MAGIC_OCAD,
     version: u32 = VERSION_2,
@@ -28,8 +33,8 @@ comptime {
     }
 }
 
-// Simulated memory buffer for native test mode (128 pages = 8 MB matching WASM)
-var simulated_native_mem: [0x800000]u8 = std.mem.zeroes([0x800000]u8);
+// Simulated memory buffer for native test mode (256 pages = 16 MB for inline + heap spillover tests)
+var simulated_native_mem: [0x1000000]u8 align(16) = std.mem.zeroes([0x1000000]u8);
 
 pub fn initControlBlock() void {
     const cb = ControlBlock{

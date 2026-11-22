@@ -218,9 +218,38 @@ async function initApp() {
 
   // URL Query Parameters
   const urlParams = new URLSearchParams(window.location.search);
+  const parseBoolParam = (val: string | null): boolean | null => {
+    if (val === null) return null;
+    const v = val.trim().toLowerCase();
+    if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
+    if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true;
+    return null;
+  };
+
   const isEmbed = urlParams.get('embed') === 'true' || urlParams.get('embed') === '1';
   const cdmlParam = urlParams.get('cdml') || urlParams.get('src');
   const guiParam = urlParams.get('gui') ?? urlParams.get('data-gui');
+  const paramsRaw = urlParams.get('params') ?? urlParams.get('parameters');
+  const paramsToggleRaw = urlParams.get('params-toggle') ?? urlParams.get('paramsToggle');
+  const codeParamRaw =
+    urlParams.get('code') ??
+    urlParams.get('code-toggle') ??
+    urlParams.get('codeToggle') ??
+    urlParams.get('editor');
+
+  const guiFlag = parseBoolParam(guiParam);
+  const paramsFlag = parseBoolParam(paramsRaw);
+  const paramsToggleFlag = parseBoolParam(paramsToggleRaw);
+  const codeToggleFlag = parseBoolParam(codeParamRaw);
+
+  const disableCodeToggle = codeToggleFlag === false || (isEmbed && codeToggleFlag !== true);
+  // Studio default: showGui=true unless gui=false or params=false.
+  // Embed default: showGui=false unless gui=true or params=true (and neither is explicitly false).
+  const shouldShowGui = isEmbed
+    ? ((guiFlag === true || paramsFlag === true) && guiFlag !== false && paramsFlag !== false)
+    : (guiFlag !== false && paramsFlag !== false);
+  const disableParamsToggle = !shouldShowGui || (paramsToggleFlag === false);
+
   const varsParam = urlParams.get('vars') || urlParams.get('data-gui-vars');
   const probesParam = urlParams.get('probes') || urlParams.get('data-gui-probes');
   const exportsParam = urlParams.get('exports') || urlParams.get('data-gui-exports');
@@ -278,9 +307,12 @@ async function initApp() {
     brandMark.innerHTML = renderControlMarkSvg(20, 'nominal');
   }
 
-  // Embed Mode handling
+  // Embed & URL Toggle Mode handling
   if (isEmbed) {
     document.body.classList.add('embed-mode');
+  }
+  if (disableCodeToggle) {
+    document.body.classList.add('hide-code-toggle');
     if (codePane) codePane.style.display = 'none';
     if (paneSplitter) paneSplitter.style.display = 'none';
     if (btnExpand) btnExpand.style.display = 'none';
@@ -288,6 +320,10 @@ async function initApp() {
       viewportContainer.style.width = '100vw';
       viewportContainer.style.height = '100dvh';
     }
+  }
+  if (disableParamsToggle) {
+    document.body.classList.add('hide-params-toggle');
+    if (btnToggleGui) btnToggleGui.style.display = 'none';
   }
 
   // Setup ResizeObserver on viewportContainer to keep 60 FPS and 0 aspect distortion
@@ -311,8 +347,6 @@ async function initApp() {
   const exportsFilter = exportsParam ? exportsParam.split(',').map(s => s.trim()).filter(Boolean) : undefined;
 
   // Setup LilController if GUI enabled
-  // Studio default: gui=true; Embed default: gui=false unless explicitly requested.
-  const shouldShowGui = isEmbed ? (guiParam === 'true') : (guiParam !== 'false');
   let lilController: LilController | null = null;
 
   if (shouldShowGui) {
@@ -607,7 +641,7 @@ async function initApp() {
     });
   }
 
-  if (btnToggleGui) {
+  if (btnToggleGui && !disableParamsToggle) {
     btnToggleGui.addEventListener('click', () => {
       if (lilController) {
         const root = lilController.getRootElement();
@@ -685,11 +719,15 @@ async function initApp() {
     });
   }
 
-  if (btnExpand && codePane) {
+  if (btnExpand && codePane && !disableCodeToggle) {
     btnExpand.addEventListener('click', () => {
       const isCurrentlyCollapsed = codePane.classList.contains('collapsed');
       setCodePaneCollapsed(!isCurrentlyCollapsed);
     });
+  }
+
+  if (isEmbed && !disableCodeToggle) {
+    setCodePaneCollapsed(true);
   }
 
   // Determine Initial Code (URL > localStorage > DEFAULT_TORUS_CDML)
@@ -863,28 +901,41 @@ async function initApp() {
 
   // Initial Load from URL if provided, otherwise evaluate initialCode
   if (hasExplicitUrl && cdmlParam) {
-    const targetUrl = getAssetUrl(cdmlParam);
-    try {
-      const resp = await fetch(targetUrl);
-      if (resp.ok) {
-        const text = await resp.text();
-        isInternalSync = true;
-        if (cdmlEditor) cdmlEditor.value = text;
-        if (editorView) {
-          editorView.dispatch({
-            changes: { from: 0, to: editorView.state.doc.length, insert: text },
-          });
+    const trimmedParam = cdmlParam.trim();
+    if (trimmedParam.startsWith('<')) {
+      isInternalSync = true;
+      if (cdmlEditor) cdmlEditor.value = trimmedParam;
+      if (editorView) {
+        editorView.dispatch({
+          changes: { from: 0, to: editorView.state.doc.length, insert: trimmedParam },
+        });
+      }
+      isInternalSync = false;
+      await evaluateCode(trimmedParam);
+    } else {
+      const targetUrl = getAssetUrl(cdmlParam);
+      try {
+        const resp = await fetch(targetUrl);
+        if (resp.ok) {
+          const text = await resp.text();
+          isInternalSync = true;
+          if (cdmlEditor) cdmlEditor.value = text;
+          if (editorView) {
+            editorView.dispatch({
+              changes: { from: 0, to: editorView.state.doc.length, insert: text },
+            });
+          }
+          isInternalSync = false;
+          currentDocUrl = new URL(targetUrl, window.location.href).toString();
+          await evaluateCode(text);
+        } else {
+          console.warn('Initial CDML fetch returned status:', resp.status);
+          await evaluateCode(initialCode);
         }
-        isInternalSync = false;
-        currentDocUrl = new URL(targetUrl, window.location.href).toString();
-        await evaluateCode(text);
-      } else {
-        console.warn('Initial CDML fetch returned status:', resp.status);
+      } catch (err) {
+        console.warn('Network error fetching initial CDML:', err);
         await evaluateCode(initialCode);
       }
-    } catch (err) {
-      console.warn('Network error fetching initial CDML:', err);
-      await evaluateCode(initialCode);
     }
   } else {
     await evaluateCode(initialCode);

@@ -477,4 +477,34 @@ test.describe('OpenCAD Responsive Flex Studio & Minimal Embed Viewer E2E', () =>
     await expect(page.locator('#cdml-editor')).toHaveValue(initialCode);
   });
 
+  test('Embedded URL Toggles: code=false and params=false disable Code and Params toggles', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // 1. Embedded URL with code=false and params=false hides both dock toggle buttons
+    await page.goto('/?embed=true&cdml=/examples/flange_normative.cdml&code=false&params=false');
+    await expect(page.locator('#cad-canvas')).toBeVisible();
+    await page.waitForFunction(() => {
+      const viewer = (window as any).__cadViewer;
+      return viewer?.meshManager?.getTriangleCount() > 0;
+    }, { timeout: 15000 });
+
+    await expect(page.locator('#code-pane')).toBeHidden();
+    await expect(page.locator('#btn-expand-pane')).toBeHidden();
+    await expect(page.locator('#btn-toggle-gui')).toBeHidden();
+    await expect(page.locator('.lil-gui')).toHaveCount(0);
+
+    // 2. Explicit code-toggle=false and params-toggle=false disable toggles in studio URL
+    await page.goto('/?cdml=/examples/flange_normative.cdml&code-toggle=false&params-toggle=false');
+    await expect(page.locator('#cad-canvas')).toBeVisible();
+    await page.waitForFunction(() => {
+      const viewer = (window as any).__cadViewer;
+      return viewer?.meshManager?.getTriangleCount() > 0;
+    }, { timeout: 15000 });
+
+    await expect(page.locator('#code-pane')).toBeHidden();
+    await expect(page.locator('#btn-expand-pane')).toBeHidden();
+    await expect(page.locator('#btn-toggle-gui')).toBeHidden();
+    await expect(page.locator('.lil-gui').first()).toBeVisible();
+  });
+
 });
