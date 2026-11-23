@@ -74,7 +74,7 @@ $$r_{\text{union}}(f_1, f_2) = f_1 + f_2 - \sqrt{f_1^2 + f_2^2}$$
 
 $$r_{\text{intersect}}(f_1, f_2) = f_1 + f_2 + \sqrt{f_1^2 + f_2^2}$$
 
-$$\operatorname{abs}_{\text{smooth}}(u, \varepsilon) = \sqrt{u^2 + \varepsilon^2}$$
+$$\text{abs}_{\text{smooth}}(u, \varepsilon) = \sqrt{u^2 + \varepsilon^2}$$
 
 Here is the dual-number implementation in [autodiff.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/autodiff.zig):
 
