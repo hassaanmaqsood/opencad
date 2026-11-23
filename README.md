@@ -4,8 +4,9 @@
 > The kernel compiles from Zig to freestanding WebAssembly. The browser interface uses TypeScript and Three.js.
 
 [![Live Studio](https://img.shields.io/badge/Live_Studio-hassaanmaqsood.github.io%2Fopencad-blue?style=for-the-badge&logo=googlechrome)](https://hassaanmaqsood.github.io/opencad/)
+[![FEAScript Loop Demo](https://img.shields.io/badge/FEAScript_FEM_Loop-Live_Demo-0A2351?style=for-the-badge)](https://hassaanmaqsood.github.io/opencad/feascript-demo.html)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Zig Tests](https://img.shields.io/badge/Zig_Unit_Tests-198%2F198_Passed-brightgreen.svg)](./kernel-zig)
+[![Zig Tests](https://img.shields.io/badge/Zig_Unit_Tests-199%2F199_Passed-brightgreen.svg)](./kernel-zig)
 [![Verification Gates](https://img.shields.io/badge/Verification_Gates-All_9_Passed-success.svg)](./scripts/verify_gates.sh)
 
 ---
@@ -71,6 +72,7 @@ Download precompiled archives from the [OpenCAD Releases](https://github.com/has
 | `opencad-wasm-sdk.zip` | ZIP archive | Contains TypeScript declarations, JavaScript modules, C headers, and WASM binaries. |
 | `opencad-portable.html` | HTML file | A single offline CAD studio. Runs in any modern web browser without an internet connection. |
 | `cad_kernel.wasm` | WebAssembly | The freestanding mathematical kernel conforming to `abi/cad_kernel.h`. |
+| `feascript-demo.html` | HTML demo | Closed-loop parametric CAD and FEAScript 2D thermal FEM demo ([live page](https://hassaanmaqsood.github.io/opencad/feascript-demo.html), [guide](./examples/feascript-loop/README.md)). |
 | `opencad.mjs` | ES module | Standalone JavaScript module for browser and Node.js environments. |
 | `opencad-element.mjs` | ES module | Web Component defining the `<opencad-viewer>` custom element. |
 | `opencad-examples.zip` | ZIP archive | A collection of more than 1,000 verified CDML model files. |

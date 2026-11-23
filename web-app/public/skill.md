@@ -4,6 +4,7 @@
 
 - **Public Skill URL:** `https://hassaanmaqsood.github.io/opencad/skill.md`
 - **Live Web Studio & Iframe Embed Endpoint:** `https://hassaanmaqsood.github.io/opencad/`
+- **Live OpenCAD ↔ FEAScript Closed-Loop Demo:** `https://hassaanmaqsood.github.io/opencad/feascript-demo.html` (`?embed=true` for frameless iframe embedding; requires COOP/COEP or `coi-serviceworker.js`)
 - **GitHub Repository:** `https://github.com/hassaanmaqsood/opencad`
 - **CDN Distribution Branch (`@dist`):** `https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/`
 - **Releases & Offline Studio (`opencad-portable.html`, `opencad-wasm-sdk.zip`):** `https://github.com/hassaanmaqsood/opencad/releases`

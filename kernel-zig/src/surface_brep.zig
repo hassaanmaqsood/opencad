@@ -618,29 +618,49 @@ pub fn triangulatePolygonWithHoles2D(
         }
         const M = h_loop[rm_idx];
 
-        // Find mutually visible vertex on current outer polygon `poly`
-        // Simplest robust choice: pick outer vertex P maximizing visibility or closest in distance without crossing edges
+        // Find mutually visible vertex on current outer polygon `poly` in the +u half-plane of M
+        // (since M is the rightmost vertex of h_loop, any segment M->pv with pv.u >= M.u cannot cross h_loop).
         var best_outer_idx: usize = 0;
         var best_dist_sq: f64 = 1e30;
-        for (poly.items, 0..) |pv, pi| {
-            const du = pv.u - M.u;
-            const dv = pv.v - M.v;
-            const dsq = du * du + dv * dv;
-            var crosses = false;
-            for (0..poly.items.len) |ei| {
-                const e_next = (ei + 1) % poly.items.len;
-                if (ei == pi or e_next == pi) continue;
-                const a = poly.items[ei];
-                const b = poly.items[e_next];
-                if (segmentsIntersectStrict2D(M.u, M.v, pv.u, pv.v, a.u, a.v, b.u, b.v)) {
-                    crosses = true;
-                    break;
+        var found_right: bool = false;
+        for (0..2) |pass| {
+            for (poly.items, 0..) |pv, pi| {
+                const du = pv.u - M.u;
+                if (pass == 0 and du < -1e-9) continue;
+                const dv = pv.v - M.v;
+                const dsq = du * du + dv * dv;
+                if (dsq >= best_dist_sq) continue;
+                var crosses = false;
+                for (0..poly.items.len) |ei| {
+                    const e_next = (ei + 1) % poly.items.len;
+                    if (ei == pi or e_next == pi) continue;
+                    const a = poly.items[ei];
+                    const b = poly.items[e_next];
+                    if (segmentsIntersectStrict2D(M.u, M.v, pv.u, pv.v, a.u, a.v, b.u, b.v)) {
+                        crosses = true;
+                        break;
+                    }
+                }
+                if (!crosses) {
+                    // Also ensure bridge does not cross any edge of h_loop itself
+                    for (0..h_loop.len) |hi| {
+                        const h_next = (hi + 1) % h_loop.len;
+                        if (hi == rm_idx or h_next == rm_idx) continue;
+                        const ha = h_loop[hi];
+                        const hb = h_loop[h_next];
+                        if (segmentsIntersectStrict2D(M.u, M.v, pv.u, pv.v, ha.u, ha.v, hb.u, hb.v)) {
+                            crosses = true;
+                            break;
+                        }
+                    }
+                }
+                if (!crosses) {
+                    best_dist_sq = dsq;
+                    best_outer_idx = pi;
+                    found_right = true;
                 }
             }
-            if (!crosses and dsq < best_dist_sq) {
-                best_dist_sq = dsq;
-                best_outer_idx = pi;
-            }
+            if (found_right) break;
         }
 
         // Splice: poly[0..best_outer_idx] + M..h_loop..M + poly[best_outer_idx..]

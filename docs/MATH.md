@@ -70,11 +70,11 @@ Along the medial axis where $f_1(\mathbf{x}) = f_2(\mathbf{x})$, `min` and `max`
 
 OpenCAD replaces `min` and `max` with **Rvachev R-functions** in the instruction set (`0x30 RUnion`, `0x31 RIntersect`, and `0x25 AbsSmooth`):
 
-$$\text{r\_union}(f_1, f_2) = f_1 + f_2 - \sqrt{f_1^2 + f_2^2}$$
+$$r_{\text{union}}(f_1, f_2) = f_1 + f_2 - \sqrt{f_1^2 + f_2^2}$$
 
-$$\text{r\_intersect}(f_1, f_2) = f_1 + f_2 + \sqrt{f_1^2 + f_2^2}$$
+$$r_{\text{intersect}}(f_1, f_2) = f_1 + f_2 + \sqrt{f_1^2 + f_2^2}$$
 
-$$\text{abs\_smooth}(u, \varepsilon) = \sqrt{u^2 + \varepsilon^2}$$
+$$\operatorname{abs}_{\text{smooth}}(u, \varepsilon) = \sqrt{u^2 + \varepsilon^2}$$
 
 Here is the dual-number implementation in [autodiff.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/autodiff.zig):
 

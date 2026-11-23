@@ -2,10 +2,11 @@
   <imports/>
   <defs>
     <var id="base_w" value="140.00" min="112.00" max="168.00" unit="mm"/>
-    <var id="base_h" value="40.00" min="32.00" max="48.00" unit="mm"/>
-    <var id="bearing_bore" value="40.00" min="32.00" max="48.00" unit="mm"/>
+    <var id="base_h" value="56.00" min="44.80" max="67.20" unit="mm"/>
+    <var id="bearing_bore" value="40.00" min="32.00" max="44.00" unit="mm"/>
     <var id="base_thk" value="17.00" min="8.0" max="30.0" unit="mm"/>
     <assert expr="base_w > bearing_bore * 2.0" message="Base width must accommodate bearing cartridge" level="error"/>
+    <assert expr="base_h > bearing_bore + 8.0" message="Base height must leave structural wall around bore" level="error"/>
   </defs>
   <body>
     <chart id="ch_xy">
@@ -22,11 +23,11 @@
     </chart>
     <sketch id="sk_pblock" chart="ch_xy" max-iter="100">
       <vars>
-                <point2d id="pbb_0" u="-70.0000" v="-20.0000"/>
-        <point2d id="pbb_1" u="70.0000" v="-20.0000"/>
-        <point2d id="pbb_2" u="70.0000" v="20.0000"/>
-        <point2d id="pbb_3" u="-70.0000" v="20.0000"/>
-                <point2d id="pbh_0" u="20.0000" v="0.0000"/>
+        <point2d id="pbb_0" u="-70.0000" v="-28.0000"/>
+        <point2d id="pbb_1" u="70.0000" v="-28.0000"/>
+        <point2d id="pbb_2" u="70.0000" v="28.0000"/>
+        <point2d id="pbb_3" u="-70.0000" v="28.0000"/>
+        <point2d id="pbh_0" u="20.0000" v="0.0000"/>
         <point2d id="pbh_1" u="19.0211" v="6.1803"/>
         <point2d id="pbh_2" u="16.1803" v="11.7557"/>
         <point2d id="pbh_3" u="11.7557" v="16.1803"/>
@@ -48,13 +49,13 @@
         <point2d id="pbh_19" u="19.0211" v="-6.1803"/>
       </vars>
       <wire id="w_outer" closed="true" role="outer">
-                <line p0="pbb_0" p1="pbb_1"/>
+        <line p0="pbb_0" p1="pbb_1"/>
         <line p0="pbb_1" p1="pbb_2"/>
         <line p0="pbb_2" p1="pbb_3"/>
         <line p0="pbb_3" p1="pbb_0"/>
       </wire>
       <wire id="w_inner" closed="true" role="inner">
-                <line p0="pbh_0" p1="pbh_1"/>
+        <line p0="pbh_0" p1="pbh_1"/>
         <line p0="pbh_1" p1="pbh_2"/>
         <line p0="pbh_2" p1="pbh_3"/>
         <line p0="pbh_3" p1="pbh_4"/>

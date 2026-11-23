@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenCAD ↔ FEAScript Closed-Loop CAD-to-FEA Demo</title>
+  <meta name="description" content="Live browser-native closed-loop parametric CAD and Finite Element thermal simulation coupling OpenCAD WebAssembly and FEAScript 0.4.1." />
+  <link rel="icon" type="image/svg+xml" href="./branding/opencad-mark.svg" />
+  <script src="./coi-serviceworker.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --paper: #FAF7F3;
+      --surface: #F5F0E8;
+      --surface-2: #EDE6DB;
+      --ink: #050F1F;
+      --ink-2: #0A2351;
+      --ink-3: #5C564F;
+      --line: #C8C0B4;
+      --accent: #0A2351;
+      --accent-soft: rgba(10, 35, 81, 0.08);
+      --ok: #0A5C38;
+      --warn: #9A6700;
+      --err: #8B1A1A;
+      --font-display: 'Arial Black', 'Arial', system-ui, -apple-system, sans-serif;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'Courier New', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --radius: 6px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      min-height: 100%;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body.embed-mode .site-header { display: none; }
+    body.embed-mode .embed-strip { display: flex; }
+
+    .site-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-group { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: 16px;
+      letter-spacing: -0.02em;
+      color: var(--ink-2);
+    }
+
+    .subtitle {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--ink-3);
+    }
+
+    .header-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .header-links a {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--ink-2);
+      text-decoration: none;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+    }
+    .header-links a:hover { background: var(--surface-2); border-color: var(--ink-2); }
+
+    .embed-strip {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-3);
+    }
+    .embed-strip a { color: var(--ink-2); text-decoration: none; font-weight: 600; }
+
+    .pipeline-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 20px;
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .pipeline-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .step-pill {
+      padding: 3px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--ink-2);
+      font-weight: 600;
+    }
+    .step-pill.active { background: var(--ink-2); color: var(--paper); border-color: var(--ink-2); }
+    .step-arrow { color: var(--ink-3); }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      font-weight: 600;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--warn);
+    }
+    .status-dot.ok { background: var(--ok); }
+    .status-dot.err { background: var(--err); }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 310px 1fr 1fr;
+      gap: 14px;
+      padding: 14px 20px 20px;
+      max-width: 1680px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 1120px) {
+      .workspace { grid-template-columns: 290px 1fr; }
+      .panel-fem { grid-column: 1 / -1; }
+    }
+    @media (max-width: 780px) {
+      .workspace { grid-template-columns: 1fr; padding: 10px; }
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 420px;
+    }
+    @supports not (content-visibility: auto) {
+      .panel { contain: layout style paint; }
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 12px;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-2);
+    }
+
+    .panel-controls { display: flex; gap: 6px; align-items: center; }
+
+    .panel-body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+    .control-group { display: flex; flex-direction: column; gap: 3px; }
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink);
+    }
+    .control-val { font-weight: 700; color: var(--ink-2); }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--ink-2);
+      cursor: pointer;
+    }
+
+    .divider { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    button {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 7px 11px;
+      border-radius: var(--radius);
+      border: 1px solid var(--ink-2);
+      background: var(--paper);
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    button:hover:not(:disabled) { background: var(--surface-2); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.primary {
+      background: var(--ink-2);
+      color: var(--paper);
+      flex: 1;
+    }
+    button.primary:hover:not(:disabled) { background: #143673; }
+
+    .btn-mini {
+      padding: 3px 8px;
+      font-size: 10px;
+      border-color: var(--line);
+    }
+    .btn-mini.active {
+      background: var(--ink-2);
+      color: var(--paper);
+      border-color: var(--ink-2);
+    }
+
+    .canvas-stage {
+      position: relative;
+      width: 100%;
+      height: 410px;
+      background: var(--paper);
+    }
+    .canvas-stage canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .canvas-overlay-info {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      padding: 5px 8px;
+      background: rgba(250, 247, 243, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink);
+      pointer-events: none;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .metric-card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 6px 8px;
+    }
+    .metric-k {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--ink-3);
+      text-transform: uppercase;
+    }
+    .metric-v {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ink-2);
+      margin-top: 2px;
+    }
+    .metric-v.ok { color: var(--ok); }
+    .metric-v.warn { color: var(--warn); }
+    .metric-v.err { color: var(--err); }
+
+    .log-table-wrap {
+      max-height: 195px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--paper);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+    th, td {
+      padding: 4px 4px;
+      text-align: right;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--surface-2);
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--surface-2);
+      color: var(--ink-2);
+      font-weight: 700;
+    }
+    th:first-child, td:first-child { text-align: center; }
+
+    .bottom-docs {
+      max-width: 1680px;
+      margin: 0 auto 24px;
+      padding: 0 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 900px) {
+      .bottom-docs { grid-template-columns: 1fr; padding: 0 10px; }
+    }
+
+    details {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+    }
+    summary {
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink-2);
+    }
+    pre {
+      margin-top: 10px;
+      padding: 10px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--ink);
+      max-height: 280px;
+    }
+
+    .colorbar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-top: 1px solid var(--line);
+      background: var(--paper);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .colorbar-grad {
+      flex: 1;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid var(--line);
+      background: linear-gradient(90deg, #1d3557, #2a9d8f, #e9c46a, #f4a261, #c1121f);
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand-group">
+      <h1>OpenCAD &harr; FEAScript</h1>
+      <span class="subtitle">Zero-Backend Closed-Loop Parametric CAD + 2D Thermal FEM in WebAssembly &amp; JS</span>
+    </div>
+    <nav class="header-links" aria-label="Project Links">
+      <a href="./">OpenCAD Studio</a>
+      <a href="https://feascript.com" target="_blank" rel="noopener noreferrer">FEAScript</a>
+      <a href="https://github.com/hassaanmaqsood/opencad" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="embed-strip">
+    <span>Closed-Loop CAD &harr; FEM: <a href="https://hassaanmaqsood.github.io/opencad/feascript-demo.html" target="_blank" rel="noopener noreferrer">OpenCAD WASM</a> + <a href="https://feascript.com" target="_blank" rel="noopener noreferrer">FEAScript 0.4</a></span>
+    <span id="embed-mem-badge">Initializing…</span>
+  </div>
+
+  <div class="pipeline-bar" aria-label="Closed-loop pipeline status">
+    <div class="pipeline-steps">
+      <span class="step-pill" id="step-1">1. OpenCAD CDML &rarr; B-Rep + 2D Profile</span>
+      <span class="step-arrow">&rarr;</span>
+      <span class="step-pill" id="step-2">2. FEAScript 2D Heat Conduction Solve</span>
+      <span class="step-arrow">&rarr;</span>
+      <span class="step-pill" id="step-3">3. Field Buffer 0x1F0000 &rarr; OpenCAD Probe</span>
+      <span class="step-arrow">&rarr;</span>
+      <span class="step-pill" id="step-4">4. Closed-Loop Parameter Adaptation</span>
+    </div>
+    <span class="status-badge" role="status" aria-live="polite">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Loading WASM &amp; FEAScript…</span>
+    </span>
+  </div>
+
+  <main class="workspace">
+    <!-- Left Column: Parametric Controls + Loop Telemetry -->
+    <aside class="panel" aria-label="Parameters and closed-loop controls">
+      <div class="panel-head">
+        <span class="panel-title">Parametric &amp; Thermal Controls</span>
+        <span id="mem-mode-tag" style="font-family:var(--font-mono);font-size:10px;color:var(--ink-3);">WASM</span>
+      </div>
+      <div class="panel-body">
+        <div class="control-group">
+          <label class="control-label" for="inp-w"><span>Plate Width (plate_w)</span><span class="control-val" id="val-w">90 mm</span></label>
+          <input id="inp-w" type="range" min="60" max="120" step="2" value="90" />
+        </div>
+        <div class="control-group">
+          <label class="control-label" for="inp-h"><span>Plate Height (plate_h)</span><span class="control-val" id="val-h">60 mm</span></label>
+          <input id="inp-h" type="range" min="44" max="96" step="2" value="60" />
+        </div>
+        <div class="control-group">
+          <label class="control-label" for="inp-t"><span>Plate Thickness (plate_t)</span><span class="control-val" id="val-t">12 mm</span></label>
+          <input id="inp-t" type="range" min="6" max="24" step="1" value="12" />
+        </div>
+        <div class="control-group">
+          <label class="control-label" for="inp-r"><span>Cooling Bore Radius (bore_r)</span><span class="control-val" id="val-r">9.0 mm</span></label>
+          <input id="inp-r" type="range" min="5" max="22" step="0.5" value="9" />
+        </div>
+
+        <hr class="divider" />
+
+        <div class="control-group">
+          <label class="control-label" for="inp-thot"><span>Bottom Heat Source T_hot</span><span class="control-val" id="val-thot">180 &deg;C</span></label>
+          <input id="inp-thot" type="range" min="80" max="250" step="5" value="180" />
+        </div>
+        <div class="control-group">
+          <label class="control-label" for="inp-hconv"><span>Bore Convection h (W/m&sup2;K)</span><span class="control-val" id="val-hconv">45</span></label>
+          <input id="inp-hconv" type="range" min="10" max="150" step="5" value="45" />
+        </div>
+        <div class="control-group">
+          <label class="control-label" for="inp-ttarget"><span>Target Top-Edge Temp T_target</span><span class="control-val" id="val-ttarget">82 &deg;C</span></label>
+          <input id="inp-ttarget" type="range" min="45" max="140" step="1" value="82" />
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="primary" id="btn-optimize">Run Closed-Loop Optimize</button>
+          <button type="button" id="btn-reset">Reset</button>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" id="btn-step" style="flex:1;">Export AP214 STEP</button>
+          <button type="button" id="btn-stl" style="flex:1;">Export STL</button>
+        </div>
+
+        <hr class="divider" />
+
+        <div class="metrics-grid" aria-label="Simulation telemetry">
+          <div class="metric-card">
+            <div class="metric-k">Top Edge Mean T</div>
+            <div class="metric-v" id="met-top-t">&mdash;</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-k">OpenCAD Bore Probe</div>
+            <div class="metric-v" id="met-probe-t">&mdash;</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-k">Solid Volume</div>
+            <div class="metric-v" id="met-vol">&mdash;</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-k">FEAScript Solve</div>
+            <div class="metric-v" id="met-solve">&mdash;</div>
+          </div>
+        </div>
+
+        <div class="log-table-wrap" aria-label="Closed-loop iteration log">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>bore_r</th>
+                <th>T_top</th>
+                <th>Probe</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody id="loop-log-body">
+              <tr><td colspan="5" style="text-align:center;color:var(--ink-3);">Waiting for first run…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Column: OpenCAD 3D B-Rep Solid with FEAScript Thermal Field Overlay -->
+    <section class="panel" aria-label="OpenCAD 3D B-Rep viewport">
+      <div class="panel-head">
+        <span class="panel-title">OpenCAD 3D B-Rep + Thermal Field</span>
+        <div class="panel-controls">
+          <button type="button" class="btn-mini active" id="btn-mode-thermal">Thermal</button>
+          <button type="button" class="btn-mini" id="btn-mode-clay">CAD Clay</button>
+          <button type="button" class="btn-mini" id="btn-wireframe">Wire</button>
+        </div>
+      </div>
+      <div class="canvas-stage" id="cad-stage">
+        <canvas id="cad-3d-canvas" aria-label="3D CAD solid with FEAScript temperature overlay"></canvas>
+        <div class="canvas-overlay-info" id="cad-info">Drag to orbit &middot; Scroll to zoom</div>
+      </div>
+      <div class="colorbar-row">
+        <span id="cb-min">25.0 &deg;C</span>
+        <div class="colorbar-grad" aria-hidden="true"></div>
+        <span id="cb-max">180.0 &deg;C</span>
+      </div>
+    </section>
+
+    <!-- Right Column: FEAScript 2D Finite Element Mesh & Temperature Field -->
+    <section class="panel panel-fem" aria-label="FEAScript 2D finite element contour">
+      <div class="panel-head">
+        <span class="panel-title">FEAScript 0.4 &middot; 2D FEM Heat Conduction</span>
+        <div class="panel-controls">
+          <button type="button" class="btn-mini active" id="btn-fem-mesh">Mesh</button>
+          <button type="button" class="btn-mini active" id="btn-fem-bc">BC Labels</button>
+        </div>
+      </div>
+      <div class="canvas-stage" id="fem-stage">
+        <canvas id="fem-2d-canvas" aria-label="2D finite element temperature contour and triangular mesh"></canvas>
+        <div class="canvas-overlay-info" id="fem-hover">Hover mesh to probe T(x, y) via evaluateSolution()</div>
+      </div>
+      <div class="colorbar-row">
+        <span id="fem-stats">Nodes: &mdash; &middot; Triangles: &mdash; &middot; Residual: &mdash;</span>
+      </div>
+    </section>
+  </main>
+
+  <section class="bottom-docs" aria-label="Live CDML and embed code">
+    <details>
+      <summary>Live CDML v1.0 Source (with 0x1F0000 Field Buffer Probe)</summary>
+      <pre role="region" aria-label="Generated CDML source" tabindex="0"><code id="cdml-preview"></code></pre>
+    </details>
+    <details>
+      <summary>Embed on FEAScript.com / Docs &amp; Standalone ESM Snippet</summary>
+      <pre role="region" aria-label="Embed and ESM code snippet" tabindex="0"><code>&lt;!-- 1. Drop-in iframe embed (requires COOP/COEP headers or coi-serviceworker.js) --&gt;
+&lt;iframe
+  src="https://hassaanmaqsood.github.io/opencad/feascript-demo.html?embed=true"
+  width="100%" height="680"
+  style="border:1px solid #C8C0B4;border-radius:6px;"
+  loading="lazy"
+  title="OpenCAD to FEAScript Closed-Loop Demo"&gt;
+&lt;/iframe&gt;
+
+// 2. Minimal pure-ESM OpenCAD + FEAScript 0.4.1 closed loop (with SharedArrayBuffer):
+import { FEAScriptModel, evaluateSolution } from "https://core.feascript.com/dist/feascript.esm.js";
+
+const mem = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
+const wasmBytes = await fetch("https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/cad_core.wasm").then(r =&gt; r.arrayBuffer());
+const { instance } = await WebAssembly.instantiate(wasmBytes, {
+  env: { memory: mem },
+  opencad: { field_alloc: () =&gt; 0, field_eval_scalar: (_s,_x,_y,_z,d) =&gt; d, field_eval_vec3: () =&gt; {}, cmd_write: () =&gt; {} }
+});
+instance.exports.kernel_init();
+// 1) Evaluate CDML -&gt; 3D B-Rep + 2D profile with named edges ("bottom", "right", "top", "left", "bore")
+// 2) Solve 2D thermal field in FEAScriptModel("heatConduction")
+// 3) Sample evaluateSolution() onto a 32x24x4 Float32Array at memory offset 0x1F0000
+// 4) Re-evaluate CDML so field_scalar(0, x, y, z, 25.0) drives OpenCAD probes &amp; geometry!</code></pre>
+    </details>
+  </section>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Embed mode detection (?embed=true)
+    const paramsUrl = new URLSearchParams(window.location.search);
+    if (paramsUrl.get('embed') === 'true' || paramsUrl.get('embed') === '1') {
+      document.body.classList.add('embed-mode');
+    }
+
+    // Dynamic FEAScript 0.4.1 loader (primary: core.feascript.com, fallback: jsDelivr)
+    async function loadFEAScript() {
+      const urls = [
+        'https://core.feascript.com/dist/feascript.esm.js',
+        'https://cdn.jsdelivr.net/gh/FEAScript/FEAScript-core/dist/feascript.esm.js',
+      ];
+      let lastErr;
+      for (const u of urls) {
+        try {
+          return await import(u);
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      throw lastErr;
+    }
+
+    // OpenCAD SharedArrayBuffer WASM loader (requires COOP/COEP headers or coi-serviceworker.js)
+    async function loadOpenCAD() {
+      if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) {
+        throw new Error(
+          'SharedArrayBuffer requires Cross-Origin Isolation (COOP/COEP headers or coi-serviceworker.js). Reload once if the service worker just registered.'
+        );
+      }
+      const customWasm = paramsUrl.get('wasm');
+      const candidates = customWasm
+        ? [customWasm]
+        : [
+            './cad_kernel.wasm',
+            './cad_core.wasm',
+            'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/cad_core.wasm',
+          ];
+
+      let lastErr;
+      for (const url of candidates) {
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) continue;
+          const bytes = await resp.arrayBuffer();
+          const memory = new WebAssembly.Memory({
+            initial: 128,
+            maximum: 512,
+            shared: true,
+          });
+          const { instance } = await WebAssembly.instantiate(bytes, {
+            env: {
+              memory,
+              abort: () => { throw new Error('OpenCAD WASM abort'); },
+            },
+            opencad: {
+              field_alloc: () => 0,
+              field_eval_scalar: (_slot, _x, _y, _z, defVal) => defVal,
+              field_eval_vec3: () => {},
+              cmd_write: () => {},
+            },
+          });
+          instance.exports.kernel_init();
+          return { api: instance.exports, memory, shared: true, url };
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      throw lastErr || new Error('Unable to load OpenCAD WASM kernel');
+    }
+
+    // State
+    const state = {
+      plate_w: 90,
+      plate_h: 60,
+      plate_t: 12,
+      bore_r: 9.0,
+      t_hot: 180,
+      h_conv: 45,
+      t_target: 82,
+      renderMode: 'thermal',
+      wireframe: false,
+      showFemMesh: true,
+      showFemBc: true,
+      optimizing: false,
+      iterationLog: [],
+    };
+
+    let cad = null;
+    let feaMod = null;
+    let lastFemModel = null;
+    let lastFemResult = null;
+    let lastFemMesh = null;
+    let lastMinT = 25;
+    let lastMaxT = 180;
+    let lastCadGeom = null;
+
+    // Thermal colormap (deep navy -> teal -> warm amber -> crimson)
+    function thermalColorRGB(tNorm) {
+      const t = Math.max(0, Math.min(1, tNorm));
+      const stops = [
+        [29, 53, 87],
+        [42, 157, 143],
+        [233, 196, 106],
+        [244, 162, 97],
+        [193, 18, 31],
+      ];
+      const scaled = t * (stops.length - 1);
+      const i0 = Math.min(stops.length - 2, Math.floor(scaled));
+      const f = scaled - i0;
+      const a = stops[i0], b = stops[i0 + 1];
+      return [
+        Math.round(a[0] + (b[0] - a[0]) * f),
+        Math.round(a[1] + (b[1] - a[1]) * f),
+        Math.round(a[2] + (b[2] - a[2]) * f),
+      ];
+    }
+
+    // Generate parametric CDML v1.0 document for the cooling flange plate
+    function buildCDML(s) {
+      const hw = (s.plate_w / 2).toFixed(2);
+      const hh = (s.plate_h / 2).toFixed(2);
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <defs>
+    <var id="plate_w" value="${s.plate_w.toFixed(2)}" min="60.0" max="120.0" unit="mm"/>
+    <var id="plate_h" value="${s.plate_h.toFixed(2)}" min="44.0" max="96.0" unit="mm"/>
+    <var id="plate_t" value="${s.plate_t.toFixed(2)}" min="6.0" max="24.0" unit="mm"/>
+    <var id="bore_r"  value="${s.bore_r.toFixed(2)}" min="5.0" max="22.0" unit="mm"/>
+    <expr id="half_w" expr="plate_w / 2.0"/>
+    <expr id="half_h" expr="plate_h / 2.0"/>
+    <field-slot id="temp_field" slot="0" semantic="temperature" grid-x="32" grid-y="24" grid-z="4" default="25.0"/>
+    <assert id="bore_wall_margin" expr="half_h - bore_r - 5.0" error="cooling bore exceeds 5 mm structural wall margin"/>
+  </defs>
+  <body>
+    <chart id="chart_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_plate" chart="chart_xy" max-iter="100">
+      <vars>
+        <point2d id="v0" u="-${hw}" v="-${hh}"/>
+        <point2d id="v1" u="${hw}"  v="-${hh}"/>
+        <point2d id="v2" u="${hw}"  v="${hh}"/>
+        <point2d id="v3" u="-${hw}" v="${hh}"/>
+      </vars>
+      <wire id="wire_outer" closed="true" role="outer">
+        <curve id="bottom" degree="1" ctrl="v0 v1" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="right"  degree="1" ctrl="v1 v2" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="top"    degree="1" ctrl="v2 v3" weights="1.0 1.0" knots="0 0 1 1"/>
+        <curve id="left"   degree="1" ctrl="v3 v0" weights="1.0 1.0" knots="0 0 1 1"/>
+      </wire>
+      <wire id="wire_bore" closed="true" role="hole">
+        <param-curve id="bore" param="t" domain="0 1"
+          u-expr="ref(bore_r) * cos(2 * PI * t)"
+          v-expr="ref(bore_r) * sin(2 * PI * t)"/>
+      </wire>
+      <constraints>
+        <residual id="cx" expr="v0.u + v1.u"/>
+        <residual id="cy" expr="v0.v + v3.v"/>
+        <residual id="sy" expr="v2.u + v3.u"/>
+        <residual id="h0" expr="v1.v - v0.v"/>
+        <residual id="h1" expr="v2.v - v3.v"/>
+        <residual id="ot" expr="dot(v1 - v0, v2 - v1)"/>
+        <residual id="we" expr="dot(v1 - v0, v1 - v0) - ref(plate_w)^2"/>
+        <residual id="he" expr="dot(v2 - v1, v2 - v1) - ref(plate_h)^2"/>
+      </constraints>
+    </sketch>
+    <brep id="solid_plate">
+      <sweep id="sw_plate" sketch="sk_plate" cap-ends="true">
+        <trajectory>
+          <translate x="0" y="0" z-expr="ref(plate_t) * v"/>
+        </trajectory>
+      </sweep>
+    </brep>
+    <probe id="plate_volume" type="volume" target="solid_plate"/>
+    <probe id="mean_bore_temp" type="face-mean" target="solid_plate"
+           face-predicate="from_id('bore')" quantity="field_scalar(0, x, y, z, 25.0)"/>
+  </body>
+  <exports>
+    <tessellate target="solid_plate" chord-tol="0.02" angle-tol="0.05"/>
+    <step target="solid_plate" schema="AP214"/>
+    <stl target="solid_plate" binary="true"/>
+  </exports>
+</cdml>`;
+    }
+
+    // Write UTF-8 string into WASM scratch region (0x5A0000)
+    function writeWasmStr(str, offset = 0x5A0000) {
+      const bytes = new TextEncoder().encode(str);
+      new Uint8Array(cad.memory.buffer, offset, bytes.length).set(bytes);
+      return { ptr: offset, len: bytes.length };
+    }
+
+    function readProbe(probeName) {
+      const p = writeWasmStr(probeName, 0x5E8000);
+      const outPtr = 0x5E9000;
+      const st = cad.api.cdml_get_probe_value(p.ptr, p.len, outPtr);
+      if (st !== 0) return NaN;
+      return new DataView(cad.memory.buffer).getFloat64(outPtr, true);
+    }
+
+    function evalOpenCAD(xml) {
+      const s = writeWasmStr(xml, 0x5A0000);
+      const status = cad.api.cdml_eval_document(s.ptr, s.len);
+      if (status !== 0) {
+        const len = cad.api.get_string_len ? cad.api.get_string_len() : 0;
+        const ptr = cad.api.get_string_ptr ? cad.api.get_string_ptr() : 0;
+        const raw = len > 0 ? new TextDecoder().decode(new Uint8Array(cad.memory.buffer, ptr, len).slice()) : `0x${status.toString(16)}`;
+        throw new Error(`OpenCAD error 0x${status.toString(16)}: ${raw}`);
+      }
+      const hdr = new DataView(cad.memory.buffer, 0x0F0000, 128);
+      const vertexCount = hdr.getUint32(0x04, true);
+      const triangleCount = hdr.getUint32(0x08, true);
+      const posOffset = hdr.getUint32(0x0C, true);
+      const nrmOffset = hdr.getUint32(0x10, true);
+      const idxOffset = hdr.getUint32(0x14, true);
+      const bbox = [
+        hdr.getFloat64(0x20, true), hdr.getFloat64(0x28, true), hdr.getFloat64(0x30, true),
+        hdr.getFloat64(0x38, true), hdr.getFloat64(0x40, true), hdr.getFloat64(0x48, true),
+      ];
+      // Copy typed arrays out of WASM memory (safe for both SharedArrayBuffer & ArrayBuffer)
+      const positions = new Float32Array(new Float32Array(cad.memory.buffer, posOffset, vertexCount * 3));
+      const normals = new Float32Array(new Float32Array(cad.memory.buffer, nrmOffset, vertexCount * 3));
+      const indices = new Uint32Array(new Uint32Array(cad.memory.buffer, idxOffset, triangleCount * 3));
+      return {
+        vertexCount,
+        triangleCount,
+        positions,
+        normals,
+        indices,
+        bbox,
+        volume: readProbe('plate_volume'),
+        boreTempProbe: readProbe('mean_bore_temp'),
+      };
+    }
+
+    // Write FEAScript 2D solution field into OpenCAD's 0x1F0000 Field Buffer (32 x 24 x 4 f32 voxels)
+    function injectFieldIntoOpenCAD(model, result, bbox, fallbackBoreT) {
+      const gx = 32, gy = 24, gz = 4;
+      const [minX, minY, , maxX, maxY] = bbox;
+      const pts = [];
+      for (let iy = 0; iy < gy; iy++) {
+        const y = minY + ((maxY - minY) * iy) / (gy - 1);
+        for (let ix = 0; ix < gx; ix++) {
+          const x = minX + ((maxX - minX) * ix) / (gx - 1);
+          // Convert OpenCAD centered mm coordinates to FEAScript meters [0..W_m] x [0..H_m]
+          pts.push([(x - minX) / 1000, (y - minY) / 1000]);
+        }
+      }
+      const sampled = feaMod.evaluateSolution(model, result, pts);
+      const fieldView = new Float32Array(cad.memory.buffer, 0x1F0000, gx * gy * gz);
+      for (let iz = 0; iz < gz; iz++) {
+        const sliceOff = iz * gy * gx;
+        for (let i = 0; i < gx * gy; i++) {
+          const v = sampled[i];
+          fieldView[sliceOff + i] = Number.isFinite(v) ? v : fallbackBoreT;
+        }
+      }
+    }
+
+    // Solve 2D Heat Conduction in FEAScript 0.4.1 on the exact OpenCAD cross-section (in meters)
+    function solveFEAScript(s) {
+      const { FEAScriptModel, evaluateSolution } = feaMod;
+      const W = s.plate_w / 1000;
+      const H = s.plate_h / 1000;
+      const R = s.bore_r / 1000;
+      const cx = W / 2;
+      const cy = H / 2;
+
+      const nHole = 28;
+      const borePts = Array.from({ length: nHole }, (_, i) => {
+        const a = (2 * Math.PI * i) / nHole;
+        return [cx + R * Math.cos(a), cy + R * Math.sin(a)];
+      });
+
+      const model = new FEAScriptModel();
+      // Aluminum thermal conductivity scaled cleanly for 2D steady conduction in meters
+      // Using k = 15 W/(m*K) (stainless/die-cast alloy) so thermal gradients across 60-90mm plate are physically pronounced
+      model.setModelConfig('heatConduction', {
+        solver: { method: 'lusolve' },
+        coefficientFunctions: { thermalConductivity: 15.0, heatSource: 0.0 },
+      });
+
+      model.setGeometry({
+        shape: {
+          start: [0, 0],
+          boundaries: [
+            { name: 'bottom', to: [W, 0] },
+            { name: 'right',  to: [W, H] },
+            { name: 'top',    to: [0, H] },
+            { name: 'left' },
+          ],
+        },
+        holes: [{ name: 'bore', points: borePts }],
+      });
+
+      const elemSize = Math.max(0.0038, Math.min(W, H) / 13);
+      model.setMeshConfig({
+        elements: 'triangles',
+        elementOrder: 'linear',
+        size: elemSize,
+        minAngle: 25,
+      });
+
+      model.addBoundaryCondition('bottom', { type: 'constantTemperature', temperature: s.t_hot });
+      model.addBoundaryCondition('bore',   { type: 'convection', h: s.h_conv * 12.0, ambientTemperature: 25.0 });
+      model.addBoundaryCondition('top',    { type: 'convection', h: 18.0, ambientTemperature: 25.0 });
+      model.addBoundaryCondition('left',   { type: 'convection', h: 12.0, ambientTemperature: 25.0 });
+      model.addBoundaryCondition('right',  { type: 'convection', h: 12.0, ambientTemperature: 25.0 });
+
+      const result = model.solve();
+      const mesh = model.getMesh();
+
+      // Compute key metrics: min/max T, top-edge mean T, and bore-ring mean T
+      let minT = Infinity, maxT = -Infinity;
+      for (let i = 0; i < result.solutionVector.length; i++) {
+        const v = result.solutionVector[i];
+        if (v < minT) minT = v;
+        if (v > maxT) maxT = v;
+      }
+
+      const topSamples = Array.from({ length: 21 }, (_, i) => [((i + 0.5) / 21) * W, H - 1e-5]);
+      const topVals = evaluateSolution(model, result, topSamples);
+      let topSum = 0, topCnt = 0;
+      for (const v of topVals) { if (Number.isFinite(v)) { topSum += v; topCnt++; } }
+      const topMeanT = topCnt > 0 ? topSum / topCnt : maxT;
+
+      const boreRing = Array.from({ length: 24 }, (_, i) => {
+        const a = (2 * Math.PI * i) / 24;
+        return [cx + (R + 0.0004) * Math.cos(a), cy + (R + 0.0004) * Math.sin(a)];
+      });
+      const boreVals = evaluateSolution(model, result, boreRing);
+      let boreSum = 0, boreCnt = 0;
+      for (const v of boreVals) { if (Number.isFinite(v)) { boreSum += v; boreCnt++; } }
+      const boreMeanT = boreCnt > 0 ? boreSum / boreCnt : 25.0;
+
+      return { model, result, mesh, minT, maxT, topMeanT, boreMeanT };
+    }
+
+    // Three.js 3D Viewport Setup
+    const cadCanvas = document.getElementById('cad-3d-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas: cadCanvas, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0xFAF7F3, 1);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 2000);
+    camera.position.set(110, -105, 95);
+    camera.up.set(0, 0, 1);
+
+    const controls = new OrbitControls(camera, cadCanvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    keyLight.position.set(120, -90, 160);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0xdce6f5, 0.45);
+    fillLight.position.set(-100, 100, -80);
+    scene.add(fillLight);
+
+    const grid = new THREE.GridHelper(180, 18, 0xC8C0B4, 0xE5DED2);
+    grid.rotation.x = Math.PI / 2;
+    grid.position.z = -0.2;
+    scene.add(grid);
+
+    let cadMeshObj = null;
+    let cadWireObj = null;
+
+    function updateThreeScene(cadData, femModel, femResult, minT, maxT, boreFallbackT) {
+      if (cadMeshObj) {
+        scene.remove(cadMeshObj);
+        cadMeshObj.geometry.dispose();
+        cadMeshObj.material.dispose();
+      }
+      if (cadWireObj) {
+        scene.remove(cadWireObj);
+        cadWireObj.geometry.dispose();
+        cadWireObj.material.dispose();
+      }
+
+      // Build non-indexed display mesh with crisp CAD face normals and adaptive
+      // subdivision of large planar cap triangles so the FEAScript thermal gradient
+      // renders smoothly across the entire 3D B-Rep surface (no corner-to-bore stretching).
+      const outPos = [];
+      const outNrm = [];
+      const pushTri = (ax, ay, az, bx, by, bz, cx, cy, cz, nx, ny, nz, depth) => {
+        const dAB = Math.hypot(bx - ax, by - ay, bz - az);
+        const dBC = Math.hypot(cx - bx, cy - by, cz - bz);
+        const dCA = Math.hypot(ax - cx, ay - cy, az - cz);
+        const maxEdge = Math.max(dAB, dBC, dCA);
+        if (depth < 3 && maxEdge > 11.0) {
+          const mabx = (ax + bx) * 0.5, maby = (ay + by) * 0.5, mabz = (az + bz) * 0.5;
+          const mbcx = (bx + cx) * 0.5, mbcy = (by + cy) * 0.5, mbcz = (bz + cz) * 0.5;
+          const mcax = (cx + ax) * 0.5, mcay = (cy + ay) * 0.5, mcaz = (cz + az) * 0.5;
+          pushTri(ax, ay, az, mabx, maby, mabz, mcax, mcay, mcaz, nx, ny, nz, depth + 1);
+          pushTri(mabx, maby, mabz, bx, by, bz, mbcx, mbcy, mbcz, nx, ny, nz, depth + 1);
+          pushTri(mcax, mcay, mcaz, mbcx, mbcy, mbcz, cx, cy, cz, nx, ny, nz, depth + 1);
+          pushTri(mabx, maby, mabz, mbcx, mbcy, mbcz, mcax, mcay, mcaz, nx, ny, nz, depth + 1);
+          return;
+        }
+        outPos.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+        outNrm.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
+      };
+
+      const pos = cadData.positions;
+      const idx = cadData.indices;
+      for (let t = 0; t < cadData.triangleCount; t++) {
+        const i0 = idx[t * 3] * 3, i1 = idx[t * 3 + 1] * 3, i2 = idx[t * 3 + 2] * 3;
+        const ax = pos[i0], ay = pos[i0 + 1], az = pos[i0 + 2];
+        const bx = pos[i1], by = pos[i1 + 1], bz = pos[i1 + 2];
+        const cx = pos[i2], cy = pos[i2 + 1], cz = pos[i2 + 2];
+        const ux = bx - ax, uy = by - ay, uz = bz - az;
+        const vx = cx - ax, vy = cy - ay, vz = cz - az;
+        let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const nl = Math.hypot(nx, ny, nz) || 1;
+        nx /= nl; ny /= nl; nz /= nl;
+        pushTri(ax, ay, az, bx, by, bz, cx, cy, cz, nx, ny, nz, 0);
+      }
+
+      const geom = new THREE.BufferGeometry();
+      const dispPos = new Float32Array(outPos);
+      const dispNrm = new Float32Array(outNrm);
+      geom.setAttribute('position', new THREE.BufferAttribute(dispPos, 3));
+      geom.setAttribute('normal', new THREE.BufferAttribute(dispNrm, 3));
+
+      // Project FEAScript 2D thermal field onto every 3D B-Rep vertex via evaluateSolution()
+      const [minX, minY] = cadData.bbox;
+      const vCount = dispPos.length / 3;
+      const queryPts = new Array(vCount);
+      for (let i = 0; i < vCount; i++) {
+        const vx = dispPos[i * 3];
+        const vy = dispPos[i * 3 + 1];
+        queryPts[i] = [
+          Math.max(0, (vx - minX) / 1000),
+          Math.max(0, (vy - minY) / 1000),
+        ];
+      }
+      const vertexTemps = feaMod.evaluateSolution(femModel, femResult, queryPts);
+      const colors = new Float32Array(vCount * 3);
+      const span = Math.max(1e-6, maxT - minT);
+      for (let i = 0; i < vCount; i++) {
+        const temp = Number.isFinite(vertexTemps[i]) ? vertexTemps[i] : boreFallbackT;
+        const [r, g, b] = thermalColorRGB((temp - minT) / span);
+        colors[i * 3] = r / 255;
+        colors[i * 3 + 1] = g / 255;
+        colors[i * 3 + 2] = b / 255;
+      }
+      geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      lastCadGeom = geom;
+
+      const useThermal = state.renderMode === 'thermal';
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: useThermal,
+        color: useThermal ? 0xffffff : 0xd8d1c5,
+        roughness: 0.42,
+        metalness: 0.08,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+      });
+      cadMeshObj = new THREE.Mesh(geom, mat);
+      scene.add(cadMeshObj);
+
+      if (state.wireframe) {
+        const wMat = new THREE.MeshBasicMaterial({ color: 0x0A2351, wireframe: true, transparent: true, opacity: 0.25 });
+        cadWireObj = new THREE.Mesh(geom, wMat);
+        scene.add(cadWireObj);
+      }
+
+      document.getElementById('cad-info').textContent =
+        `OpenCAD B-Rep: ${cadData.vertexCount.toLocaleString()} verts · ${cadData.triangleCount.toLocaleString()} tris`;
+    }
+
+    function resizeThree() {
+      const stage = document.getElementById('cad-stage');
+      const w = stage.clientWidth;
+      const h = stage.clientHeight;
+      if (w > 0 && h > 0) {
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // 2D FEAScript Canvas Renderer (exact finite-element triangles + interpolated nodal temperature colors)
+    const femCanvas = document.getElementById('fem-2d-canvas');
+    const femCtx = femCanvas.getContext('2d');
+    let femTransform = { scale: 1, ox: 0, oy: 0, W: 0.09, H: 0.06 };
+
+    function renderFem2D() {
+      if (!lastFemMesh || !lastFemResult) return;
+      const stage = document.getElementById('fem-stage');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cw = stage.clientWidth;
+      const ch = stage.clientHeight;
+      if (cw === 0 || ch === 0) return;
+      femCanvas.width = Math.round(cw * dpr);
+      femCanvas.height = Math.round(ch * dpr);
+      femCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      femCtx.fillStyle = '#FAF7F3';
+      femCtx.fillRect(0, 0, cw, ch);
+
+      const W = state.plate_w / 1000;
+      const H = state.plate_h / 1000;
+      const padX = 40;
+      const padTop = 36;
+      const padBot = 62;
+      const scale = Math.min((cw - padX * 2) / W, (ch - padTop - padBot) / H);
+      const ox = (cw - W * scale) / 2;
+      const oy = padTop + (ch - padTop - padBot + H * scale) / 2;
+      femTransform = { scale, ox, oy, W, H };
+
+      const toScreen = (x, y) => [ox + x * scale, oy - y * scale];
+
+      const xs = lastFemResult.nodesCoordinates.nodesXCoordinates;
+      const ys = lastFemResult.nodesCoordinates.nodesYCoordinates;
+      const sol = lastFemResult.solutionVector;
+      const elems = lastFemMesh.nodalNumbering;
+      const span = Math.max(1e-6, lastMaxT - lastMinT);
+
+      // Draw each FEM triangle filled by element centroid temperature + subtle mesh edges
+      for (let e = 0; e < elems.length; e++) {
+        const tri = elems[e];
+        const i0 = tri[0] - 1, i1 = tri[1] - 1, i2 = tri[2] - 1;
+        const [x0, y0] = toScreen(xs[i0], ys[i0]);
+        const [x1, y1] = toScreen(xs[i1], ys[i1]);
+        const [x2, y2] = toScreen(xs[i2], ys[i2]);
+        const tAvg = (sol[i0] + sol[i1] + sol[i2]) / 3;
+        const [r, g, b] = thermalColorRGB((tAvg - lastMinT) / span);
+        femCtx.fillStyle = `rgb(${r},${g},${b})`;
+        femCtx.beginPath();
+        femCtx.moveTo(x0, y0);
+        femCtx.lineTo(x1, y1);
+        femCtx.lineTo(x2, y2);
+        femCtx.closePath();
+        femCtx.fill();
+        if (state.showFemMesh) {
+          femCtx.strokeStyle = 'rgba(5, 15, 31, 0.16)';
+          femCtx.lineWidth = 0.65;
+          femCtx.stroke();
+        }
+      }
+
+      // Draw crisp outer boundary and cooling bore outline
+      femCtx.strokeStyle = '#050F1F';
+      femCtx.lineWidth = 1.6;
+      const [bx0, by0] = toScreen(0, 0);
+      const [bx1, by1] = toScreen(W, H);
+      femCtx.strokeRect(bx0, by1, bx1 - bx0, by0 - by1);
+
+      const [cxS, cyS] = toScreen(W / 2, H / 2);
+      femCtx.beginPath();
+      femCtx.arc(cxS, cyS, (state.bore_r / 1000) * scale, 0, Math.PI * 2);
+      femCtx.fillStyle = '#FAF7F3';
+      femCtx.fill();
+      femCtx.strokeStyle = '#0A2351';
+      femCtx.lineWidth = 1.8;
+      femCtx.stroke();
+
+      if (state.showFemBc) {
+        femCtx.font = '700 11px "Courier New", monospace';
+        femCtx.textAlign = 'center';
+        // Bottom hot source label
+        femCtx.fillStyle = '#8B1A1A';
+        femCtx.fillText(`bottom: T = ${state.t_hot}°C (Dirichlet)`, (bx0 + bx1) / 2, by0 + 18);
+        // Top ambient label
+        femCtx.fillStyle = '#0A2351';
+        femCtx.fillText(`top: convection (T_∞ = 25°C)`, (bx0 + bx1) / 2, by1 - 10);
+        // Bore coolant label
+        femCtx.fillStyle = '#0A5C38';
+        femCtx.fillText(`bore`, cxS, cyS - 3);
+        femCtx.font = '600 10px "Courier New", monospace';
+        femCtx.fillText(`h=${state.h_conv}`, cxS, cyS + 10);
+      }
+    }
+
+    // Hover probe on 2D FEM canvas using FEAScript 0.4.1 evaluateSolution()
+    femCanvas.addEventListener('pointermove', (ev) => {
+      if (!lastFemModel || !lastFemResult || !feaMod) return;
+      const rect = femCanvas.getBoundingClientRect();
+      const sx = ev.clientX - rect.left;
+      const sy = ev.clientY - rect.top;
+      const x = (sx - femTransform.ox) / femTransform.scale;
+      const y = (femTransform.oy - sy) / femTransform.scale;
+      if (x >= 0 && x <= femTransform.W && y >= 0 && y <= femTransform.H) {
+        const val = feaMod.evaluateSolution(lastFemModel, lastFemResult, [[x, y]])[0];
+        const infoEl = document.getElementById('fem-hover');
+        if (Number.isFinite(val)) {
+          infoEl.textContent = `Probe (${(x * 1000).toFixed(1)}, ${(y * 1000).toFixed(1)} mm): T = ${val.toFixed(2)} °C`;
+        } else {
+          infoEl.textContent = `Cooling bore interior (T_∞ = 25.0 °C, h = ${state.h_conv} W/m²K)`;
+        }
+      }
+    });
+
+    function setStepActive(n) {
+      for (let i = 1; i <= 4; i++) {
+        document.getElementById(`step-${i}`).classList.toggle('active', i === n);
+      }
+    }
+
+    function setStatus(kind, msg) {
+      const dot = document.getElementById('status-dot');
+      dot.className = `status-dot ${kind}`;
+      document.getElementById('status-text').textContent = msg;
+    }
+
+    function renderLogTable() {
+      const body = document.getElementById('loop-log-body');
+      body.textContent = '';
+      for (const row of state.iterationLog) {
+        const tr = document.createElement('tr');
+        const cells = [row.iter, `${row.boreR.toFixed(1)} mm`, row.topT.toFixed(1), row.probeT.toFixed(1), row.note];
+        for (const txt of cells) {
+          const td = document.createElement('td');
+          td.textContent = txt;
+          tr.appendChild(td);
+        }
+        body.appendChild(tr);
+      }
+    }
+
+    // Run one full coupled iteration:
+    // OpenCAD Pass 1 -> FEAScript 2D Thermal Solve -> Inject Field @ 0x1F0000 -> OpenCAD Pass 2 (reads field_scalar)
+    function runCoupledIteration(recordLog = true) {
+      if (!cad || !feaMod) return null;
+      try {
+        // Guard bore_r against half_h - 5mm wall margin
+        const maxSafeR = Math.max(5.0, state.plate_h / 2 - 5.5);
+        if (state.bore_r > maxSafeR) {
+          state.bore_r = Math.floor(maxSafeR * 2) / 2;
+          syncInputsFromState();
+        }
+
+        const xml = buildCDML(state);
+        document.getElementById('cdml-preview').textContent = xml;
+
+        // 1. OpenCAD Pass 1 (Geometry + BBox)
+        setStepActive(1);
+        const pass1 = evalOpenCAD(xml);
+
+        // 2. FEAScript 0.4.1 Thermal Solve
+        setStepActive(2);
+        const fem = solveFEAScript(state);
+        lastFemModel = fem.model;
+        lastFemResult = fem.result;
+        lastFemMesh = fem.mesh;
+        lastMinT = fem.minT;
+        lastMaxT = fem.maxT;
+
+        // 3. Inject FEAScript Solution into OpenCAD 0x1F0000 Field Buffer & Re-Evaluate Probe
+        setStepActive(3);
+        injectFieldIntoOpenCAD(fem.model, fem.result, pass1.bbox, fem.boreMeanT);
+        const pass2 = evalOpenCAD(xml);
+
+        // 4. Update Viewports & Telemetry
+        updateThreeScene(pass2, fem.model, fem.result, fem.minT, fem.maxT, fem.boreMeanT);
+        renderFem2D();
+
+        const metTop = document.getElementById('met-top-t');
+        metTop.textContent = `${fem.topMeanT.toFixed(1)} °C`;
+        metTop.className = `metric-v ${fem.topMeanT <= state.t_target ? 'ok' : 'warn'}`;
+
+        document.getElementById('met-probe-t').textContent = `${pass2.boreTempProbe.toFixed(1)} °C`;
+        document.getElementById('met-vol').textContent = `${(pass2.volume / 1000).toFixed(2)} cm³`;
+        document.getElementById('met-solve').textContent = `${fem.result.info.solveTime.toFixed(1)} ms`;
+        document.getElementById('cb-min').textContent = `${fem.minT.toFixed(1)} °C`;
+        document.getElementById('cb-max').textContent = `${fem.maxT.toFixed(1)} °C`;
+        document.getElementById('fem-stats').textContent =
+          `FEAScript v${feaMod.version || '0.4'} · Nodes: ${fem.result.solutionVector.length} · Triangles: ${fem.mesh.nodalNumbering.length} · Residual: ${fem.result.info.residual !== null ? fem.result.info.residual.toExponential(1) : 'direct'}`;
+
+        if (recordLog) {
+          state.iterationLog.push({
+            iter: state.iterationLog.length + 1,
+            boreR: state.bore_r,
+            topT: fem.topMeanT,
+            probeT: pass2.boreTempProbe,
+            note: fem.topMeanT <= state.t_target ? 'PASS' : 'HOT',
+          });
+          if (state.iterationLog.length > 20) state.iterationLog.shift();
+          renderLogTable();
+        }
+
+        setStepActive(4);
+        setStatus('ok', `Coupled loop synced (${fem.result.info.solveTime.toFixed(0)} ms FEM)`);
+        return { pass2, fem };
+      } catch (err) {
+        console.error(err);
+        setStatus('err', err.message || String(err));
+        return null;
+      }
+    }
+
+    // Closed-Loop Thermal Optimizer: adjusts bore_r iteratively until Top-Edge T <= T_target
+    async function runClosedLoopOptimization() {
+      if (state.optimizing || !cad || !feaMod) return;
+      state.optimizing = true;
+      state.iterationLog = [];
+      const btn = document.getElementById('btn-optimize');
+      btn.disabled = true;
+      btn.textContent = 'Optimizing Loop…';
+
+      const maxSafeR = Math.min(22.0, state.plate_h / 2 - 5.5);
+      for (let k = 0; k < 10; k++) {
+        const res = runCoupledIteration(true);
+        if (!res) break;
+        const errT = res.fem.topMeanT - state.t_target;
+        if (Math.abs(errT) <= 0.8) {
+          setStatus('ok', `Converged in ${k + 1} iterations: T_top = ${res.fem.topMeanT.toFixed(1)} °C`);
+          break;
+        }
+        if (errT > 0 && state.bore_r >= maxSafeR - 0.05) {
+          setStatus('warn', `Hit 5 mm CDML wall margin at bore_r = ${state.bore_r.toFixed(1)} mm`);
+          break;
+        }
+        if (errT < 0 && state.bore_r <= 5.05) {
+          setStatus('ok', `Minimum bore_r = 5.0 mm already meets T_target`);
+          break;
+        }
+        // Proportional step in cooling bore radius
+        const step = Math.max(-2.0, Math.min(2.5, errT * 0.16));
+        state.bore_r = Math.max(5.0, Math.min(maxSafeR, Math.round((state.bore_r + step) * 2) / 2));
+        syncInputsFromState();
+        await new Promise((r) => setTimeout(r, 140));
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Run Closed-Loop Optimize';
+      state.optimizing = false;
+    }
+
+    // Export STEP / STL directly from OpenCAD WASM scratch buffers
+    function downloadExport(kind) {
+      if (!cad) return;
+      const ptr = kind === 'step' ? cad.api.get_step_ptr() : cad.api.get_stl_ptr();
+      const len = kind === 'step' ? cad.api.get_step_len() : cad.api.get_stl_len();
+      if (!ptr || !len) {
+        setStatus('err', `No ${kind.toUpperCase()} buffer available`);
+        return;
+      }
+      const copy = new Uint8Array(cad.memory.buffer, ptr, len).slice();
+      const blob = new Blob([copy], { type: kind === 'step' ? 'application/step' : 'model/stl' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `opencad_feascript_plate_r${state.bore_r.toFixed(1)}.${kind}`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // Bind sliders & buttons (no inline event handlers)
+    const sliderBindings = [
+      ['inp-w', 'val-w', 'plate_w', (v) => `${v} mm`],
+      ['inp-h', 'val-h', 'plate_h', (v) => `${v} mm`],
+      ['inp-t', 'val-t', 'plate_t', (v) => `${v} mm`],
+      ['inp-r', 'val-r', 'bore_r',  (v) => `${Number(v).toFixed(1)} mm`],
+      ['inp-thot', 'val-thot', 't_hot', (v) => `${v} °C`],
+      ['inp-hconv', 'val-hconv', 'h_conv', (v) => `${v}`],
+      ['inp-ttarget', 'val-ttarget', 't_target', (v) => `${v} °C`],
+    ];
+
+    function syncInputsFromState() {
+      for (const [inpId, valId, key, fmt] of sliderBindings) {
+        document.getElementById(inpId).value = state[key];
+        document.getElementById(valId).textContent = fmt(state[key]);
+      }
+    }
+
+    let debounceTimer = null;
+    for (const [inpId, valId, key, fmt] of sliderBindings) {
+      document.getElementById(inpId).addEventListener('input', (e) => {
+        state[key] = parseFloat(e.target.value);
+        document.getElementById(valId).textContent = fmt(state[key]);
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => runCoupledIteration(true), 60);
+      });
+    }
+
+    document.getElementById('btn-optimize').addEventListener('click', runClosedLoopOptimization);
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      Object.assign(state, { plate_w: 90, plate_h: 60, plate_t: 12, bore_r: 9.0, t_hot: 180, h_conv: 45, t_target: 82 });
+      state.iterationLog = [];
+      syncInputsFromState();
+      runCoupledIteration(true);
+    });
+    document.getElementById('btn-step').addEventListener('click', () => downloadExport('step'));
+    document.getElementById('btn-stl').addEventListener('click', () => downloadExport('stl'));
+
+    document.getElementById('btn-mode-thermal').addEventListener('click', () => {
+      state.renderMode = 'thermal';
+      document.getElementById('btn-mode-thermal').classList.add('active');
+      document.getElementById('btn-mode-clay').classList.remove('active');
+      runCoupledIteration(false);
+    });
+    document.getElementById('btn-mode-clay').addEventListener('click', () => {
+      state.renderMode = 'clay';
+      document.getElementById('btn-mode-clay').classList.add('active');
+      document.getElementById('btn-mode-thermal').classList.remove('active');
+      runCoupledIteration(false);
+    });
+    document.getElementById('btn-wireframe').addEventListener('click', (e) => {
+      state.wireframe = !state.wireframe;
+      e.currentTarget.classList.toggle('active', state.wireframe);
+      runCoupledIteration(false);
+    });
+    document.getElementById('btn-fem-mesh').addEventListener('click', (e) => {
+      state.showFemMesh = !state.showFemMesh;
+      e.currentTarget.classList.toggle('active', state.showFemMesh);
+      renderFem2D();
+    });
+    document.getElementById('btn-fem-bc').addEventListener('click', (e) => {
+      state.showFemBc = !state.showFemBc;
+      e.currentTarget.classList.toggle('active', state.showFemBc);
+      renderFem2D();
+    });
+
+    window.addEventListener('resize', () => {
+      resizeThree();
+      renderFem2D();
+    });
+
+    // Boot both engines in parallel
+    async function boot() {
+      resizeThree();
+      animate();
+      try {
+        const [cadEngine, fea] = await Promise.all([loadOpenCAD(), loadFEAScript()]);
+        cad = cadEngine;
+        feaMod = fea;
+        const memLabel = cad.shared ? 'SharedArrayBuffer' : 'Standard WASM Memory';
+        document.getElementById('mem-mode-tag').textContent = memLabel;
+        document.getElementById('embed-mem-badge').textContent = `${memLabel} · FEAScript v${fea.version || '0.4'}`;
+        syncInputsFromState();
+        runCoupledIteration(true);
+      } catch (err) {
+        console.error('Initialization failed:', err);
+        setStatus('err', `Boot error: ${err.message || err}`);
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

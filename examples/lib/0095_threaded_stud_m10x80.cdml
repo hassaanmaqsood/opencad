@@ -4,7 +4,6 @@
     <var id="stud_d" value="10.00" min="8.00" max="12.00" unit="mm"/>
     <var id="stud_l" value="80.00" min="40.00" max="120.00" unit="mm"/>
     <var id="pitch" value="1.50" min="0.75" max="3.00" unit="mm"/>
-    <expr id="stud_r" expr="stud_d / 2.0"/>
     <expr id="turns" expr="stud_l / pitch"/>
   </defs>
   <body>
@@ -12,54 +11,123 @@
       <vars>
         <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
         <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
-        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="true"/>
       </vars>
-      <constraints>
-        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
-        <residual id="or" expr="dot(e1, e2)"/>
-        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
-      </constraints>
     </chart>
-    <sketch id="sk_stud" chart="ch_xy" max-iter="100">
+    <sketch id="sk_tip" chart="ch_xy">
       <vars>
-        <point2d id="v_0" u="5.0000" v="0.0000"/>
-        <point2d id="v_1" u="4.5870" v="1.9000"/>
-        <point2d id="v_2" u="3.4403" v="3.4403"/>
-        <point2d id="v_3" u="1.8047" v="4.3570"/>
-        <point2d id="v_4" u="0.0000" v="4.5400"/>
-        <point2d id="v_5" u="-1.6700" v="4.0317"/>
-        <point2d id="v_6" u="-2.9802" v="2.9802"/>
-        <point2d id="v_7" u="-3.8017" v="1.5747"/>
-        <point2d id="v_8" u="-4.0799" v="0.0000"/>
-        <point2d id="v_9" u="-3.8017" v="-1.5747"/>
-        <point2d id="v_10" u="-2.9802" v="-2.9802"/>
-        <point2d id="v_11" u="-1.6700" v="-4.0317"/>
-        <point2d id="v_12" u="-0.0000" v="-4.5400"/>
-        <point2d id="v_13" u="1.8047" v="-4.3570"/>
-        <point2d id="v_14" u="3.4403" v="-3.4403"/>
-        <point2d id="v_15" u="4.5870" v="-1.9000"/>
+        <point2d id="tp_0" u="3.9167" v="0.0000"/>
+        <point2d id="tp_1" u="3.7832" v="1.0137"/>
+        <point2d id="tp_2" u="3.3920" v="1.9584"/>
+        <point2d id="tp_3" u="2.7695" v="2.7695"/>
+        <point2d id="tp_4" u="1.9584" v="3.3920"/>
+        <point2d id="tp_5" u="1.0137" v="3.7832"/>
+        <point2d id="tp_6" u="0.0000" v="3.9167"/>
+        <point2d id="tp_7" u="-1.0137" v="3.7832"/>
+        <point2d id="tp_8" u="-1.9584" v="3.3920"/>
+        <point2d id="tp_9" u="-2.7695" v="2.7695"/>
+        <point2d id="tp_10" u="-3.3920" v="1.9584"/>
+        <point2d id="tp_11" u="-3.7832" v="1.0137"/>
+        <point2d id="tp_12" u="-3.9167" v="0.0000"/>
+        <point2d id="tp_13" u="-3.7832" v="-1.0137"/>
+        <point2d id="tp_14" u="-3.3920" v="-1.9584"/>
+        <point2d id="tp_15" u="-2.7695" v="-2.7695"/>
+        <point2d id="tp_16" u="-1.9584" v="-3.3920"/>
+        <point2d id="tp_17" u="-1.0137" v="-3.7832"/>
+        <point2d id="tp_18" u="-0.0000" v="-3.9167"/>
+        <point2d id="tp_19" u="1.0137" v="-3.7832"/>
+        <point2d id="tp_20" u="1.9584" v="-3.3920"/>
+        <point2d id="tp_21" u="2.7695" v="-2.7695"/>
+        <point2d id="tp_22" u="3.3920" v="-1.9584"/>
+        <point2d id="tp_23" u="3.7832" v="-1.0137"/>
       </vars>
-      <wire id="w_outer" closed="true" role="outer">
-        <line p0="v_0" p1="v_1"/>
-        <line p0="v_1" p1="v_2"/>
-        <line p0="v_2" p1="v_3"/>
-        <line p0="v_3" p1="v_4"/>
-        <line p0="v_4" p1="v_5"/>
-        <line p0="v_5" p1="v_6"/>
-        <line p0="v_6" p1="v_7"/>
-        <line p0="v_7" p1="v_8"/>
-        <line p0="v_8" p1="v_9"/>
-        <line p0="v_9" p1="v_10"/>
-        <line p0="v_10" p1="v_11"/>
-        <line p0="v_11" p1="v_12"/>
-        <line p0="v_12" p1="v_13"/>
-        <line p0="v_13" p1="v_14"/>
-        <line p0="v_14" p1="v_15"/>
-        <line p0="v_15" p1="v_0"/>
+      <wire id="w_tip" closed="true" role="outer">
+        <line p0="tp_0" p1="tp_1"/>
+        <line p0="tp_1" p1="tp_2"/>
+        <line p0="tp_2" p1="tp_3"/>
+        <line p0="tp_3" p1="tp_4"/>
+        <line p0="tp_4" p1="tp_5"/>
+        <line p0="tp_5" p1="tp_6"/>
+        <line p0="tp_6" p1="tp_7"/>
+        <line p0="tp_7" p1="tp_8"/>
+        <line p0="tp_8" p1="tp_9"/>
+        <line p0="tp_9" p1="tp_10"/>
+        <line p0="tp_10" p1="tp_11"/>
+        <line p0="tp_11" p1="tp_12"/>
+        <line p0="tp_12" p1="tp_13"/>
+        <line p0="tp_13" p1="tp_14"/>
+        <line p0="tp_14" p1="tp_15"/>
+        <line p0="tp_15" p1="tp_16"/>
+        <line p0="tp_16" p1="tp_17"/>
+        <line p0="tp_17" p1="tp_18"/>
+        <line p0="tp_18" p1="tp_19"/>
+        <line p0="tp_19" p1="tp_20"/>
+        <line p0="tp_20" p1="tp_21"/>
+        <line p0="tp_21" p1="tp_22"/>
+        <line p0="tp_22" p1="tp_23"/>
+        <line p0="tp_23" p1="tp_0"/>
+      </wire>
+    </sketch>
+    <sketch id="sk_thd" chart="ch_xy">
+      <vars>
+        <point2d id="th_0" u="4.0799" v="0.0000"/>
+        <point2d id="th_1" u="3.9409" v="1.0560"/>
+        <point2d id="th_2" u="3.5333" v="2.0399"/>
+        <point2d id="th_3" u="2.8849" v="2.8849"/>
+        <point2d id="th_4" u="2.0911" v="3.6218"/>
+        <point2d id="th_5" u="1.1089" v="4.1384"/>
+        <point2d id="th_6" u="0.0000" v="4.3866"/>
+        <point2d id="th_7" u="-1.1618" v="4.3359"/>
+        <point2d id="th_8" u="-2.2955" v="3.9760"/>
+        <point2d id="th_9" u="-3.3187" v="3.3187"/>
+        <point2d id="th_10" u="-4.1531" v="2.3978"/>
+        <point2d id="th_11" u="-4.7309" v="1.2676"/>
+        <point2d id="th_12" u="-5.0000" v="0.0000"/>
+        <point2d id="th_13" u="-4.8296" v="-1.2941"/>
+        <point2d id="th_14" u="-4.3301" v="-2.5000"/>
+        <point2d id="th_15" u="-3.5355" v="-3.5355"/>
+        <point2d id="th_16" u="-2.4489" v="-4.2416"/>
+        <point2d id="th_17" u="-1.2412" v="-4.6321"/>
+        <point2d id="th_18" u="-0.0000" v="-4.6933"/>
+        <point2d id="th_19" u="1.1883" v="-4.4346"/>
+        <point2d id="th_20" u="2.2444" v="-3.8874"/>
+        <point2d id="th_21" u="3.1018" v="-3.1018"/>
+        <point2d id="th_22" u="3.7104" v="-2.1422"/>
+        <point2d id="th_23" u="4.0396" v="-1.0824"/>
+      </vars>
+      <wire id="w_thd" closed="true" role="outer">
+        <line p0="th_0" p1="th_1"/>
+        <line p0="th_1" p1="th_2"/>
+        <line p0="th_2" p1="th_3"/>
+        <line p0="th_3" p1="th_4"/>
+        <line p0="th_4" p1="th_5"/>
+        <line p0="th_5" p1="th_6"/>
+        <line p0="th_6" p1="th_7"/>
+        <line p0="th_7" p1="th_8"/>
+        <line p0="th_8" p1="th_9"/>
+        <line p0="th_9" p1="th_10"/>
+        <line p0="th_10" p1="th_11"/>
+        <line p0="th_11" p1="th_12"/>
+        <line p0="th_12" p1="th_13"/>
+        <line p0="th_13" p1="th_14"/>
+        <line p0="th_14" p1="th_15"/>
+        <line p0="th_15" p1="th_16"/>
+        <line p0="th_16" p1="th_17"/>
+        <line p0="th_17" p1="th_18"/>
+        <line p0="th_18" p1="th_19"/>
+        <line p0="th_19" p1="th_20"/>
+        <line p0="th_20" p1="th_21"/>
+        <line p0="th_21" p1="th_22"/>
+        <line p0="th_22" p1="th_23"/>
+        <line p0="th_23" p1="th_0"/>
       </wire>
     </sketch>
     <brep id="b_solid">
-      <sweep id="sw_thread" sketch="sk_stud" cap-ends="true">
+      <sweep id="sw_thread" continuity="G1" cap-ends="true">
+        <section v="0.0000" wire="w_tip"/>
+        <section v="0.0200" wire="w_thd"/>
+        <section v="0.9800" wire="w_thd"/>
+        <section v="1.0000" wire="w_tip"/>
         <trajectory>
           <translate x="0" y="0" z-expr="ref(stud_l) * v"/>
           <rotate axis="0 0 1" angle-expr="2 * PI * ref(turns) * v"/>
@@ -68,8 +136,8 @@
     </brep>
   </body>
   <exports>
-    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
-    <step source="b_solid" filename="threaded_stud_m10x80.step" schema="AP214"/>
-    <stl source="b_solid" filename="threaded_stud_m10x80.stl" format="binary"/>
+    <tessellate target="b_solid" chord-tol="0.02" angle-tol="0.05"/>
+    <step target="b_solid" filename="threaded_stud_m10x80.step" schema="AP214"/>
+    <stl target="b_solid" filename="threaded_stud_m10x80.stl" binary="true"/>
   </exports>
 </cdml>

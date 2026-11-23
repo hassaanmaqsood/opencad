@@ -3,363 +3,257 @@
   <defs>
     <var id="shank_d" value="10.00" min="8.00" max="12.00" unit="mm"/>
     <var id="shank_l" value="80.00" min="40.00" max="160.00" unit="mm"/>
-    <var id="head_d" value="18.00" min="14.40" max="23.40" unit="mm"/>
+    <var id="head_s" value="16.00" min="12.80" max="20.80" unit="mm"/>
     <var id="head_h" value="7.00" min="3.50" max="10.50" unit="mm"/>
     <var id="pitch" value="1.50" min="0.75" max="3.00" unit="mm"/>
-    <expr id="shank_r" expr="shank_d / 2.0"/>
-    <expr id="head_r" expr="head_d / 2.0"/>
-    <expr id="minor_r" expr="shank_r - 0.6134 * pitch"/>
+    <var id="thread_l" value="30.00" min="4.50" max="80.00" unit="mm"/>
+    <expr id="total_l" expr="shank_l + head_h"/>
+    <expr id="v_thd" expr="thread_l / total_l"/>
+    <expr id="turns" expr="thread_l / pitch"/>
   </defs>
   <body>
-    <chart id="ch_revolve">
+    <chart id="ch_xy">
       <vars>
         <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
         <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
-        <vec3 id="e2" x="0.0" y="0.0" z="1.0" fixed="false"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="true"/>
       </vars>
-      <constraints>
-        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
-        <residual id="or" expr="dot(e1, e2)"/>
-        <residual id="py" expr="dot(e2, vec3(0, 1, 0))"/>
-      </constraints>
     </chart>
-    <sketch id="sk_profile" chart="ch_revolve" max-iter="100">
+    <sketch id="sk_tip" chart="ch_xy">
       <vars>
-        <point2d id="p0" u="0.0000" v="0.0000"/>
-        <point2d id="p1" u="4.0799" v="0.0000"/>
-        <point2d id="t_0_a" u="5.0000" v="1.0200"/>
-        <point2d id="t_0_b" u="5.0000" v="1.2300"/>
-        <point2d id="t_0_c" u="4.0799" v="1.5000"/>
-        <point2d id="t_1_a" u="5.0000" v="2.5200"/>
-        <point2d id="t_1_b" u="5.0000" v="2.7300"/>
-        <point2d id="t_1_c" u="4.0799" v="3.0000"/>
-        <point2d id="t_2_a" u="5.0000" v="4.0200"/>
-        <point2d id="t_2_b" u="5.0000" v="4.2300"/>
-        <point2d id="t_2_c" u="4.0799" v="4.5000"/>
-        <point2d id="t_3_a" u="5.0000" v="5.5200"/>
-        <point2d id="t_3_b" u="5.0000" v="5.7300"/>
-        <point2d id="t_3_c" u="4.0799" v="6.0000"/>
-        <point2d id="t_4_a" u="5.0000" v="7.0200"/>
-        <point2d id="t_4_b" u="5.0000" v="7.2300"/>
-        <point2d id="t_4_c" u="4.0799" v="7.5000"/>
-        <point2d id="t_5_a" u="5.0000" v="8.5200"/>
-        <point2d id="t_5_b" u="5.0000" v="8.7300"/>
-        <point2d id="t_5_c" u="4.0799" v="9.0000"/>
-        <point2d id="t_6_a" u="5.0000" v="10.0200"/>
-        <point2d id="t_6_b" u="5.0000" v="10.2300"/>
-        <point2d id="t_6_c" u="4.0799" v="10.5000"/>
-        <point2d id="t_7_a" u="5.0000" v="11.5200"/>
-        <point2d id="t_7_b" u="5.0000" v="11.7300"/>
-        <point2d id="t_7_c" u="4.0799" v="12.0000"/>
-        <point2d id="t_8_a" u="5.0000" v="13.0200"/>
-        <point2d id="t_8_b" u="5.0000" v="13.2300"/>
-        <point2d id="t_8_c" u="4.0799" v="13.5000"/>
-        <point2d id="t_9_a" u="5.0000" v="14.5200"/>
-        <point2d id="t_9_b" u="5.0000" v="14.7300"/>
-        <point2d id="t_9_c" u="4.0799" v="15.0000"/>
-        <point2d id="t_10_a" u="5.0000" v="16.0200"/>
-        <point2d id="t_10_b" u="5.0000" v="16.2300"/>
-        <point2d id="t_10_c" u="4.0799" v="16.5000"/>
-        <point2d id="t_11_a" u="5.0000" v="17.5200"/>
-        <point2d id="t_11_b" u="5.0000" v="17.7300"/>
-        <point2d id="t_11_c" u="4.0799" v="18.0000"/>
-        <point2d id="t_12_a" u="5.0000" v="19.0200"/>
-        <point2d id="t_12_b" u="5.0000" v="19.2300"/>
-        <point2d id="t_12_c" u="4.0799" v="19.5000"/>
-        <point2d id="t_13_a" u="5.0000" v="20.5200"/>
-        <point2d id="t_13_b" u="5.0000" v="20.7300"/>
-        <point2d id="t_13_c" u="4.0799" v="21.0000"/>
-        <point2d id="t_14_a" u="5.0000" v="22.0200"/>
-        <point2d id="t_14_b" u="5.0000" v="22.2300"/>
-        <point2d id="t_14_c" u="4.0799" v="22.5000"/>
-        <point2d id="t_15_a" u="5.0000" v="23.5200"/>
-        <point2d id="t_15_b" u="5.0000" v="23.7300"/>
-        <point2d id="t_15_c" u="4.0799" v="24.0000"/>
-        <point2d id="t_16_a" u="5.0000" v="25.0200"/>
-        <point2d id="t_16_b" u="5.0000" v="25.2300"/>
-        <point2d id="t_16_c" u="4.0799" v="25.5000"/>
-        <point2d id="t_17_a" u="5.0000" v="26.5200"/>
-        <point2d id="t_17_b" u="5.0000" v="26.7300"/>
-        <point2d id="t_17_c" u="4.0799" v="27.0000"/>
-        <point2d id="t_18_a" u="5.0000" v="28.0200"/>
-        <point2d id="t_18_b" u="5.0000" v="28.2300"/>
-        <point2d id="t_18_c" u="4.0799" v="28.5000"/>
-        <point2d id="t_19_a" u="5.0000" v="29.5200"/>
-        <point2d id="t_19_b" u="5.0000" v="29.7300"/>
-        <point2d id="t_19_c" u="4.0799" v="30.0000"/>
-        <point2d id="t_20_a" u="5.0000" v="31.0200"/>
-        <point2d id="t_20_b" u="5.0000" v="31.2300"/>
-        <point2d id="t_20_c" u="4.0799" v="31.5000"/>
-        <point2d id="t_21_a" u="5.0000" v="32.5200"/>
-        <point2d id="t_21_b" u="5.0000" v="32.7300"/>
-        <point2d id="t_21_c" u="4.0799" v="33.0000"/>
-        <point2d id="t_22_a" u="5.0000" v="34.0200"/>
-        <point2d id="t_22_b" u="5.0000" v="34.2300"/>
-        <point2d id="t_22_c" u="4.0799" v="34.5000"/>
-        <point2d id="t_23_a" u="5.0000" v="35.5200"/>
-        <point2d id="t_23_b" u="5.0000" v="35.7300"/>
-        <point2d id="t_23_c" u="4.0799" v="36.0000"/>
-        <point2d id="t_24_a" u="5.0000" v="37.0200"/>
-        <point2d id="t_24_b" u="5.0000" v="37.2300"/>
-        <point2d id="t_24_c" u="4.0799" v="37.5000"/>
-        <point2d id="t_25_a" u="5.0000" v="38.5200"/>
-        <point2d id="t_25_b" u="5.0000" v="38.7300"/>
-        <point2d id="t_25_c" u="4.0799" v="39.0000"/>
-        <point2d id="t_26_a" u="5.0000" v="40.0200"/>
-        <point2d id="t_26_b" u="5.0000" v="40.2300"/>
-        <point2d id="t_26_c" u="4.0799" v="40.5000"/>
-        <point2d id="t_27_a" u="5.0000" v="41.5200"/>
-        <point2d id="t_27_b" u="5.0000" v="41.7300"/>
-        <point2d id="t_27_c" u="4.0799" v="42.0000"/>
-        <point2d id="t_28_a" u="5.0000" v="43.0200"/>
-        <point2d id="t_28_b" u="5.0000" v="43.2300"/>
-        <point2d id="t_28_c" u="4.0799" v="43.5000"/>
-        <point2d id="t_29_a" u="5.0000" v="44.5200"/>
-        <point2d id="t_29_b" u="5.0000" v="44.7300"/>
-        <point2d id="t_29_c" u="4.0799" v="45.0000"/>
-        <point2d id="t_30_a" u="5.0000" v="46.0200"/>
-        <point2d id="t_30_b" u="5.0000" v="46.2300"/>
-        <point2d id="t_30_c" u="4.0799" v="46.5000"/>
-        <point2d id="t_31_a" u="5.0000" v="47.5200"/>
-        <point2d id="t_31_b" u="5.0000" v="47.7300"/>
-        <point2d id="t_31_c" u="4.0799" v="48.0000"/>
-        <point2d id="t_32_a" u="5.0000" v="49.0200"/>
-        <point2d id="t_32_b" u="5.0000" v="49.2300"/>
-        <point2d id="t_32_c" u="4.0799" v="49.5000"/>
-        <point2d id="t_33_a" u="5.0000" v="50.5200"/>
-        <point2d id="t_33_b" u="5.0000" v="50.7300"/>
-        <point2d id="t_33_c" u="4.0799" v="51.0000"/>
-        <point2d id="t_34_a" u="5.0000" v="52.0200"/>
-        <point2d id="t_34_b" u="5.0000" v="52.2300"/>
-        <point2d id="t_34_c" u="4.0799" v="52.5000"/>
-        <point2d id="t_35_a" u="5.0000" v="53.5200"/>
-        <point2d id="t_35_b" u="5.0000" v="53.7300"/>
-        <point2d id="t_35_c" u="4.0799" v="54.0000"/>
-        <point2d id="t_36_a" u="5.0000" v="55.0200"/>
-        <point2d id="t_36_b" u="5.0000" v="55.2300"/>
-        <point2d id="t_36_c" u="4.0799" v="55.5000"/>
-        <point2d id="t_37_a" u="5.0000" v="56.5200"/>
-        <point2d id="t_37_b" u="5.0000" v="56.7300"/>
-        <point2d id="t_37_c" u="4.0799" v="57.0000"/>
-        <point2d id="t_38_a" u="5.0000" v="58.0200"/>
-        <point2d id="t_38_b" u="5.0000" v="58.2300"/>
-        <point2d id="t_38_c" u="4.0799" v="58.5000"/>
-        <point2d id="t_39_a" u="5.0000" v="59.5200"/>
-        <point2d id="t_39_b" u="5.0000" v="59.7300"/>
-        <point2d id="t_39_c" u="4.0799" v="60.0000"/>
-        <point2d id="t_40_a" u="5.0000" v="61.0200"/>
-        <point2d id="t_40_b" u="5.0000" v="61.2300"/>
-        <point2d id="t_40_c" u="4.0799" v="61.5000"/>
-        <point2d id="t_41_a" u="5.0000" v="62.5200"/>
-        <point2d id="t_41_b" u="5.0000" v="62.7300"/>
-        <point2d id="t_41_c" u="4.0799" v="63.0000"/>
-        <point2d id="t_42_a" u="5.0000" v="64.0200"/>
-        <point2d id="t_42_b" u="5.0000" v="64.2300"/>
-        <point2d id="t_42_c" u="4.0799" v="64.5000"/>
-        <point2d id="t_43_a" u="5.0000" v="65.5200"/>
-        <point2d id="t_43_b" u="5.0000" v="65.7300"/>
-        <point2d id="t_43_c" u="4.0799" v="66.0000"/>
-        <point2d id="t_44_a" u="5.0000" v="67.0200"/>
-        <point2d id="t_44_b" u="5.0000" v="67.2300"/>
-        <point2d id="t_44_c" u="4.0799" v="67.5000"/>
-        <point2d id="t_45_a" u="5.0000" v="68.5200"/>
-        <point2d id="t_45_b" u="5.0000" v="68.7300"/>
-        <point2d id="t_45_c" u="4.0799" v="69.0000"/>
-        <point2d id="t_46_a" u="5.0000" v="70.0200"/>
-        <point2d id="t_46_b" u="5.0000" v="70.2300"/>
-        <point2d id="t_46_c" u="4.0799" v="70.5000"/>
-        <point2d id="t_47_a" u="5.0000" v="71.5200"/>
-        <point2d id="t_47_b" u="5.0000" v="71.7300"/>
-        <point2d id="t_47_c" u="4.0799" v="72.0000"/>
-        <point2d id="t_48_a" u="5.0000" v="73.0200"/>
-        <point2d id="t_48_b" u="5.0000" v="73.2300"/>
-        <point2d id="t_48_c" u="4.0799" v="73.5000"/>
-        <point2d id="t_49_a" u="5.0000" v="74.5200"/>
-        <point2d id="t_49_b" u="5.0000" v="74.7300"/>
-        <point2d id="t_49_c" u="4.0799" v="75.0000"/>
-        <point2d id="t_50_a" u="5.0000" v="76.0200"/>
-        <point2d id="t_50_b" u="5.0000" v="76.2300"/>
-        <point2d id="t_50_c" u="4.0799" v="76.5000"/>
-        <point2d id="t_51_a" u="5.0000" v="77.5200"/>
-        <point2d id="t_51_b" u="5.0000" v="77.7300"/>
-        <point2d id="t_51_c" u="4.0799" v="78.0000"/>
-        <point2d id="p2" u="5.0000" v="80.0000"/>
-        <point2d id="p3" u="9.0000" v="80.0000"/>
-        <point2d id="p4" u="9.0000" v="87.0000"/>
-        <point2d id="p5" u="0.0000" v="87.0000"/>
+        <point2d id="tp_0" u="3.9167" v="0.0000"/>
+        <point2d id="tp_1" u="3.7832" v="1.0137"/>
+        <point2d id="tp_2" u="3.3920" v="1.9584"/>
+        <point2d id="tp_3" u="2.7695" v="2.7695"/>
+        <point2d id="tp_4" u="1.9584" v="3.3920"/>
+        <point2d id="tp_5" u="1.0137" v="3.7832"/>
+        <point2d id="tp_6" u="0.0000" v="3.9167"/>
+        <point2d id="tp_7" u="-1.0137" v="3.7832"/>
+        <point2d id="tp_8" u="-1.9584" v="3.3920"/>
+        <point2d id="tp_9" u="-2.7695" v="2.7695"/>
+        <point2d id="tp_10" u="-3.3920" v="1.9584"/>
+        <point2d id="tp_11" u="-3.7832" v="1.0137"/>
+        <point2d id="tp_12" u="-3.9167" v="0.0000"/>
+        <point2d id="tp_13" u="-3.7832" v="-1.0137"/>
+        <point2d id="tp_14" u="-3.3920" v="-1.9584"/>
+        <point2d id="tp_15" u="-2.7695" v="-2.7695"/>
+        <point2d id="tp_16" u="-1.9584" v="-3.3920"/>
+        <point2d id="tp_17" u="-1.0137" v="-3.7832"/>
+        <point2d id="tp_18" u="-0.0000" v="-3.9167"/>
+        <point2d id="tp_19" u="1.0137" v="-3.7832"/>
+        <point2d id="tp_20" u="1.9584" v="-3.3920"/>
+        <point2d id="tp_21" u="2.7695" v="-2.7695"/>
+        <point2d id="tp_22" u="3.3920" v="-1.9584"/>
+        <point2d id="tp_23" u="3.7832" v="-1.0137"/>
       </vars>
-      <wire id="w_profile" closed="true" role="outer">
-        <line p0="p0" p1="p1"/>
-        <line p0="p1" p1="t_0_a"/>
-        <line p0="t_0_a" p1="t_0_b"/>
-        <line p0="t_0_b" p1="t_0_c"/>
-        <line p0="t_0_c" p1="t_1_a"/>
-        <line p0="t_1_a" p1="t_1_b"/>
-        <line p0="t_1_b" p1="t_1_c"/>
-        <line p0="t_1_c" p1="t_2_a"/>
-        <line p0="t_2_a" p1="t_2_b"/>
-        <line p0="t_2_b" p1="t_2_c"/>
-        <line p0="t_2_c" p1="t_3_a"/>
-        <line p0="t_3_a" p1="t_3_b"/>
-        <line p0="t_3_b" p1="t_3_c"/>
-        <line p0="t_3_c" p1="t_4_a"/>
-        <line p0="t_4_a" p1="t_4_b"/>
-        <line p0="t_4_b" p1="t_4_c"/>
-        <line p0="t_4_c" p1="t_5_a"/>
-        <line p0="t_5_a" p1="t_5_b"/>
-        <line p0="t_5_b" p1="t_5_c"/>
-        <line p0="t_5_c" p1="t_6_a"/>
-        <line p0="t_6_a" p1="t_6_b"/>
-        <line p0="t_6_b" p1="t_6_c"/>
-        <line p0="t_6_c" p1="t_7_a"/>
-        <line p0="t_7_a" p1="t_7_b"/>
-        <line p0="t_7_b" p1="t_7_c"/>
-        <line p0="t_7_c" p1="t_8_a"/>
-        <line p0="t_8_a" p1="t_8_b"/>
-        <line p0="t_8_b" p1="t_8_c"/>
-        <line p0="t_8_c" p1="t_9_a"/>
-        <line p0="t_9_a" p1="t_9_b"/>
-        <line p0="t_9_b" p1="t_9_c"/>
-        <line p0="t_9_c" p1="t_10_a"/>
-        <line p0="t_10_a" p1="t_10_b"/>
-        <line p0="t_10_b" p1="t_10_c"/>
-        <line p0="t_10_c" p1="t_11_a"/>
-        <line p0="t_11_a" p1="t_11_b"/>
-        <line p0="t_11_b" p1="t_11_c"/>
-        <line p0="t_11_c" p1="t_12_a"/>
-        <line p0="t_12_a" p1="t_12_b"/>
-        <line p0="t_12_b" p1="t_12_c"/>
-        <line p0="t_12_c" p1="t_13_a"/>
-        <line p0="t_13_a" p1="t_13_b"/>
-        <line p0="t_13_b" p1="t_13_c"/>
-        <line p0="t_13_c" p1="t_14_a"/>
-        <line p0="t_14_a" p1="t_14_b"/>
-        <line p0="t_14_b" p1="t_14_c"/>
-        <line p0="t_14_c" p1="t_15_a"/>
-        <line p0="t_15_a" p1="t_15_b"/>
-        <line p0="t_15_b" p1="t_15_c"/>
-        <line p0="t_15_c" p1="t_16_a"/>
-        <line p0="t_16_a" p1="t_16_b"/>
-        <line p0="t_16_b" p1="t_16_c"/>
-        <line p0="t_16_c" p1="t_17_a"/>
-        <line p0="t_17_a" p1="t_17_b"/>
-        <line p0="t_17_b" p1="t_17_c"/>
-        <line p0="t_17_c" p1="t_18_a"/>
-        <line p0="t_18_a" p1="t_18_b"/>
-        <line p0="t_18_b" p1="t_18_c"/>
-        <line p0="t_18_c" p1="t_19_a"/>
-        <line p0="t_19_a" p1="t_19_b"/>
-        <line p0="t_19_b" p1="t_19_c"/>
-        <line p0="t_19_c" p1="t_20_a"/>
-        <line p0="t_20_a" p1="t_20_b"/>
-        <line p0="t_20_b" p1="t_20_c"/>
-        <line p0="t_20_c" p1="t_21_a"/>
-        <line p0="t_21_a" p1="t_21_b"/>
-        <line p0="t_21_b" p1="t_21_c"/>
-        <line p0="t_21_c" p1="t_22_a"/>
-        <line p0="t_22_a" p1="t_22_b"/>
-        <line p0="t_22_b" p1="t_22_c"/>
-        <line p0="t_22_c" p1="t_23_a"/>
-        <line p0="t_23_a" p1="t_23_b"/>
-        <line p0="t_23_b" p1="t_23_c"/>
-        <line p0="t_23_c" p1="t_24_a"/>
-        <line p0="t_24_a" p1="t_24_b"/>
-        <line p0="t_24_b" p1="t_24_c"/>
-        <line p0="t_24_c" p1="t_25_a"/>
-        <line p0="t_25_a" p1="t_25_b"/>
-        <line p0="t_25_b" p1="t_25_c"/>
-        <line p0="t_25_c" p1="t_26_a"/>
-        <line p0="t_26_a" p1="t_26_b"/>
-        <line p0="t_26_b" p1="t_26_c"/>
-        <line p0="t_26_c" p1="t_27_a"/>
-        <line p0="t_27_a" p1="t_27_b"/>
-        <line p0="t_27_b" p1="t_27_c"/>
-        <line p0="t_27_c" p1="t_28_a"/>
-        <line p0="t_28_a" p1="t_28_b"/>
-        <line p0="t_28_b" p1="t_28_c"/>
-        <line p0="t_28_c" p1="t_29_a"/>
-        <line p0="t_29_a" p1="t_29_b"/>
-        <line p0="t_29_b" p1="t_29_c"/>
-        <line p0="t_29_c" p1="t_30_a"/>
-        <line p0="t_30_a" p1="t_30_b"/>
-        <line p0="t_30_b" p1="t_30_c"/>
-        <line p0="t_30_c" p1="t_31_a"/>
-        <line p0="t_31_a" p1="t_31_b"/>
-        <line p0="t_31_b" p1="t_31_c"/>
-        <line p0="t_31_c" p1="t_32_a"/>
-        <line p0="t_32_a" p1="t_32_b"/>
-        <line p0="t_32_b" p1="t_32_c"/>
-        <line p0="t_32_c" p1="t_33_a"/>
-        <line p0="t_33_a" p1="t_33_b"/>
-        <line p0="t_33_b" p1="t_33_c"/>
-        <line p0="t_33_c" p1="t_34_a"/>
-        <line p0="t_34_a" p1="t_34_b"/>
-        <line p0="t_34_b" p1="t_34_c"/>
-        <line p0="t_34_c" p1="t_35_a"/>
-        <line p0="t_35_a" p1="t_35_b"/>
-        <line p0="t_35_b" p1="t_35_c"/>
-        <line p0="t_35_c" p1="t_36_a"/>
-        <line p0="t_36_a" p1="t_36_b"/>
-        <line p0="t_36_b" p1="t_36_c"/>
-        <line p0="t_36_c" p1="t_37_a"/>
-        <line p0="t_37_a" p1="t_37_b"/>
-        <line p0="t_37_b" p1="t_37_c"/>
-        <line p0="t_37_c" p1="t_38_a"/>
-        <line p0="t_38_a" p1="t_38_b"/>
-        <line p0="t_38_b" p1="t_38_c"/>
-        <line p0="t_38_c" p1="t_39_a"/>
-        <line p0="t_39_a" p1="t_39_b"/>
-        <line p0="t_39_b" p1="t_39_c"/>
-        <line p0="t_39_c" p1="t_40_a"/>
-        <line p0="t_40_a" p1="t_40_b"/>
-        <line p0="t_40_b" p1="t_40_c"/>
-        <line p0="t_40_c" p1="t_41_a"/>
-        <line p0="t_41_a" p1="t_41_b"/>
-        <line p0="t_41_b" p1="t_41_c"/>
-        <line p0="t_41_c" p1="t_42_a"/>
-        <line p0="t_42_a" p1="t_42_b"/>
-        <line p0="t_42_b" p1="t_42_c"/>
-        <line p0="t_42_c" p1="t_43_a"/>
-        <line p0="t_43_a" p1="t_43_b"/>
-        <line p0="t_43_b" p1="t_43_c"/>
-        <line p0="t_43_c" p1="t_44_a"/>
-        <line p0="t_44_a" p1="t_44_b"/>
-        <line p0="t_44_b" p1="t_44_c"/>
-        <line p0="t_44_c" p1="t_45_a"/>
-        <line p0="t_45_a" p1="t_45_b"/>
-        <line p0="t_45_b" p1="t_45_c"/>
-        <line p0="t_45_c" p1="t_46_a"/>
-        <line p0="t_46_a" p1="t_46_b"/>
-        <line p0="t_46_b" p1="t_46_c"/>
-        <line p0="t_46_c" p1="t_47_a"/>
-        <line p0="t_47_a" p1="t_47_b"/>
-        <line p0="t_47_b" p1="t_47_c"/>
-        <line p0="t_47_c" p1="t_48_a"/>
-        <line p0="t_48_a" p1="t_48_b"/>
-        <line p0="t_48_b" p1="t_48_c"/>
-        <line p0="t_48_c" p1="t_49_a"/>
-        <line p0="t_49_a" p1="t_49_b"/>
-        <line p0="t_49_b" p1="t_49_c"/>
-        <line p0="t_49_c" p1="t_50_a"/>
-        <line p0="t_50_a" p1="t_50_b"/>
-        <line p0="t_50_b" p1="t_50_c"/>
-        <line p0="t_50_c" p1="t_51_a"/>
-        <line p0="t_51_a" p1="t_51_b"/>
-        <line p0="t_51_b" p1="t_51_c"/>
-        <line p0="t_51_c" p1="p2"/>
-        <line p0="p2" p1="p3"/>
-        <line p0="p3" p1="p4"/>
-        <line p0="p4" p1="p5"/>
-        <line p0="p5" p1="p0"/>
+      <wire id="w_tip" closed="true" role="outer">
+        <line p0="tp_0" p1="tp_1"/>
+        <line p0="tp_1" p1="tp_2"/>
+        <line p0="tp_2" p1="tp_3"/>
+        <line p0="tp_3" p1="tp_4"/>
+        <line p0="tp_4" p1="tp_5"/>
+        <line p0="tp_5" p1="tp_6"/>
+        <line p0="tp_6" p1="tp_7"/>
+        <line p0="tp_7" p1="tp_8"/>
+        <line p0="tp_8" p1="tp_9"/>
+        <line p0="tp_9" p1="tp_10"/>
+        <line p0="tp_10" p1="tp_11"/>
+        <line p0="tp_11" p1="tp_12"/>
+        <line p0="tp_12" p1="tp_13"/>
+        <line p0="tp_13" p1="tp_14"/>
+        <line p0="tp_14" p1="tp_15"/>
+        <line p0="tp_15" p1="tp_16"/>
+        <line p0="tp_16" p1="tp_17"/>
+        <line p0="tp_17" p1="tp_18"/>
+        <line p0="tp_18" p1="tp_19"/>
+        <line p0="tp_19" p1="tp_20"/>
+        <line p0="tp_20" p1="tp_21"/>
+        <line p0="tp_21" p1="tp_22"/>
+        <line p0="tp_22" p1="tp_23"/>
+        <line p0="tp_23" p1="tp_0"/>
+      </wire>
+    </sketch>
+    <sketch id="sk_thd" chart="ch_xy">
+      <vars>
+        <point2d id="th_0" u="4.0799" v="0.0000"/>
+        <point2d id="th_1" u="3.9409" v="1.0560"/>
+        <point2d id="th_2" u="3.5333" v="2.0399"/>
+        <point2d id="th_3" u="2.8849" v="2.8849"/>
+        <point2d id="th_4" u="2.0911" v="3.6218"/>
+        <point2d id="th_5" u="1.1089" v="4.1384"/>
+        <point2d id="th_6" u="0.0000" v="4.3866"/>
+        <point2d id="th_7" u="-1.1618" v="4.3359"/>
+        <point2d id="th_8" u="-2.2955" v="3.9760"/>
+        <point2d id="th_9" u="-3.3187" v="3.3187"/>
+        <point2d id="th_10" u="-4.1531" v="2.3978"/>
+        <point2d id="th_11" u="-4.7309" v="1.2676"/>
+        <point2d id="th_12" u="-5.0000" v="0.0000"/>
+        <point2d id="th_13" u="-4.8296" v="-1.2941"/>
+        <point2d id="th_14" u="-4.3301" v="-2.5000"/>
+        <point2d id="th_15" u="-3.5355" v="-3.5355"/>
+        <point2d id="th_16" u="-2.4489" v="-4.2416"/>
+        <point2d id="th_17" u="-1.2412" v="-4.6321"/>
+        <point2d id="th_18" u="-0.0000" v="-4.6933"/>
+        <point2d id="th_19" u="1.1883" v="-4.4346"/>
+        <point2d id="th_20" u="2.2444" v="-3.8874"/>
+        <point2d id="th_21" u="3.1018" v="-3.1018"/>
+        <point2d id="th_22" u="3.7104" v="-2.1422"/>
+        <point2d id="th_23" u="4.0396" v="-1.0824"/>
+      </vars>
+      <wire id="w_thd" closed="true" role="outer">
+        <line p0="th_0" p1="th_1"/>
+        <line p0="th_1" p1="th_2"/>
+        <line p0="th_2" p1="th_3"/>
+        <line p0="th_3" p1="th_4"/>
+        <line p0="th_4" p1="th_5"/>
+        <line p0="th_5" p1="th_6"/>
+        <line p0="th_6" p1="th_7"/>
+        <line p0="th_7" p1="th_8"/>
+        <line p0="th_8" p1="th_9"/>
+        <line p0="th_9" p1="th_10"/>
+        <line p0="th_10" p1="th_11"/>
+        <line p0="th_11" p1="th_12"/>
+        <line p0="th_12" p1="th_13"/>
+        <line p0="th_13" p1="th_14"/>
+        <line p0="th_14" p1="th_15"/>
+        <line p0="th_15" p1="th_16"/>
+        <line p0="th_16" p1="th_17"/>
+        <line p0="th_17" p1="th_18"/>
+        <line p0="th_18" p1="th_19"/>
+        <line p0="th_19" p1="th_20"/>
+        <line p0="th_20" p1="th_21"/>
+        <line p0="th_21" p1="th_22"/>
+        <line p0="th_22" p1="th_23"/>
+        <line p0="th_23" p1="th_0"/>
+      </wire>
+    </sketch>
+    <sketch id="sk_shk" chart="ch_xy">
+      <vars>
+        <point2d id="sh_0" u="5.0000" v="0.0000"/>
+        <point2d id="sh_1" u="4.8296" v="1.2941"/>
+        <point2d id="sh_2" u="4.3301" v="2.5000"/>
+        <point2d id="sh_3" u="3.5355" v="3.5355"/>
+        <point2d id="sh_4" u="2.5000" v="4.3301"/>
+        <point2d id="sh_5" u="1.2941" v="4.8296"/>
+        <point2d id="sh_6" u="0.0000" v="5.0000"/>
+        <point2d id="sh_7" u="-1.2941" v="4.8296"/>
+        <point2d id="sh_8" u="-2.5000" v="4.3301"/>
+        <point2d id="sh_9" u="-3.5355" v="3.5355"/>
+        <point2d id="sh_10" u="-4.3301" v="2.5000"/>
+        <point2d id="sh_11" u="-4.8296" v="1.2941"/>
+        <point2d id="sh_12" u="-5.0000" v="0.0000"/>
+        <point2d id="sh_13" u="-4.8296" v="-1.2941"/>
+        <point2d id="sh_14" u="-4.3301" v="-2.5000"/>
+        <point2d id="sh_15" u="-3.5355" v="-3.5355"/>
+        <point2d id="sh_16" u="-2.5000" v="-4.3301"/>
+        <point2d id="sh_17" u="-1.2941" v="-4.8296"/>
+        <point2d id="sh_18" u="-0.0000" v="-5.0000"/>
+        <point2d id="sh_19" u="1.2941" v="-4.8296"/>
+        <point2d id="sh_20" u="2.5000" v="-4.3301"/>
+        <point2d id="sh_21" u="3.5355" v="-3.5355"/>
+        <point2d id="sh_22" u="4.3301" v="-2.5000"/>
+        <point2d id="sh_23" u="4.8296" v="-1.2941"/>
+      </vars>
+      <wire id="w_shk" closed="true" role="outer">
+        <line p0="sh_0" p1="sh_1"/>
+        <line p0="sh_1" p1="sh_2"/>
+        <line p0="sh_2" p1="sh_3"/>
+        <line p0="sh_3" p1="sh_4"/>
+        <line p0="sh_4" p1="sh_5"/>
+        <line p0="sh_5" p1="sh_6"/>
+        <line p0="sh_6" p1="sh_7"/>
+        <line p0="sh_7" p1="sh_8"/>
+        <line p0="sh_8" p1="sh_9"/>
+        <line p0="sh_9" p1="sh_10"/>
+        <line p0="sh_10" p1="sh_11"/>
+        <line p0="sh_11" p1="sh_12"/>
+        <line p0="sh_12" p1="sh_13"/>
+        <line p0="sh_13" p1="sh_14"/>
+        <line p0="sh_14" p1="sh_15"/>
+        <line p0="sh_15" p1="sh_16"/>
+        <line p0="sh_16" p1="sh_17"/>
+        <line p0="sh_17" p1="sh_18"/>
+        <line p0="sh_18" p1="sh_19"/>
+        <line p0="sh_19" p1="sh_20"/>
+        <line p0="sh_20" p1="sh_21"/>
+        <line p0="sh_21" p1="sh_22"/>
+        <line p0="sh_22" p1="sh_23"/>
+        <line p0="sh_23" p1="sh_0"/>
+      </wire>
+    </sketch>
+    <sketch id="sk_hex" chart="ch_xy">
+      <vars>
+        <point2d id="hx_0" u="8.0000" v="0.0000"/>
+        <point2d id="hx_1" u="8.0000" v="2.1436"/>
+        <point2d id="hx_2" u="8.0000" v="4.6188"/>
+        <point2d id="hx_3" u="5.8564" v="5.8564"/>
+        <point2d id="hx_4" u="4.0000" v="6.9282"/>
+        <point2d id="hx_5" u="2.1436" v="8.0000"/>
+        <point2d id="hx_6" u="0.0000" v="9.2376"/>
+        <point2d id="hx_7" u="-2.1436" v="8.0000"/>
+        <point2d id="hx_8" u="-4.0000" v="6.9282"/>
+        <point2d id="hx_9" u="-5.8564" v="5.8564"/>
+        <point2d id="hx_10" u="-8.0000" v="4.6188"/>
+        <point2d id="hx_11" u="-8.0000" v="2.1436"/>
+        <point2d id="hx_12" u="-8.0000" v="0.0000"/>
+        <point2d id="hx_13" u="-8.0000" v="-2.1436"/>
+        <point2d id="hx_14" u="-8.0000" v="-4.6188"/>
+        <point2d id="hx_15" u="-5.8564" v="-5.8564"/>
+        <point2d id="hx_16" u="-4.0000" v="-6.9282"/>
+        <point2d id="hx_17" u="-2.1436" v="-8.0000"/>
+        <point2d id="hx_18" u="-0.0000" v="-9.2376"/>
+        <point2d id="hx_19" u="2.1436" v="-8.0000"/>
+        <point2d id="hx_20" u="4.0000" v="-6.9282"/>
+        <point2d id="hx_21" u="5.8564" v="-5.8564"/>
+        <point2d id="hx_22" u="8.0000" v="-4.6188"/>
+        <point2d id="hx_23" u="8.0000" v="-2.1436"/>
+      </vars>
+      <wire id="w_hex" closed="true" role="outer">
+        <line p0="hx_0" p1="hx_1"/>
+        <line p0="hx_1" p1="hx_2"/>
+        <line p0="hx_2" p1="hx_3"/>
+        <line p0="hx_3" p1="hx_4"/>
+        <line p0="hx_4" p1="hx_5"/>
+        <line p0="hx_5" p1="hx_6"/>
+        <line p0="hx_6" p1="hx_7"/>
+        <line p0="hx_7" p1="hx_8"/>
+        <line p0="hx_8" p1="hx_9"/>
+        <line p0="hx_9" p1="hx_10"/>
+        <line p0="hx_10" p1="hx_11"/>
+        <line p0="hx_11" p1="hx_12"/>
+        <line p0="hx_12" p1="hx_13"/>
+        <line p0="hx_13" p1="hx_14"/>
+        <line p0="hx_14" p1="hx_15"/>
+        <line p0="hx_15" p1="hx_16"/>
+        <line p0="hx_16" p1="hx_17"/>
+        <line p0="hx_17" p1="hx_18"/>
+        <line p0="hx_18" p1="hx_19"/>
+        <line p0="hx_19" p1="hx_20"/>
+        <line p0="hx_20" p1="hx_21"/>
+        <line p0="hx_21" p1="hx_22"/>
+        <line p0="hx_22" p1="hx_23"/>
+        <line p0="hx_23" p1="hx_0"/>
       </wire>
     </sketch>
     <brep id="b_solid">
-      <solid_revolve sketch="sk_profile" axis_origin="vec3(0, 0, 0)" axis_direction="vec3(0, 0, 1)" angle="360.0"/>
+      <sweep id="sw_bolt" continuity="G1" cap-ends="true">
+        <section v="0.0000" wire="w_tip"/>
+        <section v="0.0200" wire="w_thd"/>
+        <section v="0.3241" wire="w_thd"/>
+        <section v="0.3448" wire="w_shk"/>
+        <section v="0.9155" wire="w_shk"/>
+        <section v="0.9235" wire="w_hex"/>
+        <section v="1.0000" wire="w_hex"/>
+        <trajectory>
+          <translate x="0" y="0" z-expr="ref(total_l) * v"/>
+          <rotate axis="0 0 1" angle-expr="2 * PI * ref(turns) * (0.5 * (v + ref(v_thd) - abs_smooth(v - ref(v_thd), 0.001)) / ref(v_thd))"/>
+        </trajectory>
+      </sweep>
     </brep>
   </body>
   <exports>
-    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
-    <step source="b_solid" filename="hex_bolt_m10x80.step" schema="AP214"/>
-    <stl source="b_solid" filename="hex_bolt_m10x80.stl" format="binary"/>
+    <tessellate target="b_solid" chord-tol="0.02" angle-tol="0.05"/>
+    <step target="b_solid" filename="hex_bolt_m10x80.step" schema="AP214"/>
+    <stl target="b_solid" filename="hex_bolt_m10x80.stl" binary="true"/>
   </exports>
 </cdml>

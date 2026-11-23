@@ -2,7 +2,7 @@
   <imports/>
   <defs>
     <var id="hex_width" value="22.00" min="15.0" max="80.0" unit="mm"/>
-    <var id="flow_bore" value="26.00" min="5.0" max="50.0" unit="mm"/>
+    <var id="flow_bore" value="13.00" min="5.0" max="14.30" unit="mm"/>
     <var id="fitting_len" value="25.00" min="15.0" max="80.0" unit="mm"/>
     <assert expr="hex_width > flow_bore * 1.5" message="Hex flat must exceed internal flow bore" level="error"/>
   </defs>
@@ -21,35 +21,35 @@
     </chart>
     <sketch id="sk_nipple" chart="ch_xy" max-iter="100">
       <vars>
-                <point2d id="vh_0" u="11.0000" v="6.3509"/>
+        <point2d id="vh_0" u="11.0000" v="6.3509"/>
         <point2d id="vh_1" u="0.0000" v="12.7017"/>
         <point2d id="vh_2" u="-11.0000" v="6.3509"/>
         <point2d id="vh_3" u="-11.0000" v="-6.3509"/>
         <point2d id="vh_4" u="-0.0000" v="-12.7017"/>
         <point2d id="vh_5" u="11.0000" v="-6.3509"/>
-                <point2d id="nb_0" u="13.0000" v="0.0000"/>
-        <point2d id="nb_1" u="12.3637" v="4.0172"/>
-        <point2d id="nb_2" u="10.5172" v="7.6412"/>
-        <point2d id="nb_3" u="7.6412" v="10.5172"/>
-        <point2d id="nb_4" u="4.0172" v="12.3637"/>
-        <point2d id="nb_5" u="0.0000" v="13.0000"/>
-        <point2d id="nb_6" u="-4.0172" v="12.3637"/>
-        <point2d id="nb_7" u="-7.6412" v="10.5172"/>
-        <point2d id="nb_8" u="-10.5172" v="7.6412"/>
-        <point2d id="nb_9" u="-12.3637" v="4.0172"/>
-        <point2d id="nb_10" u="-13.0000" v="0.0000"/>
-        <point2d id="nb_11" u="-12.3637" v="-4.0172"/>
-        <point2d id="nb_12" u="-10.5172" v="-7.6412"/>
-        <point2d id="nb_13" u="-7.6412" v="-10.5172"/>
-        <point2d id="nb_14" u="-4.0172" v="-12.3637"/>
-        <point2d id="nb_15" u="-0.0000" v="-13.0000"/>
-        <point2d id="nb_16" u="4.0172" v="-12.3637"/>
-        <point2d id="nb_17" u="7.6412" v="-10.5172"/>
-        <point2d id="nb_18" u="10.5172" v="-7.6412"/>
-        <point2d id="nb_19" u="12.3637" v="-4.0172"/>
+        <point2d id="nb_0" u="6.5000" v="0.0000"/>
+        <point2d id="nb_1" u="6.1819" v="2.0086"/>
+        <point2d id="nb_2" u="5.2586" v="3.8206"/>
+        <point2d id="nb_3" u="3.8206" v="5.2586"/>
+        <point2d id="nb_4" u="2.0086" v="6.1819"/>
+        <point2d id="nb_5" u="0.0000" v="6.5000"/>
+        <point2d id="nb_6" u="-2.0086" v="6.1819"/>
+        <point2d id="nb_7" u="-3.8206" v="5.2586"/>
+        <point2d id="nb_8" u="-5.2586" v="3.8206"/>
+        <point2d id="nb_9" u="-6.1819" v="2.0086"/>
+        <point2d id="nb_10" u="-6.5000" v="0.0000"/>
+        <point2d id="nb_11" u="-6.1819" v="-2.0086"/>
+        <point2d id="nb_12" u="-5.2586" v="-3.8206"/>
+        <point2d id="nb_13" u="-3.8206" v="-5.2586"/>
+        <point2d id="nb_14" u="-2.0086" v="-6.1819"/>
+        <point2d id="nb_15" u="-0.0000" v="-6.5000"/>
+        <point2d id="nb_16" u="2.0086" v="-6.1819"/>
+        <point2d id="nb_17" u="3.8206" v="-5.2586"/>
+        <point2d id="nb_18" u="5.2586" v="-3.8206"/>
+        <point2d id="nb_19" u="6.1819" v="-2.0086"/>
       </vars>
       <wire id="w_outer" closed="true" role="outer">
-                <line p0="vh_0" p1="vh_1"/>
+        <line p0="vh_0" p1="vh_1"/>
         <line p0="vh_1" p1="vh_2"/>
         <line p0="vh_2" p1="vh_3"/>
         <line p0="vh_3" p1="vh_4"/>
@@ -57,7 +57,7 @@
         <line p0="vh_5" p1="vh_0"/>
       </wire>
       <wire id="w_inner" closed="true" role="inner">
-                <line p0="nb_0" p1="nb_1"/>
+        <line p0="nb_0" p1="nb_1"/>
         <line p0="nb_1" p1="nb_2"/>
         <line p0="nb_2" p1="nb_3"/>
         <line p0="nb_3" p1="nb_4"/>

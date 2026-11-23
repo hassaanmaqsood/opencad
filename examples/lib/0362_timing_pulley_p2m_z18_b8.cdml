@@ -3,7 +3,7 @@
   <defs>
     <var id="tooth_pitch" value="2.00" min="1.0" max="10.0" unit="mm"/>
     <var id="tooth_count" value="18" min="10" max="80" unit=""/>
-    <var id="bore_d" value="8.00" min="3.0" max="25.0" unit="mm"/>
+    <var id="bore_d" value="5.00" min="3.0" max="25.0" unit="mm"/>
     <var id="belt_width" value="14.00" min="6.0" max="40.0" unit="mm"/>
     <assert expr="tooth_count * tooth_pitch > bore_d * 4.0" message="Pitch perimeter must exceed bore envelope" level="error"/>
   </defs>
@@ -58,26 +58,26 @@
         <point2d id="pt_33" u="3.2299" v="-1.8648"/>
         <point2d id="pt_34" u="4.9142" v="-1.7886"/>
         <point2d id="pt_35" u="3.6729" v="-0.6476"/>
-                <point2d id="pb_0" u="4.0000" v="0.0000"/>
-        <point2d id="pb_1" u="3.8042" v="1.2361"/>
-        <point2d id="pb_2" u="3.2361" v="2.3511"/>
-        <point2d id="pb_3" u="2.3511" v="3.2361"/>
-        <point2d id="pb_4" u="1.2361" v="3.8042"/>
-        <point2d id="pb_5" u="0.0000" v="4.0000"/>
-        <point2d id="pb_6" u="-1.2361" v="3.8042"/>
-        <point2d id="pb_7" u="-2.3511" v="3.2361"/>
-        <point2d id="pb_8" u="-3.2361" v="2.3511"/>
-        <point2d id="pb_9" u="-3.8042" v="1.2361"/>
-        <point2d id="pb_10" u="-4.0000" v="0.0000"/>
-        <point2d id="pb_11" u="-3.8042" v="-1.2361"/>
-        <point2d id="pb_12" u="-3.2361" v="-2.3511"/>
-        <point2d id="pb_13" u="-2.3511" v="-3.2361"/>
-        <point2d id="pb_14" u="-1.2361" v="-3.8042"/>
-        <point2d id="pb_15" u="-0.0000" v="-4.0000"/>
-        <point2d id="pb_16" u="1.2361" v="-3.8042"/>
-        <point2d id="pb_17" u="2.3511" v="-3.2361"/>
-        <point2d id="pb_18" u="3.2361" v="-2.3511"/>
-        <point2d id="pb_19" u="3.8042" v="-1.2361"/>
+        <point2d id="pb_0" u="2.5000" v="0.0000"/>
+        <point2d id="pb_1" u="2.3776" v="0.7725"/>
+        <point2d id="pb_2" u="2.0225" v="1.4695"/>
+        <point2d id="pb_3" u="1.4695" v="2.0225"/>
+        <point2d id="pb_4" u="0.7725" v="2.3776"/>
+        <point2d id="pb_5" u="0.0000" v="2.5000"/>
+        <point2d id="pb_6" u="-0.7725" v="2.3776"/>
+        <point2d id="pb_7" u="-1.4695" v="2.0225"/>
+        <point2d id="pb_8" u="-2.0225" v="1.4695"/>
+        <point2d id="pb_9" u="-2.3776" v="0.7725"/>
+        <point2d id="pb_10" u="-2.5000" v="0.0000"/>
+        <point2d id="pb_11" u="-2.3776" v="-0.7725"/>
+        <point2d id="pb_12" u="-2.0225" v="-1.4695"/>
+        <point2d id="pb_13" u="-1.4695" v="-2.0225"/>
+        <point2d id="pb_14" u="-0.7725" v="-2.3776"/>
+        <point2d id="pb_15" u="-0.0000" v="-2.5000"/>
+        <point2d id="pb_16" u="0.7725" v="-2.3776"/>
+        <point2d id="pb_17" u="1.4695" v="-2.0225"/>
+        <point2d id="pb_18" u="2.0225" v="-1.4695"/>
+        <point2d id="pb_19" u="2.3776" v="-0.7725"/>
       </vars>
       <wire id="w_outer" closed="true" role="outer">
                 <line p0="pt_0" p1="pt_1"/>
