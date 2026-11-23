@@ -364,3 +364,324 @@ test "CSG Straddling Triangle Subdivision, Off-Axis Analytic Region Seed, Cap-Ed
         try testing.expectApproxEqAbs(@as(f64, 8.0), rad, 0.25);
     }
 }
+
+test "ISO M8x1.25 Helical Thread Sweep, Morphing Run-Out Sections, Path-Curve RMF/Axis-Locked, Loft & True 0x0401 Rejections" {
+    defer _ = cad.cad_kernel_deinit();
+    cad.kernel_init();
+
+    // 1. ISO M8x1.25 Helical Thread (6 turns, r_major = 4.0 mm >> pitch/(2*pi) = 0.199 mm)
+    // Verifies body-frame pullback eliminates trigonometric interval wrapping false positives.
+    const iso_m8_xml =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+        \\  <defs>
+        \\    <var id="pitch" value="1.25" unit="mm"/>
+        \\    <var id="turns" value="6.0"/>
+        \\    <var id="r_minor" value="3.323" unit="mm"/>
+        \\    <var id="r_major" value="4.000" unit="mm"/>
+        \\  </defs>
+        \\  <body>
+        \\    <chart id="chart_xz">
+        \\      <vars>
+        \\        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        \\        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        \\        <vec3 id="e2" x="0.0" y="0.0" z="1.0" fixed="true"/>
+        \\      </vars>
+        \\    </chart>
+        \\    <sketch id="sk_tooth" chart="chart_xz">
+        \\      <vars>
+        \\        <point2d id="t0" u="3.323" v="0.08" fixed="true"/>
+        \\        <point2d id="t1" u="4.000" v="0.54" fixed="true"/>
+        \\        <point2d id="t2" u="4.000" v="0.71" fixed="true"/>
+        \\        <point2d id="t3" u="3.323" v="1.17" fixed="true"/>
+        \\      </vars>
+        \\      <wire id="wire_tooth_full" closed="true" role="outer">
+        \\        <line p0="t0" p1="t1"/>
+        \\        <line p0="t1" p1="t2"/>
+        \\        <line p0="t2" p1="t3"/>
+        \\        <line p0="t3" p1="t0"/>
+        \\      </wire>
+        \\    </sketch>
+        \\    <brep id="solid_m8_thread">
+        \\      <sweep id="sw_m8" wire="wire_tooth_full" cap-ends="true">
+        \\        <trajectory>
+        \\          <rotate axis="0 0 1" angle-expr="ref(turns) * 2 * PI * v"/>
+        \\          <translate x="0" y="0" z-expr="ref(turns) * ref(pitch) * v"/>
+        \\        </trajectory>
+        \\      </sweep>
+        \\    </brep>
+        \\    <probe id="thread_vol" type="volume" target="solid_m8_thread"/>
+        \\  </body>
+        \\  <exports>
+        \\    <tessellate target="solid_m8_thread" chord-tol="0.02" angle-tol="0.05"/>
+        \\    <step target="solid_m8_thread" schema="AP214"/>
+        \\  </exports>
+        \\</cdml>
+    ;
+    const st_m8 = cad.cdml_eval_document(iso_m8_xml.ptr, iso_m8_xml.len);
+    try testing.expectEqual(@as(u32, 0), st_m8);
+    const m8_h = cad.cdml_get_active_solid();
+    try testing.expect(m8_h != 0);
+    const m8_mesh = cad.surface_brep.solid_brep_store.getPtr(m8_h).?;
+    try testing.expect(m8_mesh.verifyTwoManifoldEdges());
+    try testing.expect(m8_mesh.verifyEulerPoincare());
+    var m8_vol: f64 = 0.0;
+    try testing.expectEqual(@as(u32, 0), cad.cdml_get_probe_value("thread_vol".ptr, "thread_vol".len, &m8_vol));
+    // Pappus centroid check: tooth area A = 0.5*(1.09 + 0.17)*0.677 = 0.4265 mm^2, centroid r_c ~ 3.58 mm,
+    // 6 turns -> V ~ 6 * 2*pi * 3.58 * 0.4265 ~ 57.6 mm^3
+    try testing.expect(m8_vol > 45.0 and m8_vol < 75.0);
+    try testing.expect(cad.get_step_len() > 200);
+
+    // 2. Unified Morphing Helical Sweep with Lead-In / Lead-Out Thread Run-Outs (<section v="..."/> inside <sweep>)
+    const runout_m8_xml =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+        \\  <defs>
+        \\    <var id="pitch" value="1.25" unit="mm"/>
+        \\    <var id="turns" value="6.0"/>
+        \\  </defs>
+        \\  <body>
+        \\    <chart id="chart_xz">
+        \\      <vars>
+        \\        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        \\        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        \\        <vec3 id="e2" x="0.0" y="0.0" z="1.0" fixed="true"/>
+        \\      </vars>
+        \\    </chart>
+        \\    <sketch id="sk_tooth_sections" chart="chart_xz">
+        \\      <vars>
+        \\        <point2d id="f0" u="3.323" v="0.08" fixed="true"/>
+        \\        <point2d id="f1" u="3.343" v="0.54" fixed="true"/>
+        \\        <point2d id="f2" u="3.343" v="0.71" fixed="true"/>
+        \\        <point2d id="f3" u="3.323" v="1.17" fixed="true"/>
+        \\        <point2d id="t0" u="3.323" v="0.08" fixed="true"/>
+        \\        <point2d id="t1" u="4.000" v="0.54" fixed="true"/>
+        \\        <point2d id="t2" u="4.000" v="0.71" fixed="true"/>
+        \\        <point2d id="t3" u="3.323" v="1.17" fixed="true"/>
+        \\      </vars>
+        \\      <wire id="wire_tooth_flat" closed="true" role="outer">
+        \\        <line p0="f0" p1="f1"/>
+        \\        <line p0="f1" p1="f2"/>
+        \\        <line p0="f2" p1="f3"/>
+        \\        <line p0="f3" p1="f0"/>
+        \\      </wire>
+        \\      <wire id="wire_tooth_full" closed="true" role="outer">
+        \\        <line p0="t0" p1="t1"/>
+        \\        <line p0="t1" p1="t2"/>
+        \\        <line p0="t2" p1="t3"/>
+        \\        <line p0="t3" p1="t0"/>
+        \\      </wire>
+        \\    </sketch>
+        \\    <brep id="solid_runout_thread">
+        \\      <sweep id="sw_runout" continuity="G1" cap-ends="true">
+        \\        <section v="0.00" wire="wire_tooth_flat"/>
+        \\        <section v="0.05" wire="wire_tooth_full"/>
+        \\        <section v="0.95" wire="wire_tooth_full"/>
+        \\        <section v="1.00" wire="wire_tooth_flat"/>
+        \\        <trajectory>
+        \\          <rotate axis="0 0 1" angle-expr="ref(turns) * 2 * PI * v"/>
+        \\          <translate x="0" y="0" z-expr="ref(turns) * ref(pitch) * v"/>
+        \\        </trajectory>
+        \\      </sweep>
+        \\    </brep>
+        \\  </body>
+        \\  <exports>
+        \\    <tessellate target="solid_runout_thread" chord-tol="0.02" angle-tol="0.05"/>
+        \\  </exports>
+        \\</cdml>
+    ;
+    const st_runout = cad.cdml_eval_document(runout_m8_xml.ptr, runout_m8_xml.len);
+    try testing.expectEqual(@as(u32, 0), st_runout);
+    const runout_h = cad.cdml_get_active_solid();
+    const runout_mesh = cad.surface_brep.solid_brep_store.getPtr(runout_h).?;
+    try testing.expect(runout_mesh.verifyTwoManifoldEdges());
+    try testing.expect(runout_mesh.verifyEulerPoincare());
+    const runout_vol = runout_mesh.computeEnclosedVolume();
+    // Run-out tapers 5% at each end -> slightly smaller volume than full-height thread
+    try testing.expect(runout_vol > 40.0 and runout_vol < m8_vol);
+
+    // Verify start station stays near core radius (~3.343) while mid-thread reaches r_major = 4.000
+    var max_r_start: f64 = 0.0;
+    var max_r_all: f64 = 0.0;
+    for (runout_mesh.vertices.items, 0..) |pt, vi| {
+        const r = @sqrt(pt.x * pt.x + pt.y * pt.y);
+        if (vi < 4 and r > max_r_start) max_r_start = r;
+        if (r > max_r_all) max_r_all = r;
+    }
+    try testing.expectApproxEqAbs(@as(f64, 3.343), max_r_start, 0.01);
+    try testing.expectApproxEqAbs(@as(f64, 4.000), max_r_all, 0.02);
+
+    // 3. Path-Curve Sweep: Helical Spring with frame="rmf" and Axis-Locked Thread with <scale> taper
+    const path_spring_xml =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<cdml version="1.0" units="mm">
+        \\  <defs>
+        \\    <var id="R_coil" value="10.0" unit="mm"/>
+        \\    <var id="pitch"  value="4.0" unit="mm"/>
+        \\    <var id="turns"  value="3.0"/>
+        \\    <var id="r_wire" value="1.0" unit="mm"/>
+        \\  </defs>
+        \\  <body>
+        \\    <curve id="c_helix" param="t" domain-expr="0  ref(turns) * 2 * PI">
+        \\      <x>ref(R_coil) * cos(t)</x>
+        \\      <y>ref(R_coil) * sin(t)</y>
+        \\      <z>ref(pitch) * t / (2 * PI)</z>
+        \\    </curve>
+        \\    <chart id="c_xy">
+        \\      <vars>
+        \\        <vec3 id="p0" x="0" y="0" z="0" fixed="true"/>
+        \\        <vec3 id="e1" x="1" y="0" z="0" fixed="true"/>
+        \\        <vec3 id="e2" x="0" y="1" z="0" fixed="true"/>
+        \\      </vars>
+        \\    </chart>
+        \\    <sketch id="sk_wire" chart="c_xy">
+        \\      <wire id="w_circ" closed="true" role="outer">
+        \\        <param-curve id="c_w" param="t" domain="0 1"
+        \\          u-expr="ref(r_wire) * cos(2 * PI * t)"
+        \\          v-expr="ref(r_wire) * sin(2 * PI * t)"/>
+        \\      </wire>
+        \\    </sketch>
+        \\    <brep id="solid_spring">
+        \\      <sweep id="sw_spring" wire="w_circ" path="c_helix" frame="axis-locked" up="0 0 1" cap-ends="true">
+        \\        <scale s-expr="1.0 - 0.2 * v"/>
+        \\      </sweep>
+        \\    </brep>
+        \\  </body>
+        \\  <exports>
+        \\    <tessellate target="solid_spring"/>
+        \\  </exports>
+        \\</cdml>
+    ;
+    const st_spring = cad.cdml_eval_document(path_spring_xml.ptr, path_spring_xml.len);
+    try testing.expectEqual(@as(u32, 0), st_spring);
+    const spring_h = cad.cdml_get_active_solid();
+    const spring_mesh = cad.surface_brep.solid_brep_store.getPtr(spring_h).?;
+    try testing.expect(spring_mesh.verifyTwoManifoldEdges());
+    try testing.expect(spring_mesh.verifyEulerPoincare());
+    try testing.expect(spring_mesh.computeEnclosedVolume() > 300.0);
+
+    // 4. CDML <loft continuity="G1"> Multi-Section Nozzle
+    const loft_xml =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<cdml version="1.0" units="mm">
+        \\  <body>
+        \\    <chart id="c_z0"><vars><vec3 id="p0" x="0" y="0" z="0" fixed="true"/><vec3 id="e1" x="1" y="0" z="0" fixed="true"/><vec3 id="e2" x="0" y="1" z="0" fixed="true"/></vars></chart>
+        \\    <chart id="c_z1"><vars><vec3 id="p0" x="0" y="0" z="10" fixed="true"/><vec3 id="e1" x="1" y="0" z="0" fixed="true"/><vec3 id="e2" x="0" y="1" z="0" fixed="true"/></vars></chart>
+        \\    <chart id="c_z2"><vars><vec3 id="p0" x="0" y="0" z="20" fixed="true"/><vec3 id="e1" x="1" y="0" z="0" fixed="true"/><vec3 id="e2" x="0" y="1" z="0" fixed="true"/></vars></chart>
+        \\    <sketch id="sk0" chart="c_z0"><wire id="w_in" closed="true" role="outer"><param-curve id="ci0" param="t" domain="0 1" u-expr="12*cos(2*PI*t)" v-expr="12*sin(2*PI*t)"/></wire></sketch>
+        \\    <sketch id="sk1" chart="c_z1"><wire id="w_mid" closed="true" role="outer"><param-curve id="ci1" param="t" domain="0 1" u-expr="7*cos(2*PI*t)" v-expr="7*sin(2*PI*t)"/></wire></sketch>
+        \\    <sketch id="sk2" chart="c_z2"><wire id="w_out" closed="true" role="outer"><param-curve id="ci2" param="t" domain="0 1" u-expr="10*cos(2*PI*t)" v-expr="10*sin(2*PI*t)"/></wire></sketch>
+        \\    <brep id="solid_nozzle">
+        \\      <loft id="loft_body" continuity="G1" cap-ends="true">
+        \\        <section v="0.0" wire="w_in"/>
+        \\        <section v="0.5" wire="w_mid"/>
+        \\        <section v="1.0" wire="w_out"/>
+        \\      </loft>
+        \\    </brep>
+        \\  </body>
+        \\  <exports><tessellate target="solid_nozzle"/></exports>
+        \\</cdml>
+    ;
+    const st_loft = cad.cdml_eval_document(loft_xml.ptr, loft_xml.len);
+    try testing.expectEqual(@as(u32, 0), st_loft);
+    const nozzle_h = cad.cdml_get_active_solid();
+    const nozzle_mesh = cad.surface_brep.solid_brep_store.getPtr(nozzle_h).?;
+    try testing.expect(nozzle_mesh.verifyTwoManifoldEdges());
+    try testing.expect(nozzle_mesh.verifyEulerPoincare());
+    try testing.expect(nozzle_mesh.computeEnclosedVolume() > 3000.0);
+
+    // 5a. True Self-Intersection Rejection: Axial Turn-to-Turn Overlap (Delta z_profile = 1.40 mm >= pitch = 1.25 mm) -> 0x0401
+    const overlap_thread_xml =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<cdml version="1.0" units="mm">
+        \\  <defs>
+        \\    <var id="pitch" value="1.25" unit="mm"/>
+        \\    <var id="turns" value="4.0"/>
+        \\  </defs>
+        \\  <body>
+        \\    <chart id="chart_xz">
+        \\      <vars>
+        \\        <vec3 id="p0" x="0" y="0" z="0" fixed="true"/>
+        \\        <vec3 id="e1" x="1" y="0" z="0" fixed="true"/>
+        \\        <vec3 id="e2" x="0" y="0" z="1" fixed="true"/>
+        \\      </vars>
+        \\    </chart>
+        \\    <sketch id="sk_wide" chart="chart_xz">
+        \\      <vars>
+        \\        <point2d id="a0" u="3.3" v="0.0" fixed="true"/>
+        \\        <point2d id="a1" u="4.0" v="0.7" fixed="true"/>
+        \\        <point2d id="a2" u="3.3" v="1.4" fixed="true"/>
+        \\      </vars>
+        \\      <wire id="w_wide" closed="true" role="outer">
+        \\        <line p0="a0" p1="a1"/>
+        \\        <line p0="a1" p1="a2"/>
+        \\        <line p0="a2" p1="a0"/>
+        \\      </wire>
+        \\    </sketch>
+        \\    <brep id="bad_thread">
+        \\      <sweep id="sw_bad" wire="w_wide" cap-ends="true">
+        \\        <trajectory>
+        \\          <rotate axis="0 0 1" angle-expr="ref(turns) * 2 * PI * v"/>
+        \\          <translate x="0" y="0" z-expr="ref(turns) * ref(pitch) * v"/>
+        \\        </trajectory>
+        \\      </sweep>
+        \\    </brep>
+        \\  </body>
+        \\</cdml>
+    ;
+    try testing.expectEqual(@as(u32, 0x0401), cad.cdml_eval_document(overlap_thread_xml.ptr, overlap_thread_xml.len));
+
+    // 5b. True Self-Intersection Rejection: Tight Pipe Bend (R_profile = 8.0 mm > R_bend = 5.0 mm) -> 0x0401
+    const tight_bend_xml =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<cdml version="1.0" units="mm">
+        \\  <body>
+        \\    <curve id="c_arc" param="t" domain="0 1.57079632679">
+        \\      <x>5.0 * cos(t)</x>
+        \\      <y>5.0 * sin(t)</y>
+        \\      <z>0.0</z>
+        \\    </curve>
+        \\    <chart id="c_xy"><vars><vec3 id="p0" x="0" y="0" z="0" fixed="true"/><vec3 id="e1" x="1" y="0" z="0" fixed="true"/><vec3 id="e2" x="0" y="1" z="0" fixed="true"/></vars></chart>
+        \\    <sketch id="sk_big" chart="c_xy">
+        \\      <wire id="w_big" closed="true" role="outer">
+        \\        <param-curve id="c_big" param="t" domain="0 1" u-expr="8.0*cos(2*PI*t)" v-expr="8.0*sin(2*PI*t)"/>
+        \\      </wire>
+        \\    </sketch>
+        \\    <brep id="bad_pipe">
+        \\      <sweep id="sw_bend" wire="w_big" path="c_arc" frame="rmf" cap-ends="true"/>
+        \\    </brep>
+        \\  </body>
+        \\</cdml>
+    ;
+    try testing.expectEqual(@as(u32, 0x0401), cad.cdml_eval_document(tight_bend_xml.ptr, tight_bend_xml.len));
+
+    // 5c. True Self-Intersection Rejection: Meridional Profile Crossing Rotation Axis (r in [-1, 3]) -> 0x0401
+    const axis_cross_xml =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<cdml version="1.0" units="mm">
+        \\  <body>
+        \\    <chart id="chart_xz"><vars><vec3 id="p0" x="0" y="0" z="0" fixed="true"/><vec3 id="e1" x="1" y="0" z="0" fixed="true"/><vec3 id="e2" x="0" y="0" z="1" fixed="true"/></vars></chart>
+        \\    <sketch id="sk_cross" chart="chart_xz">
+        \\      <vars>
+        \\        <point2d id="c0" u="-1.0" v="0.0" fixed="true"/>
+        \\        <point2d id="c1" u="3.0"  v="0.0" fixed="true"/>
+        \\        <point2d id="c2" u="3.0"  v="0.5" fixed="true"/>
+        \\        <point2d id="c3" u="-1.0" v="0.5" fixed="true"/>
+        \\      </vars>
+        \\      <wire id="w_cross" closed="true" role="outer">
+        \\        <line p0="c0" p1="c1"/><line p0="c1" p1="c2"/><line p0="c2" p1="c3"/><line p0="c3" p1="c0"/>
+        \\      </wire>
+        \\    </sketch>
+        \\    <brep id="bad_cross">
+        \\      <sweep id="sw_cross" wire="w_cross" cap-ends="true">
+        \\        <trajectory>
+        \\          <rotate axis="0 0 1" angle-expr="2 * PI * v"/>
+        \\          <translate x="0" y="0" z-expr="2.0 * v"/>
+        \\        </trajectory>
+        \\      </sweep>
+        \\    </brep>
+        \\  </body>
+        \\</cdml>
+    ;
+    try testing.expectEqual(@as(u32, 0x0401), cad.cdml_eval_document(axis_cross_xml.ptr, axis_cross_xml.len));
+}

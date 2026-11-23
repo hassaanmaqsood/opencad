@@ -50,20 +50,25 @@ pub fn getSolidMesh(solid_h: u64) ?*const BRepSolid {
     return null;
 }
 
-/// Adaptively subdivides curved triangles of `solid` in-place when both chord sagitta
-/// `L^2 * k_max / 8 > chord_tol` and vertex normal angle `acos(n0 . n1) > angle_tol`.
+/// Adaptively subdivides curved triangles of `solid` in-place with conformal edge-matched splitting
+/// (zero T-junctions, preserves 2-manifold edge incidence and Euler-Poincaré invariant) when both
+/// chord sagitta `L^2 * k_max / 8 > chord_tol` and vertex normal angle `acos(n0 . n1) > angle_tol`.
 fn refineCurvedMeshToTolerance(solid: *BRepSolid, chord_tol: f32, angle_tol: f32) void {
     const c_tol: f64 = if (chord_tol > 1e-5) @floatCast(chord_tol) else 0.05;
     const a_tol: f64 = if (angle_tol > 1e-5) @floatCast(angle_tol) else 0.1;
 
     // Only subdivide when caller requests strict refinement and mesh fits comfortably in buffer
-    if (c_tol >= 0.02 and a_tol >= 0.03) return;
+    if (c_tol >= 0.0199 and a_tol >= 0.0299) return;
     const orig_tri_count = solid.indices.items.len / 3;
     if (orig_tri_count == 0 or orig_tri_count > 2048) return;
 
     const alloc = solid.allocator;
-    var t: usize = 0;
-    while (t < orig_tri_count) : (t += 1) {
+
+    // Pass 1: identify every undirected edge needing subdivision and create one shared midpoint vertex per edge
+    var split_edges = std.AutoHashMap(u64, u32).init(alloc);
+    defer split_edges.deinit();
+
+    for (0..orig_tri_count) |t| {
         const curv = solid.getCurvature(t);
         if (@abs(curv.k_max) < 1e-5) continue;
 
@@ -77,56 +82,127 @@ fn refineCurvedMeshToTolerance(solid: *BRepSolid, chord_tol: f32, angle_tol: f32
         const n1 = solid.normals.items[idx1];
         const n2 = solid.normals.items[idx2];
 
-        // Find longest edge among (0,1), (1,2), (2,0)
-        const l01 = p1.sub(p0).length();
-        const l12 = p2.sub(p1).length();
-        const l20 = p0.sub(p2).length();
-        const max_l = @max(l01, @max(l12, l20));
+        const edges = [3][2]u32{ .{ idx0, idx1 }, .{ idx1, idx2 }, .{ idx2, idx0 } };
+        const pts = [3][2]Vec3d{ .{ p0, p1 }, .{ p1, p2 }, .{ p2, p0 } };
+        const nrms = [3][2]Vec3d{ .{ n0, n1 }, .{ n1, n2 }, .{ n2, n0 } };
 
-        const sagitta = 0.125 * max_l * max_l * @abs(curv.k_max);
-        const min_dot = @min(n0.dot(n1), @min(n1.dot(n2), n2.dot(n0)));
-        const max_ang = std.math.acos(std.math.clamp(min_dot, -1.0, 1.0));
+        for (0..3) |ei| {
+            const ea = edges[ei][0];
+            const eb = edges[ei][1];
+            const pa = pts[ei][0];
+            const pb = pts[ei][1];
+            const na = nrms[ei][0];
+            const nb = nrms[ei][1];
+            const edge_len = pb.sub(pa).length();
+            const sagitta = 0.125 * edge_len * edge_len * @abs(curv.k_max);
+            const ang = std.math.acos(std.math.clamp(na.dot(nb), -1.0, 1.0));
+            if (sagitta <= c_tol and ang <= a_tol) continue;
 
-        if (sagitta <= c_tol and max_ang <= a_tol) continue;
-
-        // Subdivide along longest edge with Phong/Hermite normal projection onto osculating surface
-        var va = idx0;
-        var vb = idx1;
-        var vc = idx2;
-        if (l12 >= l01 and l12 >= l20) {
-            va = idx1;
-            vb = idx2;
-            vc = idx0;
-        } else if (l20 >= l01 and l20 >= l12) {
-            va = idx2;
-            vb = idx0;
-            vc = idx1;
+            const ekey = surface_brep.makeEdgeKey(ea, eb);
+            if (!split_edges.contains(ekey)) {
+                const n_mid = na.add(nb).normalize();
+                const sag = 0.125 * edge_len * edge_len * curv.k_max;
+                const p_mid = pa.add(pb).scale(0.5).add(n_mid.scale(sag));
+                const vm: u32 = @intCast(solid.vertices.items.len);
+                solid.vertices.append(alloc, p_mid) catch return;
+                solid.normals.append(alloc, n_mid) catch return;
+                split_edges.put(ekey, vm) catch return;
+            }
         }
+    }
 
-        const pa = solid.vertices.items[va];
-        const pb = solid.vertices.items[vb];
-        const na = solid.normals.items[va];
-        const nb = solid.normals.items[vb];
-        const n_mid = na.add(nb).normalize();
-        const edge_len = pb.sub(pa).length();
-        const sag = 0.125 * edge_len * edge_len * curv.k_max;
-        const p_mid = pa.add(pb).scale(0.5).add(n_mid.scale(sag));
+    if (split_edges.count() == 0) return;
 
-        const vm: u32 = @intCast(solid.vertices.items.len);
-        solid.vertices.append(alloc, p_mid) catch break;
-        solid.normals.append(alloc, n_mid) catch break;
+    // Pass 2: conformally retriangulate every triangle using shared edge midpoints (1, 2, or 3 split edges)
+    var new_indices: std.ArrayList(u32) = .empty;
+    var new_tids: std.ArrayList(surface_brep.TopoId) = .empty;
+    var new_curvs: std.ArrayList(surface_brep.FaceCurvature) = .empty;
+    errdefer {
+        new_indices.deinit(alloc);
+        new_tids.deinit(alloc);
+        new_curvs.deinit(alloc);
+    }
 
-        // Replace triangle t with (va, vm, vc) and append (vm, vb, vc)
-        solid.indices.items[t * 3 + 0] = va;
-        solid.indices.items[t * 3 + 1] = vm;
-        solid.indices.items[t * 3 + 2] = vc;
+    const emitTri = struct {
+        fn add(
+            a: std.mem.Allocator,
+            inds: *std.ArrayList(u32),
+            tids: *std.ArrayList(surface_brep.TopoId),
+            curvs: *std.ArrayList(surface_brep.FaceCurvature),
+            v0: u32,
+            v1: u32,
+            v2: u32,
+            tid: surface_brep.TopoId,
+            curv: surface_brep.FaceCurvature,
+        ) !void {
+            try inds.appendSlice(a, &[_]u32{ v0, v1, v2 });
+            try tids.append(a, tid);
+            try curvs.append(a, curv);
+        }
+    }.add;
 
+    for (0..orig_tri_count) |t| {
+        const idx0 = solid.indices.items[t * 3 + 0];
+        const idx1 = solid.indices.items[t * 3 + 1];
+        const idx2 = solid.indices.items[t * 3 + 2];
         const tid = if (t < solid.triangle_to_topo_id.items.len)
             solid.triangle_to_topo_id.items[t]
         else
             surface_brep.makeTopoId(solid.solid_id, surface_brep.SUBSHAPE_FACE, 1);
-        solid.addTriangle(vm, vb, vc, tid, curv) catch break;
+        const curv = solid.getCurvature(t);
+
+        const m01 = split_edges.get(surface_brep.makeEdgeKey(idx0, idx1));
+        const m12 = split_edges.get(surface_brep.makeEdgeKey(idx1, idx2));
+        const m20 = split_edges.get(surface_brep.makeEdgeKey(idx2, idx0));
+
+        const mask: u3 = (@as(u3, if (m01 != null) 1 else 0)) |
+            (@as(u3, if (m12 != null) 2 else 0)) |
+            (@as(u3, if (m20 != null) 4 else 0));
+
+        switch (mask) {
+            0b000 => emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, idx1, idx2, tid, curv) catch return,
+            0b001 => {
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, m01.?, idx2, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m01.?, idx1, idx2, tid, curv) catch return;
+            },
+            0b010 => {
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, idx1, m12.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, m12.?, idx2, tid, curv) catch return;
+            },
+            0b100 => {
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, idx1, m20.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m20.?, idx1, idx2, tid, curv) catch return;
+            },
+            0b011 => {
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m01.?, idx1, m12.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, m01.?, m12.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, m12.?, idx2, tid, curv) catch return;
+            },
+            0b110 => {
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m12.?, idx2, m20.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx1, m12.?, m20.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, idx1, m20.?, tid, curv) catch return;
+            },
+            0b101 => {
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, m01.?, m20.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m01.?, idx1, idx2, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m01.?, idx2, m20.?, tid, curv) catch return;
+            },
+            0b111 => {
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, idx0, m01.?, m20.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m01.?, idx1, m12.?, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m20.?, m12.?, idx2, tid, curv) catch return;
+                emitTri(alloc, &new_indices, &new_tids, &new_curvs, m01.?, m12.?, m20.?, tid, curv) catch return;
+            },
+        }
     }
+
+    solid.indices.deinit(alloc);
+    solid.triangle_to_topo_id.deinit(alloc);
+    solid.triangle_curvatures.deinit(alloc);
+    solid.indices = new_indices;
+    solid.triangle_to_topo_id = new_tids;
+    solid.triangle_curvatures = new_curvs;
 }
 
 /// Tessellates solid directly into Shared Memory Tessellation Buffer at 0x0F0000

@@ -134,60 +134,79 @@ Every CDML document has up to four top-level blocks inside `<cdml version="1.0" 
 </cdml>
 ```
 
-### Example B: Continuous Helical Screw Thread via SE(3) Sweep
+### Example B: Continuous Helical Screw Thread & Lead-In/Lead-Out Run-Out via SE(3) Sweep
 
-Combine `<translate>` and `<rotate>` in `<trajectory>` to sweep a helical profile along `v in [0, 1]`.
+Combine `<translate>`, `<rotate>`, and `<scale>` in `<trajectory>` — or bind a 3D `<curve>` via `path="curve_id" frame="rmf|axis-locked|fixed"` with `<twist>` and `<scale>`. Multi-section sweeps use `<section v="..." wire="..." / sketch="..."/>` with `continuity="G0|G1|G2"` (also shared with `<loft>`). The kernel validates local regularity in the co-moving body frame (`|C'(u) x (Omega_body(v) x C(u) + V_body(v))| > 0`) and global turn-to-turn axial pitch clearance (`delta_z_profile < pitch`), so low-lead-angle ISO threads (`r >> pitch / (2*PI)`) sweep cleanly without false `0x0401` rejections.
 
 ```xml
 <cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
   <defs>
-    <var id="stud_d" value="4.00" min="3.20" max="4.80" unit="mm"/>
-    <var id="stud_l" value="20.00" min="10.0" max="40.0" unit="mm"/>
-    <var id="pitch"  value="0.70" min="0.35" max="1.40" unit="mm"/>
-    <expr id="turns" expr="ref(stud_l) / ref(pitch)"/>
+    <var id="r_root" value="3.32" min="2.0" max="10.0" unit="mm"/>
+    <var id="r_crest" value="4.00" min="2.5" max="12.0" unit="mm"/>
+    <var id="pitch"  value="1.25" min="0.5" max="3.0"  unit="mm"/>
+    <var id="turns"  value="6.0"  min="1.0" max="20.0" unit="1"/>
   </defs>
   <body>
-    <chart id="ch_xy">
+    <!-- Meridional XZ chart for exact ISO 60-degree thread tooth -->
+    <chart id="ch_xz">
       <vars>
         <vec3 id="p0" x="0" y="0" z="0" fixed="true"/>
         <vec3 id="e1" x="1" y="0" z="0" fixed="true"/>
-        <vec3 id="e2" x="0" y="1" z="0" fixed="false"/>
+        <vec3 id="e2" x="0" y="0" z="1" fixed="true"/>
       </vars>
-      <constraints>
-        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
-        <residual id="or" expr="dot(e1, e2)"/>
-        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
-      </constraints>
     </chart>
-    <sketch id="sk_stud" chart="ch_xy" max-iter="100">
+    <sketch id="sk_tooth" chart="ch_xz">
       <vars>
-        <point2d id="v_0" u="2.00" v="0.00"/>
-        <point2d id="v_1" u="1.60" v="1.60"/>
-        <point2d id="v_2" u="-1.60" v="1.60"/>
-        <point2d id="v_3" u="-2.00" v="0.00"/>
-        <point2d id="v_4" u="-1.60" v="-1.60"/>
-        <point2d id="v_5" u="1.60" v="-1.60"/>
+        <point2d id="t0" u="3.32" v="0.00"/>
+        <point2d id="t1" u="4.00" v="0.45"/>
+        <point2d id="t2" u="4.00" v="0.60"/>
+        <point2d id="t3" u="3.32" v="1.05"/>
       </vars>
-      <wire id="w_outer" closed="true" role="outer">
-        <line p0="v_0" p1="v_1"/><line p0="v_1" p1="v_2"/>
-        <line p0="v_2" p1="v_3"/><line p0="v_3" p1="v_4"/>
-        <line p0="v_4" p1="v_5"/><line p0="v_5" p1="v_0"/>
+      <wire id="w_tooth" closed="true" role="outer">
+        <line p0="t0" p1="t1"/><line p0="t1" p1="t2"/>
+        <line p0="t2" p1="t3"/><line p0="t3" p1="t0"/>
       </wire>
     </sketch>
-    <brep id="b_solid">
-      <sweep id="sw_thread" sketch="sk_stud" cap-ends="true">
+    <brep id="b_thread">
+      <sweep id="sw_thread" wire="w_tooth" cap-ends="true">
         <trajectory>
-          <translate x="0" y="0" z-expr="ref(stud_l) * v"/>
+          <translate x="0" y="0" z-expr="ref(pitch) * ref(turns) * v"/>
           <rotate axis="0 0 1" angle-expr="2 * PI * ref(turns) * v"/>
         </trajectory>
       </sweep>
     </brep>
   </body>
   <exports>
-    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
-    <stl source="b_solid" format="binary"/>
+    <tessellate target="b_thread" chord-tol="0.02" angle-tol="0.05"/>
+    <stl target="b_thread" binary="true"/>
   </exports>
 </cdml>
+```
+
+Multi-section morphing sweeps and path sweeps follow the same unified `SE(3)` evaluator:
+
+```xml
+<!-- Morphing sweep with smooth G1 lead-in/lead-out run-out -->
+<sweep id="sw_runout" continuity="G1" cap-ends="true">
+  <section v="0.0" wire="w_flat"/>
+  <section v="0.1" wire="w_tooth"/>
+  <section v="0.9" wire="w_tooth"/>
+  <section v="1.0" wire="w_flat"/>
+  <trajectory>
+    <translate x="0" y="0" z-expr="ref(pitch) * ref(turns) * v"/>
+    <rotate axis="0 0 1" angle-expr="2 * PI * ref(turns) * v"/>
+  </trajectory>
+</sweep>
+
+<!-- 3D path curve sweep with Rotation Minimizing Frame (RMF) or axis-locked frame -->
+<curve id="c_helix" param="t" domain="0 1">
+  <x>4.0 * cos(2 * PI * 4 * t)</x>
+  <y>4.0 * sin(2 * PI * 4 * t)</y>
+  <z>2.5 * 4 * t</z>
+</curve>
+<sweep id="sw_spring" wire="w_wire" path="c_helix" frame="axis-locked" up="0 0 1" cap-ends="true">
+  <scale x="1.0" y="1.0" z="1.0"/>
+</sweep>
 ```
 
 ### Example C: Implicit TPMS Gyroid Field & Rvachev CSG Bridge
@@ -494,7 +513,7 @@ Read JSON error payloads from `get_string_ptr()` / `get_string_len()` whenever `
 | `0x0301` | `ERR_SKETCH_CONFLICT` | Over-constrained or conflicting sketch residuals. Remove redundant equations until `dof == 0`. |
 | `0x0302` | `ERR_SKETCH_DIVERGED` | Newton-Raphson did not converge within `max-iter`. Improve initial `<point2d u="..." v="..."/>` guesses. |
 | `0x0303` | `ERR_WIRE_OPEN_OR_SELF_INT` | Sketch wire is not closed or crosses itself. Verify last segment connects back to the first vertex. |
-| `0x0401` | `ERR_SWEEP_SELF_INTERSECT` | Trajectory curvature radius is smaller than profile radius, causing a fold. Reduce twist/bend curvature. |
+| `0x0401` | `ERR_SWEEP_SELF_INTERSECT` | Local normal velocity reversed (`R_profile >= R_bend`), profile crossed its rotation axis, or multi-turn helical profile axial height `>= pitch`. Reduce bend curvature, keep meridional profile on one side of axis, or keep tooth axial width `< pitch`. |
 | `0x0402` | `ERR_FILLET_RADIUS_COLLAPSE` | Fillet radius consumes an entire adjacent face or edge. Reduce `radius-expr`. |
 | `0x0404` | `ERR_EULER_POINCARE` | Non-closed or non-manifold shell failed Euler-Poincaré invariant check. Check solid manifold closure. |
 | `0x0405` | `ERR_NON_MANIFOLD_EDGE` | Edge shared by `!= 2` triangles after Boolean/extrude. Eliminate coplanar kissing faces (Tip 2). |
@@ -507,8 +526,8 @@ Read JSON error payloads from `get_string_ptr()` / `get_string_len()` whenever `
    Forward-mode dual numbers evaluate `d/dx sqrt(x) = 1 / (2 * sqrt(x))`. If two control points start at identical coordinates (`norm(p1 - p0) == 0`), the derivative divides by zero. Smooth norms with `sqrt(dx^2 + dy^2 + 1e-12)` or use distinct initial `<point2d>` seeds.
 2. **Coplanar CSG Boolean Faces (`0x0405` / Non-Manifold Edges):**
    Avoid coincident cutter faces. Extend subtractive cutters `0.5 mm` past stock boundaries and overlap additive bosses `>= 0.05 mm` into parent bodies.
-3. **Helical Sweep Aliasing on Threads:**
-   A thread with many turns needs dense sweep stations along `v` so chords do not bridge adjacent pitches. Keep `stations >= 32 * turns` (kernel scales up to `1025` stations automatically). Note that standalone `cad_op_thread` in `c_abi.zig` is currently a stub (`CAD_STATUS_ERROR_NOT_IMPLEMENTED`); model threads in CDML with `<sweep>` or revolved ridges.
+3. **Helical Sweep Aliasing & Pitch Clearance on Threads:**
+   The kernel automatically chooses adaptive angular `v`-subdivision (`<= pi/12` = `24` segments per revolution) and evaluates self-intersection in the co-moving body frame (`|C'(u) x (Omega_body x C(u) + V_body)|`), plus a global axial clearance check (`delta_z_profile < pitch`) for multi-turn sweeps (`|delta_theta| > 2*PI`). Ensure meridional tooth axial height stays strictly below `pitch` (`<= 0.85 * pitch` for ISO 60-degree crests). Note that standalone `cad_op_thread` in `c_abi.zig` is currently a stub (`CAD_STATUS_ERROR_NOT_IMPLEMENTED`); model threads in CDML with `<sweep>`.
 4. **Browser `SharedArrayBuffer` / Worker Startup Errors:**
    Static hosts without COOP/COEP headers (`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`) block `SharedArrayBuffer`. Ensure `coi-serviceworker.js` is served from the same origin or configure your HTTP server to send both isolation headers.
 5. **Truncated Meshes Above `21,842` Triangles (`> 1 MiB`):**

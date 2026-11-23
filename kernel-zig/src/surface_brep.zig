@@ -225,12 +225,123 @@ pub const TrajectoryStep = struct {
     translation: Vec3d,
     axis: Vec3d = Vec3d.init(0.0, 0.0, 1.0),
     angle_rad: f64 = 0.0,
+    /// When true, `frame_e1`, `frame_e2`, `frame_e3` define an explicit right-handed
+    /// orthonormal basis at this station (used by path-curve RMF / axis-locked / fixed sweeps).
+    use_explicit_frame: bool = false,
+    frame_e1: Vec3d = Vec3d.init(1.0, 0.0, 0.0),
+    frame_e2: Vec3d = Vec3d.init(0.0, 1.0, 0.0),
+    frame_e3: Vec3d = Vec3d.init(0.0, 0.0, 1.0),
+    /// Optional anisotropic scale applied to the profile in its local body frame (default 1,1,1).
+    scale: Vec3d = Vec3d.init(1.0, 1.0, 1.0),
+    /// Optional exact analytical body-frame angular velocity Omega(v) = (R^T R')^v and
+    /// linear velocity V(v) = R^T d'(v) evaluated via dual numbers.
+    omega_body: ?Vec3d = null,
+    vel_body: ?Vec3d = null,
+};
+
+pub const PathFrameMode = enum {
+    rmf,
+    axis_locked,
+    fixed,
+};
+
+pub const SectionContinuity = enum {
+    G0,
+    G1,
+    G2,
+};
+
+pub const MorphSection = struct {
+    v_param: f64,
+    frame_p0: Vec3d,
+    frame_e1: Vec3d,
+    frame_e2: Vec3d,
+    outer: ProfileLoop2D,
+    holes: []const ProfileLoop2D = &[_]ProfileLoop2D{},
+};
+
+pub const PathSample3D = struct {
+    v: f64,
+    point: Vec3d,
+    tangent: Vec3d,
+    twist_rad: f64 = 0.0,
+    scale: Vec3d = Vec3d.init(1.0, 1.0, 1.0),
+};
+
+/// 3x3 column-major rotation matrix R = [c0, c1, c2] in SO(3)
+pub const Mat3d = struct {
+    c0: Vec3d,
+    c1: Vec3d,
+    c2: Vec3d,
+
+    pub fn identity() Mat3d {
+        return .{
+            .c0 = Vec3d.init(1.0, 0.0, 0.0),
+            .c1 = Vec3d.init(0.0, 1.0, 0.0),
+            .c2 = Vec3d.init(0.0, 0.0, 1.0),
+        };
+    }
+
+    pub fn fromAxisAngle(axis: Vec3d, angle_rad: f64) Mat3d {
+        if (@abs(angle_rad) < 1e-15 or axis.length() < 1e-15) return identity();
+        return .{
+            .c0 = rotateRodrigues(Vec3d.init(1.0, 0.0, 0.0), axis, angle_rad),
+            .c1 = rotateRodrigues(Vec3d.init(0.0, 1.0, 0.0), axis, angle_rad),
+            .c2 = rotateRodrigues(Vec3d.init(0.0, 0.0, 1.0), axis, angle_rad),
+        };
+    }
+
+    pub fn mulVec(self: Mat3d, v: Vec3d) Vec3d {
+        return self.c0.scale(v.x).add(self.c1.scale(v.y)).add(self.c2.scale(v.z));
+    }
+
+    pub fn transposeMulVec(self: Mat3d, v: Vec3d) Vec3d {
+        return Vec3d.init(self.c0.dot(v), self.c1.dot(v), self.c2.dot(v));
+    }
+
+    pub fn transposeMul(self: Mat3d, other: Mat3d) Mat3d {
+        return .{
+            .c0 = self.transposeMulVec(other.c0),
+            .c1 = self.transposeMulVec(other.c1),
+            .c2 = self.transposeMulVec(other.c2),
+        };
+    }
+
+    /// Exact matrix logarithm log_{SO(3)}(R) returning the rotation vector phi * axis_hat in so(3).
+    pub fn logSO3(self: Mat3d) Vec3d {
+        const trace = self.c0.x + self.c1.y + self.c2.z;
+        const cos_phi = std.math.clamp(0.5 * (trace - 1.0), -1.0, 1.0);
+        const phi = std.math.acos(cos_phi);
+        // Skew part: (R - R^T)^v = (R_21 - R_12, R_02 - R_20, R_10 - R_01)
+        const wx = self.c1.z - self.c2.y;
+        const wy = self.c2.x - self.c0.z;
+        const wz = self.c0.y - self.c1.x;
+        const w = Vec3d.init(wx, wy, wz);
+        if (phi < 1e-6) {
+            return w.scale(0.5 * (1.0 + (phi * phi) / 6.0));
+        }
+        const sin_phi = @sin(phi);
+        if (@abs(sin_phi) < 1e-10) {
+            // Near pi: extract axis from largest diagonal entry of (R + I)
+            const dx = @max(0.0, 0.5 * (self.c0.x + 1.0));
+            const dy = @max(0.0, 0.5 * (self.c1.y + 1.0));
+            const dz = @max(0.0, 0.5 * (self.c2.z + 1.0));
+            var ax = Vec3d.init(@sqrt(dx), @sqrt(dy), @sqrt(dz));
+            if (self.c0.y + self.c1.x < 0.0) ax.y = -ax.y;
+            if (self.c0.z + self.c2.x < 0.0) ax.z = -ax.z;
+            const alen = ax.length();
+            return if (alen > 1e-12) ax.scale(phi / alen) else Vec3d.zero();
+        }
+        return w.scale(phi / (2.0 * sin_phi));
+    }
 };
 
 /// Rodrigues / Lie algebra exponential map rotation R(v) = exp(theta * [omega]_x)
 pub fn rotateRodrigues(pt: Vec3d, axis: Vec3d, angle_rad: f64) Vec3d {
     if (@abs(angle_rad) < 1e-15) return pt;
-    const k = axis.normalize();
+    const alen = axis.length();
+    if (alen < 1e-15) return pt;
+    const k = axis.scale(1.0 / alen);
     const cos_a = @cos(angle_rad);
     const sin_a = @sin(angle_rad);
     const k_cross_p = k.cross(pt);
@@ -246,9 +357,162 @@ pub fn evalTrajectoryPoint(
     frame_e2: Vec3d,
     step: TrajectoryStep,
 ) Vec3d {
-    const c_u = frame_p0.add(frame_e1.scale(local_u)).add(frame_e2.scale(local_v));
-    const rotated = rotateRodrigues(c_u, step.axis, step.angle_rad);
+    if (step.use_explicit_frame) {
+        return step.translation
+            .add(step.frame_e1.scale(local_u * step.scale.x))
+            .add(step.frame_e2.scale(local_v * step.scale.y));
+    }
+    const c_u = frame_p0
+        .add(frame_e1.scale(local_u * step.scale.x))
+        .add(frame_e2.scale(local_v * step.scale.y));
+    const scaled = if (step.scale.z != 1.0)
+        Vec3d.init(c_u.x, c_u.y, c_u.z * step.scale.z)
+    else
+        c_u;
+    const rotated = rotateRodrigues(scaled, step.axis, step.angle_rad);
     return rotated.add(step.translation);
+}
+
+/// Builds orthonormal TrajectoryStep frames along a 3D path curve using
+/// RMF (Bishop double-reflection), axis-locked, or fixed frame transport.
+pub fn buildPathTrajectorySteps(
+    allocator: std.mem.Allocator,
+    samples: []const PathSample3D,
+    mode: PathFrameMode,
+    up_hint: Vec3d,
+    chart_e1: Vec3d,
+    chart_e2: Vec3d,
+) ![]TrajectoryStep {
+    if (samples.len < 2) return error.SweepSelfIntersect;
+    const K = samples.len;
+    const steps = try allocator.alloc(TrajectoryStep, K);
+    errdefer allocator.free(steps);
+
+    const up_unit = if (up_hint.length() > 1e-12) up_hint.normalize() else Vec3d.init(0.0, 0.0, 1.0);
+    const p_start = samples[0].point;
+
+    if (mode == .fixed) {
+        const e1_u = chart_e1.normalize();
+        const e2_u = chart_e2.normalize();
+        const e3_u = e1_u.cross(e2_u).normalize();
+        for (samples, 0..) |smp, k| {
+            steps[k] = .{
+                .v = smp.v,
+                .translation = smp.point.sub(p_start),
+                .axis = e3_u,
+                .angle_rad = smp.twist_rad,
+                .use_explicit_frame = false,
+                .scale = smp.scale,
+            };
+        }
+        return steps;
+    }
+
+    // Compute unit tangents along the path
+    var tangents = try allocator.alloc(Vec3d, K);
+    defer allocator.free(tangents);
+    for (samples, 0..) |smp, k| {
+        const tlen = smp.tangent.length();
+        if (tlen > 1e-12) {
+            tangents[k] = smp.tangent.scale(1.0 / tlen);
+        } else if (k + 1 < K) {
+            const d = samples[k + 1].point.sub(smp.point);
+            tangents[k] = if (d.length() > 1e-12) d.normalize() else Vec3d.init(0.0, 0.0, 1.0);
+        } else {
+            const d = smp.point.sub(samples[k - 1].point);
+            tangents[k] = if (d.length() > 1e-12) d.normalize() else tangents[k - 1];
+        }
+    }
+
+    // Initialize frame at k = 0
+    const t0 = tangents[0];
+    var e1_prev: Vec3d = undefined;
+    var e2_prev: Vec3d = undefined;
+
+    if (mode == .axis_locked) {
+        const proj_up = up_unit.sub(t0.scale(up_unit.dot(t0)));
+        if (proj_up.length() > 1e-7) {
+            e2_prev = proj_up.normalize();
+            e1_prev = e2_prev.cross(t0).normalize();
+        } else {
+            const arb = if (@abs(t0.z) < 0.9) Vec3d.init(0.0, 0.0, 1.0) else Vec3d.init(1.0, 0.0, 0.0);
+            e1_prev = arb.cross(t0).normalize();
+            e2_prev = t0.cross(e1_prev).normalize();
+        }
+    } else {
+        // RMF initial frame: project chart_e1 onto normal plane orthogonal to t0
+        const proj_e1 = chart_e1.sub(t0.scale(chart_e1.dot(t0)));
+        if (proj_e1.length() > 1e-7) {
+            e1_prev = proj_e1.normalize();
+        } else {
+            const arb = if (@abs(t0.z) < 0.9) Vec3d.init(0.0, 0.0, 1.0) else Vec3d.init(1.0, 0.0, 0.0);
+            e1_prev = arb.cross(t0).normalize();
+        }
+        e2_prev = t0.cross(e1_prev).normalize();
+    }
+
+    for (0..K) |k| {
+        const tk = tangents[k];
+        var e1_k = e1_prev;
+        var e2_k = e2_prev;
+
+        if (k > 0) {
+            if (mode == .axis_locked) {
+                const proj_up = up_unit.sub(tk.scale(up_unit.dot(tk)));
+                if (proj_up.length() > 1e-7) {
+                    e2_k = proj_up.normalize();
+                    e1_k = e2_k.cross(tk).normalize();
+                } else {
+                    // Tangent aligned with up axis: parallel-transport via double reflection
+                    const v1 = samples[k].point.sub(samples[k - 1].point);
+                    const c1 = v1.dot(v1);
+                    if (c1 > 1e-14) {
+                        const r_l = e1_prev.sub(v1.scale(2.0 * v1.dot(e1_prev) / c1));
+                        const t_l = tangents[k - 1].sub(v1.scale(2.0 * v1.dot(tangents[k - 1]) / c1));
+                        const v2 = tk.sub(t_l);
+                        const c2 = v2.dot(v2);
+                        e1_k = (if (c2 > 1e-14) r_l.sub(v2.scale(2.0 * v2.dot(r_l) / c2)) else r_l).normalize();
+                        e2_k = tk.cross(e1_k).normalize();
+                    }
+                }
+            } else {
+                // Wang et al. (2008) Double Reflection Rotation-Minimizing Frame (Bishop Frame)
+                const v1 = samples[k].point.sub(samples[k - 1].point);
+                const c1 = v1.dot(v1);
+                if (c1 > 1e-14) {
+                    const r_l = e1_prev.sub(v1.scale(2.0 * v1.dot(e1_prev) / c1));
+                    const t_l = tangents[k - 1].sub(v1.scale(2.0 * v1.dot(tangents[k - 1]) / c1));
+                    const v2 = tk.sub(t_l);
+                    const c2 = v2.dot(v2);
+                    e1_k = (if (c2 > 1e-14) r_l.sub(v2.scale(2.0 * v2.dot(r_l) / c2)) else r_l).normalize();
+                    e2_k = tk.cross(e1_k).normalize();
+                }
+            }
+        }
+
+        e1_prev = e1_k;
+        e2_prev = e2_k;
+
+        // Apply optional twist around tangent tk
+        var final_e1 = e1_k;
+        var final_e2 = e2_k;
+        if (@abs(samples[k].twist_rad) > 1e-15) {
+            final_e1 = rotateRodrigues(e1_k, tk, samples[k].twist_rad).normalize();
+            final_e2 = tk.cross(final_e1).normalize();
+        }
+
+        steps[k] = .{
+            .v = samples[k].v,
+            .translation = samples[k].point,
+            .use_explicit_frame = true,
+            .frame_e1 = final_e1,
+            .frame_e2 = final_e2,
+            .frame_e3 = tk,
+            .scale = samples[k].scale,
+        };
+    }
+
+    return steps;
 }
 
 // ============================================================================
@@ -467,6 +731,958 @@ pub fn triangulatePolygonWithHoles2D(
 }
 
 // ============================================================================
+// Unified SE(3)-Transported Bivariate Morphing Sweep / Loft Evaluator (§7.1–§7.2)
+// S(u, v) = R(v) * M(v) * (sum_j N_j(v) C_j(u)) + d(v)
+// ============================================================================
+
+const IntervalVec3 = struct {
+    x: autodiff.Interval,
+    y: autodiff.Interval,
+    z: autodiff.Interval,
+
+    fn point(v: Vec3d) IntervalVec3 {
+        return .{
+            .x = autodiff.Interval.point(v.x),
+            .y = autodiff.Interval.point(v.y),
+            .z = autodiff.Interval.point(v.z),
+        };
+    }
+
+    fn fromPair(a: Vec3d, b: Vec3d) IntervalVec3 {
+        return .{
+            .x = autodiff.Interval.init(a.x, b.x),
+            .y = autodiff.Interval.init(a.y, b.y),
+            .z = autodiff.Interval.init(a.z, b.z),
+        };
+    }
+
+    fn fromQuad(a: Vec3d, b: Vec3d, c: Vec3d, d: Vec3d) IntervalVec3 {
+        return .{
+            .x = autodiff.Interval.init(@min(@min(a.x, b.x), @min(c.x, d.x)), @max(@max(a.x, b.x), @max(c.x, d.x))),
+            .y = autodiff.Interval.init(@min(@min(a.y, b.y), @min(c.y, d.y)), @max(@max(a.y, b.y), @max(c.y, d.y))),
+            .z = autodiff.Interval.init(@min(@min(a.z, b.z), @min(c.z, d.z)), @max(@max(a.z, b.z), @max(c.z, d.z))),
+        };
+    }
+
+    fn add(a: IntervalVec3, b: IntervalVec3) IntervalVec3 {
+        return .{ .x = a.x.add(b.x), .y = a.y.add(b.y), .z = a.z.add(b.z) };
+    }
+
+    fn cross(a: IntervalVec3, b: IntervalVec3) IntervalVec3 {
+        return .{
+            .x = a.y.mul(b.z).sub(a.z.mul(b.y)),
+            .y = a.z.mul(b.x).sub(a.x.mul(b.z)),
+            .z = a.x.mul(b.y).sub(a.y.mul(b.x)),
+        };
+    }
+
+    fn normSq(a: IntervalVec3) autodiff.Interval {
+        return a.x.sqr().add(a.y.sqr()).add(a.z.sqr());
+    }
+};
+
+fn stepRotationMatrix(step: TrajectoryStep) Mat3d {
+    if (step.use_explicit_frame) {
+        return .{
+            .c0 = step.frame_e1,
+            .c1 = step.frame_e2,
+            .c2 = step.frame_e3,
+        };
+    }
+    return Mat3d.fromAxisAngle(step.axis, step.angle_rad);
+}
+
+fn resampleLoopPoints(
+    allocator: std.mem.Allocator,
+    src: []const ProfileEdgeSample2D,
+    target_m: usize,
+) ![]ProfileEdgeSample2D {
+    const dst = try allocator.alloc(ProfileEdgeSample2D, target_m);
+    if (src.len == target_m) {
+        @memcpy(dst, src);
+        return dst;
+    }
+    // Arc-length parameterization for smooth correspondence across dissimilar sections
+    var cum = try allocator.alloc(f64, src.len + 1);
+    defer allocator.free(cum);
+    cum[0] = 0.0;
+    for (0..src.len) |i| {
+        const p0 = src[i];
+        const p1 = src[(i + 1) % src.len];
+        const seg = @sqrt((p1.u - p0.u) * (p1.u - p0.u) + (p1.v - p0.v) * (p1.v - p0.v));
+        cum[i + 1] = cum[i] + seg;
+    }
+    const total_len = cum[src.len];
+    if (total_len < 1e-12) {
+        for (0..target_m) |j| {
+            dst[j] = src[j % src.len];
+        }
+        return dst;
+    }
+    for (0..target_m) |j| {
+        const s = (@as(f64, @floatFromInt(j)) / @as(f64, @floatFromInt(target_m))) * total_len;
+        var seg_idx: usize = 0;
+        while (seg_idx + 1 < src.len and cum[seg_idx + 1] <= s) : (seg_idx += 1) {}
+        const seg_len = cum[seg_idx + 1] - cum[seg_idx];
+        const alpha = if (seg_len > 1e-15) std.math.clamp((s - cum[seg_idx]) / seg_len, 0.0, 1.0) else 0.0;
+        const p0 = src[seg_idx];
+        const p1 = src[(seg_idx + 1) % src.len];
+        dst[j] = .{
+            .u = p0.u * (1.0 - alpha) + p1.u * alpha,
+            .v = p0.v * (1.0 - alpha) + p1.v * alpha,
+            .curve_hash = p0.curve_hash,
+            .curvature_2d = p0.curvature_2d * (1.0 - alpha) + p1.curvature_2d * alpha,
+        };
+    }
+    return dst;
+}
+
+/// Evaluates Fritsch-Carlson monotone cubic Hermite (G1), monotone quintic (G2),
+/// or piecewise linear (G0) interpolation across explicit section breakpoints v_0 <= ... <= v_{K-1}.
+fn evalSectionBlendScalar(
+    vals: []const f64,
+    v_knots: []const f64,
+    v: f64,
+    continuity: SectionContinuity,
+) struct { val: f64, d1: f64, d2: f64 } {
+    const n = vals.len;
+    if (n == 1) return .{ .val = vals[0], .d1 = 0.0, .d2 = 0.0 };
+
+    // Locate segment [seg, seg + 1] containing v
+    var seg: usize = 0;
+    while (seg + 2 < n and v > v_knots[seg + 1]) : (seg += 1) {}
+
+    const v0 = v_knots[seg];
+    const v1 = v_knots[seg + 1];
+    const h = v1 - v0;
+    if (h < 1e-15) return .{ .val = vals[seg], .d1 = 0.0, .d2 = 0.0 };
+    const t = std.math.clamp((v - v0) / h, 0.0, 1.0);
+    const y0 = vals[seg];
+    const y1 = vals[seg + 1];
+    const dy = y1 - y0;
+
+    if (continuity == .G0) {
+        return .{ .val = y0 + dy * t, .d1 = dy / h, .d2 = 0.0 };
+    }
+
+    // Compute monotone Fritsch-Carlson endpoint slopes m0, m1
+    const slopeAt = struct {
+        fn get(ys: []const f64, vs: []const f64, idx: usize) f64 {
+            const len = ys.len;
+            if (idx == 0) {
+                const h0 = vs[1] - vs[0];
+                return if (h0 > 1e-15) (ys[1] - ys[0]) / h0 else 0.0;
+            }
+            if (idx + 1 == len) {
+                const hl = vs[len - 1] - vs[len - 2];
+                return if (hl > 1e-15) (ys[len - 1] - ys[len - 2]) / hl else 0.0;
+            }
+            const h_prev = vs[idx] - vs[idx - 1];
+            const h_next = vs[idx + 1] - vs[idx];
+            const d_prev = if (h_prev > 1e-15) (ys[idx] - ys[idx - 1]) / h_prev else 0.0;
+            const d_next = if (h_next > 1e-15) (ys[idx + 1] - ys[idx]) / h_next else 0.0;
+            // Flat plateau or local extremum -> zero slope prevents overshoot/ringing
+            if (d_prev * d_next <= 1e-18) return 0.0;
+            // Weighted harmonic mean (Fritsch-Butland)
+            const w1 = 2.0 * h_next + h_prev;
+            const w2 = h_next + 2.0 * h_prev;
+            return (w1 + w2) / (w1 / d_prev + w2 / d_next);
+        }
+    }.get;
+
+    if (continuity == .G2) {
+        // Quintic smoothstep C2 blend (zero 1st and 2nd derivatives at endpoints -> C2 plateau transitions)
+        const t2 = t * t;
+        const t3 = t2 * t;
+        const s = t3 * (10.0 + t * (-15.0 + 6.0 * t));
+        const ds_dt = 30.0 * t2 * (1.0 - t) * (1.0 - t);
+        const d2s_dt2 = 60.0 * t * (1.0 - t) * (1.0 - 2.0 * t);
+        return .{
+            .val = y0 + dy * s,
+            .d1 = dy * ds_dt / h,
+            .d2 = dy * d2s_dt2 / (h * h),
+        };
+    }
+
+    // G1: Monotone Cubic Hermite
+    const m0 = slopeAt(vals, v_knots, seg);
+    const m1 = slopeAt(vals, v_knots, seg + 1);
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+    const h10 = t3 - 2.0 * t2 + t;
+    const h01 = -2.0 * t3 + 3.0 * t2;
+    const h11 = t3 - t2;
+
+    const dh00 = 6.0 * t2 - 6.0 * t;
+    const dh10 = 3.0 * t2 - 4.0 * t + 1.0;
+    const dh01 = -6.0 * t2 + 6.0 * t;
+    const dh11 = 3.0 * t2 - 2.0 * t;
+
+    const d2h00 = 12.0 * t - 6.0;
+    const d2h10 = 6.0 * t - 4.0;
+    const d2h01 = -12.0 * t + 6.0;
+    const d2h11 = 6.0 * t - 2.0;
+
+    return .{
+        .val = h00 * y0 + h10 * h * m0 + h01 * y1 + h11 * h * m1,
+        .d1 = (dh00 * y0 + dh10 * h * m0 + dh01 * y1 + dh11 * h * m1) / h,
+        .d2 = (d2h00 * y0 + d2h10 * h * m0 + d2h01 * y1 + d2h11 * h * m1) / (h * h),
+    };
+}
+
+/// Unified SE(3)-transported bivariate morphing sweep / loft engine.
+/// Evaluates S(u, v) = R(v) * M(v) * C(u, v) + d(v) for K_sec >= 1 sections along K_traj >= 2 stations.
+/// Validates local regularity in the co-moving body frame (eliminating sin/cos interval wrapping),
+/// checks cross-section normal velocity sign consistency (catching tight bends and axis crossings),
+/// and enforces global axial pitch clearance for periodic multi-turn rotations (|Delta theta| > 2*pi).
+pub fn sweepMorphingSE3(
+    allocator: std.mem.Allocator,
+    feature_hash: u64,
+    sweep_branch_hash: u64,
+    sections: []const MorphSection,
+    traj_steps: []const TrajectoryStep,
+    continuity: SectionContinuity,
+    use_bspline_basis: bool,
+    bspline_degree_v: u32,
+    cap_ends: bool,
+) !u64 {
+    last_brep_status = 0;
+    if (sections.len == 0 or traj_steps.len < 2) {
+        last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+        return error.SweepSelfIntersect;
+    }
+
+    const K_sec = sections.len;
+    const K = traj_steps.len;
+    const num_holes = sections[0].holes.len;
+
+    // Validate minimum loop size across sections
+    for (sections) |sec| {
+        if (sec.outer.points.len < 3) {
+            last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+            return error.SweepSelfIntersect;
+        }
+    }
+
+    // Harmonize outer loop vertex count M across all K_sec sections
+    var M_outer: usize = sections[0].outer.points.len;
+    var need_resample_outer = false;
+    for (1..K_sec) |s_idx| {
+        if (sections[s_idx].outer.points.len != M_outer) {
+            need_resample_outer = true;
+            if (sections[s_idx].outer.points.len > M_outer) M_outer = sections[s_idx].outer.points.len;
+        }
+    }
+    if (need_resample_outer and M_outer < 64) M_outer = 64;
+
+    // Harmonize hole loop counts (only keep holes present across all sections)
+    var common_holes: usize = num_holes;
+    for (1..K_sec) |s_idx| {
+        if (sections[s_idx].holes.len < common_holes) common_holes = sections[s_idx].holes.len;
+    }
+
+    const total_loops = 1 + common_holes;
+    var loop_M = try allocator.alloc(usize, total_loops);
+    defer allocator.free(loop_M);
+    loop_M[0] = M_outer;
+    for (0..common_holes) |h_idx| {
+        var mh: usize = sections[0].holes[h_idx].points.len;
+        var resamp = false;
+        for (1..K_sec) |s_idx| {
+            const l = sections[s_idx].holes[h_idx].points.len;
+            if (l != mh) {
+                resamp = true;
+                if (l > mh) mh = l;
+            }
+        }
+        if (resamp and mh < 32) mh = 32;
+        loop_M[1 + h_idx] = mh;
+    }
+
+    // Allocate resampled 2D loops: [total_loops][K_sec][]ProfileEdgeSample2D
+    var resampled = try allocator.alloc([]ProfileEdgeSample2D, total_loops * K_sec);
+    var resampled_init: usize = 0;
+    defer {
+        for (0..resampled_init) |idx| allocator.free(resampled[idx]);
+        allocator.free(resampled);
+    }
+
+    for (0..total_loops) |l_idx| {
+        const m_target = loop_M[l_idx];
+        for (0..K_sec) |s_idx| {
+            const raw_pts = if (l_idx == 0) sections[s_idx].outer.points else sections[s_idx].holes[l_idx - 1].points;
+            resampled[l_idx * K_sec + s_idx] = try resampleLoopPoints(allocator, raw_pts, m_target);
+            resampled_init += 1;
+        }
+    }
+
+    // Prepare section breakpoints v_knots (and clamped B-spline knot vector when use_bspline_basis == true)
+    var sec_v = try allocator.alloc(f64, K_sec);
+    defer allocator.free(sec_v);
+    for (0..K_sec) |s_idx| {
+        sec_v[s_idx] = sections[s_idx].v_param;
+    }
+
+    const p_v: u32 = if (K_sec <= 1)
+        0
+    else if (use_bspline_basis)
+        @min(@max(bspline_degree_v, 1), @as(u32, @intCast(K_sec - 1)))
+    else switch (continuity) {
+        .G0 => 1,
+        .G1 => @min(@as(u32, 2), @as(u32, @intCast(K_sec - 1))),
+        .G2 => @min(@as(u32, 3), @as(u32, @intCast(K_sec - 1))),
+    };
+
+    var bspline_knots: []f64 = &[_]f64{};
+    if (use_bspline_basis and K_sec >= 2) {
+        const knot_count = K_sec + @as(usize, p_v) + 1;
+        bspline_knots = try allocator.alloc(f64, knot_count);
+        for (0..@as(usize, p_v) + 1) |i| {
+            bspline_knots[i] = 0.0;
+            bspline_knots[knot_count - 1 - i] = 1.0;
+        }
+        const interior_spans = K_sec - @as(usize, p_v);
+        if (interior_spans > 1) {
+            for (1..interior_spans) |j| {
+                bspline_knots[@as(usize, p_v) + j] = @as(f64, @floatFromInt(j)) / @as(f64, @floatFromInt(interior_spans));
+            }
+        }
+    }
+    defer if (bspline_knots.len > 0) allocator.free(bspline_knots);
+
+    const solid_id = next_solid_id;
+    next_solid_id += 1;
+
+    var solid = BRepSolid.init(allocator, solid_id);
+    errdefer solid.deinit();
+    solid.feature_hash = feature_hash;
+    solid.genus = common_holes;
+
+    // Precompute rotation matrices R_k for all K stations
+    var R_mats = try allocator.alloc(Mat3d, K);
+    defer allocator.free(R_mats);
+    for (0..K) |k| {
+        R_mats[k] = stepRotationMatrix(traj_steps[k]);
+    }
+
+    // Track per-loop vertex offsets & body-frame positions/derivatives
+    var loop_offsets = try allocator.alloc(u32, total_loops * K);
+    defer allocator.free(loop_offsets);
+
+    // Scratch buffers for section scalar blending
+    var tmp_u = try allocator.alloc(f64, K_sec);
+    defer allocator.free(tmp_u);
+    var tmp_v = try allocator.alloc(f64, K_sec);
+    defer allocator.free(tmp_v);
+    var tmp_cx = try allocator.alloc(f64, K_sec);
+    defer allocator.free(tmp_cx);
+    var tmp_cy = try allocator.alloc(f64, K_sec);
+    defer allocator.free(tmp_cy);
+    var tmp_cz = try allocator.alloc(f64, K_sec);
+    defer allocator.free(tmp_cz);
+
+    var total_loop_verts_per_station: usize = 0;
+    for (0..total_loops) |l_idx| total_loop_verts_per_station += loop_M[l_idx];
+
+    var has_varying_scale = false;
+    for (1..K) |k| {
+        if (@abs(traj_steps[k].scale.x - traj_steps[0].scale.x) > 1e-12 or
+            @abs(traj_steps[k].scale.y - traj_steps[0].scale.y) > 1e-12 or
+            @abs(traj_steps[k].scale.z - traj_steps[0].scale.z) > 1e-12)
+        {
+            has_varying_scale = true;
+            break;
+        }
+    }
+    const is_rigid_section = (K_sec == 1 and !has_varying_scale);
+    const body_k_stride: usize = if (is_rigid_section) 1 else K;
+
+    var body_pos = try allocator.alloc(Vec3d, total_loop_verts_per_station * body_k_stride);
+    defer allocator.free(body_pos);
+    var body_dv: []Vec3d = &[_]Vec3d{};
+    var body_d2v: []Vec3d = &[_]Vec3d{};
+    if (!is_rigid_section) {
+        body_dv = try allocator.alloc(Vec3d, total_loop_verts_per_station * K);
+        errdefer allocator.free(body_dv);
+        body_d2v = try allocator.alloc(Vec3d, total_loop_verts_per_station * K);
+    }
+    defer {
+        if (body_dv.len > 0) allocator.free(body_dv);
+        if (body_d2v.len > 0) allocator.free(body_d2v);
+    }
+
+    var loop_v_base = try allocator.alloc(usize, total_loops);
+    defer allocator.free(loop_v_base);
+    {
+        var acc: usize = 0;
+        for (0..total_loops) |l_idx| {
+            loop_v_base[l_idx] = acc;
+            acc += loop_M[l_idx];
+        }
+    }
+
+    // Pre-size solid buffers precisely to avoid 2x ArrayList growth overhead in WASM linear memory
+    const expected_verts = total_loop_verts_per_station * K;
+    const expected_tris = total_loop_verts_per_station * (K - 1) * 2 + (if (cap_ends) 2 * total_loop_verts_per_station else 0);
+    try solid.vertices.ensureTotalCapacityPrecise(allocator, expected_verts);
+    try solid.normals.ensureTotalCapacityPrecise(allocator, expected_verts);
+    try solid.indices.ensureTotalCapacityPrecise(allocator, expected_tris * 3);
+    try solid.triangle_to_topo_id.ensureTotalCapacityPrecise(allocator, expected_tris);
+    try solid.triangle_curvatures.ensureTotalCapacityPrecise(allocator, expected_tris);
+
+    const base_chart_normal = sections[0].frame_e1.cross(sections[0].frame_e2).normalize();
+
+    // 1. Evaluate body-frame C(u_i, v_k), C_v(u_i, v_k), C_vv(u_i, v_k) and world-frame S(u_i, v_k)
+    for (0..K) |k| {
+        const step = traj_steps[k];
+        const v_param = step.v;
+        const R_k = R_mats[k];
+
+        var b_span: usize = 0;
+        var N0: [16]f64 = undefined;
+        var N1: [16]f64 = undefined;
+        var N2: [16]f64 = undefined;
+        if (use_bspline_basis and K_sec >= 2) {
+            b_span = nurbs.findSpan(@intCast(K_sec - 1), p_v, v_param, bspline_knots);
+            nurbs.evalBasisAndDerivs(b_span, v_param, p_v, bspline_knots, N0[0 .. p_v + 1], N1[0 .. p_v + 1], N2[0 .. p_v + 1]);
+        }
+
+        const station_nrm = if (step.use_explicit_frame)
+            step.frame_e3
+        else
+            R_k.mulVec(base_chart_normal).normalize();
+
+        for (0..total_loops) |l_idx| {
+            const M = loop_M[l_idx];
+            loop_offsets[l_idx * K + k] = @intCast(solid.vertices.items.len);
+
+            for (0..M) |i| {
+                var c_body: Vec3d = undefined;
+                var c_dv: Vec3d = Vec3d.zero();
+                var c_d2v: Vec3d = Vec3d.zero();
+
+                if (is_rigid_section and k > 0) {
+                    c_body = body_pos[loop_v_base[l_idx] + i];
+                } else if (step.use_explicit_frame) {
+                    // Explicit moving frame: blend local (u, v) coordinates across sections
+                    if (K_sec == 1) {
+                        const pt = resampled[l_idx * K_sec + 0][i];
+                        c_body = Vec3d.init(pt.u * step.scale.x, pt.v * step.scale.y, 0.0);
+                    } else if (use_bspline_basis) {
+                        var u_acc: f64 = 0.0;
+                        var v_acc: f64 = 0.0;
+                        var du_acc: f64 = 0.0;
+                        var dv_acc: f64 = 0.0;
+                        var d2u_acc: f64 = 0.0;
+                        var d2v_acc: f64 = 0.0;
+                        for (0..@as(usize, p_v) + 1) |b| {
+                            const s_i = (b_span - @as(usize, p_v)) + b;
+                            const pt = resampled[l_idx * K_sec + s_i][i];
+                            u_acc += pt.u * N0[b];
+                            v_acc += pt.v * N0[b];
+                            du_acc += pt.u * N1[b];
+                            dv_acc += pt.v * N1[b];
+                            d2u_acc += pt.u * N2[b];
+                            d2v_acc += pt.v * N2[b];
+                        }
+                        c_body = Vec3d.init(u_acc * step.scale.x, v_acc * step.scale.y, 0.0);
+                        c_dv = Vec3d.init(du_acc * step.scale.x, dv_acc * step.scale.y, 0.0);
+                        c_d2v = Vec3d.init(d2u_acc * step.scale.x, d2v_acc * step.scale.y, 0.0);
+                    } else {
+                        for (0..K_sec) |s_i| {
+                            const pt = resampled[l_idx * K_sec + s_i][i];
+                            tmp_u[s_i] = pt.u;
+                            tmp_v[s_i] = pt.v;
+                        }
+                        const bu = evalSectionBlendScalar(tmp_u, sec_v, v_param, continuity);
+                        const bv = evalSectionBlendScalar(tmp_v, sec_v, v_param, continuity);
+                        c_body = Vec3d.init(bu.val * step.scale.x, bv.val * step.scale.y, 0.0);
+                        c_dv = Vec3d.init(bu.d1 * step.scale.x, bv.d1 * step.scale.y, 0.0);
+                        c_d2v = Vec3d.init(bu.d2 * step.scale.x, bv.d2 * step.scale.y, 0.0);
+                    }
+                } else {
+                    // Chart-embedded 3D body-frame coordinates C_j(u) = p0_j + (sx*u)*e1_j + (sy*v)*e2_j
+                    if (K_sec == 1) {
+                        const sec0 = sections[0];
+                        const pt = resampled[l_idx * K_sec + 0][i];
+                        var c_raw = sec0.frame_p0
+                            .add(sec0.frame_e1.scale(pt.u * step.scale.x))
+                            .add(sec0.frame_e2.scale(pt.v * step.scale.y));
+                        if (step.scale.z != 1.0) c_raw.z *= step.scale.z;
+                        c_body = c_raw;
+                    } else if (use_bspline_basis) {
+                        var pt_acc = Vec3d.zero();
+                        var d1_acc = Vec3d.zero();
+                        var d2_acc = Vec3d.zero();
+                        for (0..@as(usize, p_v) + 1) |b| {
+                            const s_i = (b_span - @as(usize, p_v)) + b;
+                            const sec = sections[s_i];
+                            const pt = resampled[l_idx * K_sec + s_i][i];
+                            var cp = sec.frame_p0
+                                .add(sec.frame_e1.scale(pt.u * step.scale.x))
+                                .add(sec.frame_e2.scale(pt.v * step.scale.y));
+                            if (step.scale.z != 1.0) cp.z *= step.scale.z;
+                            pt_acc = pt_acc.add(cp.scale(N0[b]));
+                            d1_acc = d1_acc.add(cp.scale(N1[b]));
+                            d2_acc = d2_acc.add(cp.scale(N2[b]));
+                        }
+                        c_body = pt_acc;
+                        c_dv = d1_acc;
+                        c_d2v = d2_acc;
+                    } else {
+                        for (0..K_sec) |s_i| {
+                            const sec = sections[s_i];
+                            const pt = resampled[l_idx * K_sec + s_i][i];
+                            var cp = sec.frame_p0
+                                .add(sec.frame_e1.scale(pt.u * step.scale.x))
+                                .add(sec.frame_e2.scale(pt.v * step.scale.y));
+                            if (step.scale.z != 1.0) cp.z *= step.scale.z;
+                            tmp_cx[s_i] = cp.x;
+                            tmp_cy[s_i] = cp.y;
+                            tmp_cz[s_i] = cp.z;
+                        }
+                        const bx = evalSectionBlendScalar(tmp_cx, sec_v, v_param, continuity);
+                        const by = evalSectionBlendScalar(tmp_cy, sec_v, v_param, continuity);
+                        const bz = evalSectionBlendScalar(tmp_cz, sec_v, v_param, continuity);
+                        c_body = Vec3d.init(bx.val, by.val, bz.val);
+                        c_dv = Vec3d.init(bx.d1, by.d1, bz.d1);
+                        c_d2v = Vec3d.init(bx.d2, by.d2, bz.d2);
+                    }
+                }
+
+                if (is_rigid_section) {
+                    if (k == 0) body_pos[loop_v_base[l_idx] + i] = c_body;
+                } else {
+                    const flat_idx = (loop_v_base[l_idx] + i) * K + k;
+                    body_pos[flat_idx] = c_body;
+                    body_dv[flat_idx] = c_dv;
+                    body_d2v[flat_idx] = c_d2v;
+                }
+
+                const wp = R_k.mulVec(c_body).add(step.translation);
+                try solid.vertices.append(allocator, wp);
+                try solid.normals.append(allocator, station_nrm);
+            }
+        }
+    }
+
+    // Account for scale variation dM/dv in body_dv when scale varies across stations
+    if (!is_rigid_section) {
+        for (0..total_loops) |l_idx| {
+            const M = loop_M[l_idx];
+            for (0..K - 1) |k| {
+                const dv = traj_steps[k + 1].v - traj_steps[k].v;
+                if (dv < 1e-15) continue;
+                const scale_changed =
+                    @abs(traj_steps[k + 1].scale.x - traj_steps[k].scale.x) > 1e-12 or
+                    @abs(traj_steps[k + 1].scale.y - traj_steps[k].scale.y) > 1e-12 or
+                    @abs(traj_steps[k + 1].scale.z - traj_steps[k].scale.z) > 1e-12;
+                if (!scale_changed) continue;
+                for (0..M) |i| {
+                    const idx0 = (loop_v_base[l_idx] + i) * K + k;
+                    const idx1 = (loop_v_base[l_idx] + i) * K + (k + 1);
+                    body_dv[idx0] = body_pos[idx1].sub(body_pos[idx0]).scale(1.0 / dv);
+                }
+            }
+        }
+    }
+
+    const getBodyPos = struct {
+        fn get(bp: []const Vec3d, base: usize, i: usize, k: usize, num_k: usize, rigid: bool) Vec3d {
+            return if (rigid) bp[base + i] else bp[(base + i) * num_k + k];
+        }
+    }.get;
+    const getBodyDv = struct {
+        fn get(bdv: []const Vec3d, base: usize, i: usize, k: usize, num_k: usize, rigid: bool) Vec3d {
+            return if (rigid) Vec3d.zero() else bdv[(base + i) * num_k + k];
+        }
+    }.get;
+
+    // 2. Co-Moving Body-Frame Interval Self-Intersection Check + Global Axial Pitch-Clearance Check
+    var total_rot_world = Vec3d.zero();
+    var total_rot_scalar: f64 = 0.0;
+    var span_omegas = try allocator.alloc(Vec3d, K - 1);
+    defer allocator.free(span_omegas);
+    var span_vels = try allocator.alloc(Vec3d, K - 1);
+    defer allocator.free(span_vels);
+
+    for (0..K - 1) |k| {
+        const step0 = traj_steps[k];
+        const step1 = traj_steps[k + 1];
+        const dv = step1.v - step0.v;
+        if (dv < 1e-15) {
+            span_omegas[k] = Vec3d.zero();
+            span_vels[k] = Vec3d.zero();
+            continue;
+        }
+
+        const R0 = R_mats[k];
+        const R1 = R_mats[k + 1];
+
+        const omega_iv = if (step0.omega_body != null and step1.omega_body != null)
+            IntervalVec3.fromPair(step0.omega_body.?, step1.omega_body.?)
+        else blk: {
+            const dR = R0.transposeMul(R1);
+            const om = dR.logSO3().scale(1.0 / dv);
+            break :blk IntervalVec3.point(om);
+        };
+
+        const vel_iv = if (step0.vel_body != null and step1.vel_body != null)
+            IntervalVec3.fromPair(step0.vel_body.?, step1.vel_body.?)
+        else blk: {
+            const vd = R0.transposeMulVec(step1.translation.sub(step0.translation)).scale(1.0 / dv);
+            break :blk IntervalVec3.point(vd);
+        };
+
+        const omega_mid = Vec3d.init(
+            0.5 * (omega_iv.x.min + omega_iv.x.max),
+            0.5 * (omega_iv.y.min + omega_iv.y.max),
+            0.5 * (omega_iv.z.min + omega_iv.z.max),
+        );
+        const vel_mid = Vec3d.init(
+            0.5 * (vel_iv.x.min + vel_iv.x.max),
+            0.5 * (vel_iv.y.min + vel_iv.y.max),
+            0.5 * (vel_iv.z.min + vel_iv.z.max),
+        );
+        span_omegas[k] = omega_mid;
+        span_vels[k] = vel_mid;
+
+        // Track cumulative world-frame rotation vector for global periodic turn-overlap check
+        const d_theta_world = if (!step0.use_explicit_frame and step0.axis.length() > 1e-12)
+            step0.axis.normalize().scale(step1.angle_rad - step0.angle_rad)
+        else
+            R0.mulVec(omega_mid).scale(dv);
+        total_rot_world = total_rot_world.add(d_theta_world);
+        total_rot_scalar += d_theta_world.length();
+
+        // Cross-section normal in body frame
+        const n_chart_body = if (step0.use_explicit_frame)
+            Vec3d.init(0.0, 0.0, 1.0)
+        else
+            base_chart_normal;
+
+        // (a) Check cross-section normal velocity sign consistency across the outer loop
+        const M0 = loop_M[0];
+        var wn_min: f64 = 1e30;
+        var wn_max: f64 = -1e30;
+        var w_speed_min: f64 = 1e30;
+        var w_speed_max: f64 = 0.0;
+        for (0..M0) |i| {
+            const c0 = getBodyPos(body_pos, loop_v_base[0], i, k, K, is_rigid_section);
+            const c1 = getBodyPos(body_pos, loop_v_base[0], i, k + 1, K, is_rigid_section);
+            const cv0 = getBodyDv(body_dv, loop_v_base[0], i, k, K, is_rigid_section);
+            const cv1 = getBodyDv(body_dv, loop_v_base[0], i, k + 1, K, is_rigid_section);
+            const c_mid = c0.add(c1).scale(0.5);
+            const cv_mid = cv0.add(cv1).scale(0.5);
+            const w_vec = cv_mid.add(omega_mid.cross(c_mid)).add(vel_mid);
+            const wn = n_chart_body.dot(w_vec);
+            const wsp = w_vec.length();
+            if (wn < wn_min) wn_min = wn;
+            if (wn > wn_max) wn_max = wn;
+            if (wsp < w_speed_min) w_speed_min = wsp;
+            if (wsp > w_speed_max) w_speed_max = wsp;
+        }
+        if (wn_max > 1e-7 and wn_min < -1e-7) {
+            last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+            return error.SweepSelfIntersect;
+        }
+        if (omega_mid.length() > 1e-7 and w_speed_max > 1e-5 and w_speed_min < 1e-9 and (wn_max > 1e-7 or wn_min < -1e-7)) {
+            if (@abs(wn_min) < 1e-9 or @abs(wn_max) < 1e-9) {
+                last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+                return error.SweepSelfIntersect;
+            }
+        }
+
+        // (b) Check co-moving body-frame Jacobian interval || t_u x (C_v + Omega x C + V) || > 0
+        for (0..total_loops) |l_idx| {
+            const M = loop_M[l_idx];
+            var active_edges: usize = 0;
+            for (0..M) |i| {
+                const next_i = (i + 1) % M;
+                const c00 = getBodyPos(body_pos, loop_v_base[l_idx], i, k, K, is_rigid_section);
+                const c10 = getBodyPos(body_pos, loop_v_base[l_idx], next_i, k, K, is_rigid_section);
+                const c01 = getBodyPos(body_pos, loop_v_base[l_idx], i, k + 1, K, is_rigid_section);
+                const c11 = getBodyPos(body_pos, loop_v_base[l_idx], next_i, k + 1, K, is_rigid_section);
+
+                const du0 = c10.sub(c00);
+                const du1 = c11.sub(c01);
+                const len0 = du0.length();
+                const len1 = du1.length();
+                if (len0 < 1e-11 and len1 < 1e-11) continue;
+                active_edges += 1;
+
+                const t_u = if (len0 >= len1) du0.scale(1.0 / len0) else du1.scale(1.0 / len1);
+                const t_u_iv = IntervalVec3.point(t_u);
+                const c_iv = IntervalVec3.fromQuad(c00, c10, c01, c11);
+                const cv00 = getBodyDv(body_dv, loop_v_base[l_idx], i, k, K, is_rigid_section);
+                const cv10 = getBodyDv(body_dv, loop_v_base[l_idx], next_i, k, K, is_rigid_section);
+                const cv01 = getBodyDv(body_dv, loop_v_base[l_idx], i, k + 1, K, is_rigid_section);
+                const cv11 = getBodyDv(body_dv, loop_v_base[l_idx], next_i, k + 1, K, is_rigid_section);
+                const cv_iv = IntervalVec3.fromQuad(cv00, cv10, cv01, cv11);
+
+                const w_iv = cv_iv.add(omega_iv.cross(c_iv)).add(vel_iv);
+                const n_iv = t_u_iv.cross(w_iv);
+                const n_sq_iv = n_iv.normSq();
+
+                const c_mid = c00.add(c10).add(c01).add(c11).scale(0.25);
+                const cv_mid = cv00.add(cv10).add(cv01).add(cv11).scale(0.25);
+                const w_mid = cv_mid.add(omega_mid.cross(c_mid)).add(vel_mid);
+                const n_mid = t_u.cross(w_mid);
+
+                if (n_sq_iv.max < 1e-18 or n_mid.length() < 1e-9) {
+                    last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+                    return error.SweepSelfIntersect;
+                }
+            }
+            if (active_edges == 0) {
+                last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+                return error.SweepSelfIntersect;
+            }
+        }
+    }
+
+    // (c) Global turn-to-turn axial pitch clearance check for periodic multi-turn rotations (|Delta theta| > 2*pi)
+    const net_rot_angle = total_rot_world.length();
+    if (net_rot_angle > 2.0 * std.math.pi + 1e-5 and total_rot_scalar > 1e-9 and (net_rot_angle / total_rot_scalar) > 0.85) {
+        const omega_hat = total_rot_world.scale(1.0 / net_rot_angle);
+
+        var min_pitch: f64 = 1e30;
+        var has_rotating_span = false;
+        for (0..K - 1) |k| {
+            const step0 = traj_steps[k];
+            const step1 = traj_steps[k + 1];
+            const dv = step1.v - step0.v;
+            if (dv < 1e-15) continue;
+            const d_theta_vec = if (!step0.use_explicit_frame and step0.axis.length() > 1e-12)
+                step0.axis.normalize().scale(step1.angle_rad - step0.angle_rad)
+            else
+                R_mats[k].mulVec(span_omegas[k]).scale(dv);
+            const d_theta_ax = @abs(d_theta_vec.dot(omega_hat));
+            if (d_theta_ax < 1e-9) continue;
+            const d_z_ax = @abs(step1.translation.sub(step0.translation).dot(omega_hat));
+            const local_pitch = (2.0 * std.math.pi * d_z_ax) / d_theta_ax;
+            if (local_pitch < min_pitch) min_pitch = local_pitch;
+            has_rotating_span = true;
+        }
+
+        if (has_rotating_span) {
+            var max_axial_extent: f64 = 0.0;
+            const M0 = loop_M[0];
+            for (0..K) |k| {
+                const R_k = R_mats[k];
+                var z_lo: f64 = 1e30;
+                var z_hi: f64 = -1e30;
+                for (0..M0) |i| {
+                    const rot_c = R_k.mulVec(getBodyPos(body_pos, loop_v_base[0], i, k, K, is_rigid_section));
+                    const z_proj = rot_c.dot(omega_hat);
+                    if (z_proj < z_lo) z_lo = z_proj;
+                    if (z_proj > z_hi) z_hi = z_proj;
+                }
+                const ext = z_hi - z_lo;
+                if (ext > max_axial_extent) max_axial_extent = ext;
+            }
+
+            if (min_pitch <= 1e-7) {
+                last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+                return error.SweepSelfIntersect;
+            }
+            if (max_axial_extent > 1e-7 and max_axial_extent >= min_pitch - 1e-7) {
+                last_brep_status = ERR_SWEEP_SELF_INTERSECT;
+                return error.SweepSelfIntersect;
+            }
+        }
+    }
+
+    // 3. Emit lateral faces for outer and hole loops
+    for (0..total_loops) |l_idx| {
+        const M = loop_M[l_idx];
+        const is_hole = (l_idx > 0);
+        const loop_samples_0 = resampled[l_idx * K_sec + 0];
+
+        // Pick signed area from the section with largest magnitude (handles zero-thickness run-out end sections!)
+        var area2_loop: f64 = 0.0;
+        for (0..K_sec) |s_i| {
+            const sec_pts = resampled[l_idx * K_sec + s_i];
+            var a2: f64 = 0.0;
+            for (0..M) |mi| {
+                const p_curr = sec_pts[mi];
+                const p_next = sec_pts[(mi + 1) % M];
+                a2 += p_curr.u * p_next.v - p_next.u * p_curr.v;
+            }
+            if (@abs(a2) > @abs(area2_loop)) area2_loop = a2;
+        }
+
+        for (0..K - 1) |k| {
+            for (0..M) |i| {
+                const next_i = (i + 1) % M;
+                const b0 = loop_offsets[l_idx * K + k] + @as(u32, @intCast(i));
+                const b1 = loop_offsets[l_idx * K + k] + @as(u32, @intCast(next_i));
+                const t0 = loop_offsets[l_idx * K + (k + 1)] + @as(u32, @intCast(i));
+                const t1 = loop_offsets[l_idx * K + (k + 1)] + @as(u32, @intCast(next_i));
+
+                const p_b0 = solid.vertices.items[b0];
+                const p_b1 = solid.vertices.items[b1];
+                const p_t0 = solid.vertices.items[t0];
+                const p_t1 = solid.vertices.items[t1];
+
+                // Compute outward lateral normal from quad diagonals (robust even if one boundary edge collapsed)
+                const diag1 = p_t1.sub(p_b0);
+                const diag2 = p_t0.sub(p_b1);
+                const cross_q = diag1.cross(diag2);
+                const out_n = if (cross_q.length() > 1e-12)
+                    (if (!is_hole) cross_q.normalize() else cross_q.normalize().scale(-1.0))
+                else
+                    solid.normals.items[b0];
+                solid.normals.items[b0] = out_n;
+                solid.normals.items[t0] = out_n;
+
+                const c_hash = if (loop_samples_0[i].curve_hash != 0) loop_samples_0[i].curve_hash else sweep_branch_hash;
+                const tid = TopoId.init(feature_hash, c_hash, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.PRESERVE, 0);
+
+                // Analytic principal curvatures combining profile 2D curvature and longitudinal second derivative
+                const k_u = loop_samples_0[i].curvature_2d;
+                const bp_cur = getBodyPos(body_pos, loop_v_base[l_idx], i, k, K, is_rigid_section);
+                const bdv_cur = getBodyDv(body_dv, loop_v_base[l_idx], i, k, K, is_rigid_section);
+                const bd2v_cur = getBodyDv(body_d2v, loop_v_base[l_idx], i, k, K, is_rigid_section);
+                const d1v_w = R_mats[k].mulVec(bdv_cur.add(span_omegas[k].cross(bp_cur)).add(span_vels[k]));
+                const d2v_w = R_mats[k].mulVec(bd2v_cur);
+                const v_speed2 = d1v_w.dot(d1v_w);
+                const k_v = if (v_speed2 > 1e-12) d2v_w.dot(out_n) / v_speed2 else 0.0;
+                const curv = if (K_sec == 1 and @abs(k_v) < 1e-12) FaceCurvature{
+                    .k_min = 0.0,
+                    .k_max = k_u,
+                    .k_gauss = 0.0,
+                    .k_mean = 0.5 * k_u,
+                } else FaceCurvature{
+                    .k_min = @min(k_u, k_v),
+                    .k_max = @max(k_u, k_v),
+                    .k_gauss = k_u * k_v,
+                    .k_mean = 0.5 * (k_u + k_v),
+                };
+
+                const reverse_winding = if (!is_hole) (area2_loop < 0.0) else (area2_loop > 0.0);
+                if (!reverse_winding) {
+                    try solid.addTriangle(b0, b1, t1, tid, curv);
+                    try solid.addTriangle(b0, t1, t0, tid, curv);
+                } else {
+                    try solid.addTriangle(b0, t1, b1, tid, curv);
+                    try solid.addTriangle(b0, t0, t1, tid, curv);
+                }
+            }
+        }
+    }
+
+    // 4. Triangulate bottom (k = 0, section 0) and top (k = K - 1, section K_sec - 1) planar caps with holes
+    if (cap_ends) {
+        const cap_stations = [2]usize{ 0, K - 1 };
+        const cap_sec_indices = [2]usize{ 0, K_sec - 1 };
+        const flat_curv = FaceCurvature{};
+
+        const mapLocalIdx = struct {
+            fn map(local_idx: u32, station_k: usize, num_k: usize, m_lens: []const usize, offsets: []const u32) u32 {
+                var rem = local_idx;
+                for (m_lens, 0..) |ml, li| {
+                    const ml_u32: u32 = @intCast(ml);
+                    if (rem < ml_u32) {
+                        return offsets[li * num_k + station_k] + rem;
+                    }
+                    rem -= ml_u32;
+                }
+                return offsets[station_k];
+            }
+        }.map;
+
+        for (0..2) |cap_i| {
+            const st_k = cap_stations[cap_i];
+            const s_idx = cap_sec_indices[cap_i];
+
+            var outer_poly = try allocator.alloc(PolyVert2D, M_outer);
+            defer allocator.free(outer_poly);
+            for (resampled[0 * K_sec + s_idx], 0..) |pt, i| {
+                outer_poly[i] = .{ .u = pt.u, .v = pt.v, .orig_idx = @intCast(i) };
+            }
+
+            var hole_polys = try allocator.alloc([]PolyVert2D, common_holes);
+            defer {
+                for (hole_polys) |hp| allocator.free(hp);
+                allocator.free(hole_polys);
+            }
+            var cum_offset: u32 = @intCast(M_outer);
+            for (0..common_holes) |h_idx| {
+                const mh = loop_M[1 + h_idx];
+                hole_polys[h_idx] = try allocator.alloc(PolyVert2D, mh);
+                for (resampled[(1 + h_idx) * K_sec + s_idx], 0..) |pt, i| {
+                    hole_polys[h_idx][i] = .{
+                        .u = pt.u,
+                        .v = pt.v,
+                        .orig_idx = cum_offset + @as(u32, @intCast(i)),
+                    };
+                }
+                cum_offset += @intCast(mh);
+            }
+
+            var cap_tris: std.ArrayList([3]u32) = .empty;
+            defer cap_tris.deinit(allocator);
+            try triangulatePolygonWithHoles2D(allocator, outer_poly, hole_polys, &cap_tris);
+
+            const cap_tid = TopoId.init(feature_hash, sweep_branch_hash, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.BOUNDARY, 0);
+            for (cap_tris.items) |tri| {
+                const v0 = mapLocalIdx(tri[0], st_k, K, loop_M, loop_offsets);
+                const v1 = mapLocalIdx(tri[1], st_k, K, loop_M, loop_offsets);
+                const v2 = mapLocalIdx(tri[2], st_k, K, loop_M, loop_offsets);
+                if (cap_i == 0) {
+                    try solid.addTriangle(v0, v2, v1, cap_tid, flat_curv);
+                } else {
+                    try solid.addTriangle(v0, v1, v2, cap_tid, flat_curv);
+                }
+            }
+        }
+
+        // Guarantee consistent outward orientation via signed enclosed volume (handles -Z sweeps and XZ meridional helices!)
+        const tri_count = solid.indices.items.len / 3;
+        var signed_vol6: f64 = 0.0;
+        for (0..tri_count) |t| {
+            const p0 = solid.vertices.items[solid.indices.items[t * 3]];
+            const p1 = solid.vertices.items[solid.indices.items[t * 3 + 1]];
+            const p2 = solid.vertices.items[solid.indices.items[t * 3 + 2]];
+            signed_vol6 += p0.dot(p1.cross(p2));
+        }
+        if (signed_vol6 < 0.0) {
+            for (0..tri_count) |t| {
+                const tmp_idx = solid.indices.items[t * 3 + 1];
+                solid.indices.items[t * 3 + 1] = solid.indices.items[t * 3 + 2];
+                solid.indices.items[t * 3 + 2] = tmp_idx;
+            }
+            for (solid.normals.items) |*n| {
+                n.* = n.scale(-1.0);
+            }
+        }
+    }
+
+    const handle: u64 = (@as(u64, 0b00) << 62) | @as(u64, solid_id);
+    try solid_brep_store.put(handle, solid);
+
+    // Record SweepSource for downstream <fillet> on standard single-section non-scaled sweeps
+    if (K_sec == 1 and !traj_steps[0].use_explicit_frame) {
+        recordSweepSource(
+            handle,
+            feature_hash,
+            sweep_branch_hash,
+            sections[0].frame_p0,
+            sections[0].frame_e1,
+            sections[0].frame_e2,
+            sections[0].outer,
+            sections[0].holes,
+            traj_steps,
+            cap_ends,
+        ) catch {};
+    }
+
+    return handle;
+}
+
+// ============================================================================
 // Multi-Wire SE(3) Sweep with Outer + Hole Loops & SHA-256 TopoId (§7.1, §10.1)
 // ============================================================================
 
@@ -482,201 +1698,25 @@ pub fn sweepProfileLoopsSE3(
     traj_steps: []const TrajectoryStep,
     cap_ends: bool,
 ) !u64 {
-    last_brep_status = 0;
-    if (outer_loop.points.len < 3 or traj_steps.len < 2) {
-        last_brep_status = ERR_SWEEP_SELF_INTERSECT;
-        return error.SweepSelfIntersect;
-    }
-
-    const solid_id = next_solid_id;
-    next_solid_id += 1;
-
-    var solid = BRepSolid.init(allocator, solid_id);
-    errdefer solid.deinit();
-    solid.feature_hash = feature_hash;
-    solid.genus = hole_loops.len;
-
-    const frame_normal = frame_e1.cross(frame_e2).normalize();
-    const K = traj_steps.len; // number of trajectory stations v_0 .. v_{K-1}
-
-    // Track vertex index offsets for each loop at each station k in 0..K
-    // Loop 0 = outer_loop, Loop 1..H = hole_loops
-    const total_loops = 1 + hole_loops.len;
-    var loop_offsets = try allocator.alloc(u32, total_loops * K);
-    defer allocator.free(loop_offsets);
-
-    // 1. Emit vertices for all loops across all K trajectory stations
-    for (0..K) |k| {
-        const step = traj_steps[k];
-        const station_nrm = rotateRodrigues(frame_normal, step.axis, step.angle_rad).normalize();
-
-        // Outer loop at station k
-        loop_offsets[0 * K + k] = @intCast(solid.vertices.items.len);
-        for (outer_loop.points) |pt| {
-            const wp = evalTrajectoryPoint(pt.u, pt.v, frame_p0, frame_e1, frame_e2, step);
-            try solid.vertices.append(allocator, wp);
-            try solid.normals.append(allocator, station_nrm);
-        }
-
-        // Hole loops at station k
-        for (hole_loops, 0..) |hl, h_idx| {
-            loop_offsets[(1 + h_idx) * K + k] = @intCast(solid.vertices.items.len);
-            for (hl.points) |pt| {
-                const wp = evalTrajectoryPoint(pt.u, pt.v, frame_p0, frame_e1, frame_e2, step);
-                try solid.vertices.append(allocator, wp);
-                try solid.normals.append(allocator, station_nrm);
-            }
-        }
-    }
-
-    // 2. Check sweep Jacobian ||dS/du x dS/dv|| > 0 and emit lateral faces for outer and hole loops
-    for (0..total_loops) |l_idx| {
-        const loop = if (l_idx == 0) outer_loop else hole_loops[l_idx - 1];
-        const M = loop.points.len;
-        const is_hole = loop.is_hole;
-
-        for (0..K - 1) |k| {
-            for (0..M) |i| {
-                const next_i = (i + 1) % M;
-                const b0 = loop_offsets[l_idx * K + k] + @as(u32, @intCast(i));
-                const b1 = loop_offsets[l_idx * K + k] + @as(u32, @intCast(next_i));
-                const t0 = loop_offsets[l_idx * K + (k + 1)] + @as(u32, @intCast(i));
-                const t1 = loop_offsets[l_idx * K + (k + 1)] + @as(u32, @intCast(next_i));
-
-                const p_b0 = solid.vertices.items[b0];
-                const p_b1 = solid.vertices.items[b1];
-                const p_t0 = solid.vertices.items[t0];
-
-                const ds_du = p_b1.sub(p_b0);
-                const ds_dv = p_t0.sub(p_b0);
-                const cross_uv = ds_du.cross(ds_dv);
-                if (cross_uv.length() < 1e-10) {
-                    last_brep_status = ERR_SWEEP_SELF_INTERSECT;
-                    return error.SweepSelfIntersect;
-                }
-
-                // Update vertex normals for lateral wall vertices
-                const out_n = if (!is_hole) cross_uv.normalize() else cross_uv.normalize().scale(-1.0);
-                solid.normals.items[b0] = out_n;
-                solid.normals.items[t0] = out_n;
-
-                const c_hash = if (loop.points[i].curve_hash != 0) loop.points[i].curve_hash else sweep_branch_hash;
-                const tid = TopoId.init(feature_hash, c_hash, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.PRESERVE, 0);
-
-                // Curvature along lateral face:
-                // For straight extrusion of a curve with planar curvature kappa_2d:
-                // k_min = 0, k_max = kappa_2d, k_gauss = 0, k_mean = 0.5 * kappa_2d
-                const k2d = loop.points[i].curvature_2d;
-                const curv = FaceCurvature{
-                    .k_min = 0.0,
-                    .k_max = k2d,
-                    .k_gauss = 0.0,
-                    .k_mean = 0.5 * k2d,
-                };
-
-                if (!is_hole) {
-                    // Outer wall: outward normal
-                    try solid.addTriangle(b0, b1, t1, tid, curv);
-                    try solid.addTriangle(b0, t1, t0, tid, curv);
-                } else {
-                    // Inner hole wall: points inward toward hole center!
-                    // Wait: if hole loop points are sampled CCW (like cos(2*pi*t), sin(2*pi*t)),
-                    // then b0 -> b1 -> t1 has normal pointing OUTWARD from the cylinder (which is into the solid material!).
-                    // The outward normal of the solid on a hole wall points INWARD toward the hole axis!
-                    // Let's check signed area of the hole loop:
-                    var area2: f64 = 0.0;
-                    for (0..M) |mi| {
-                        const p_curr = loop.points[mi];
-                        const p_next = loop.points[(mi + 1) % M];
-                        area2 += p_curr.u * p_next.v - p_next.u * p_curr.v;
-                    }
-                    if (area2 > 0.0) {
-                        // Loop is CCW in (u,v), so reverse winding for hole wall so normal points toward hole center
-                        try solid.addTriangle(b0, t1, b1, tid, curv);
-                        try solid.addTriangle(b0, t0, t1, tid, curv);
-                    } else {
-                        // Loop is already CW in (u,v)
-                        try solid.addTriangle(b0, b1, t1, tid, curv);
-                        try solid.addTriangle(b0, t1, t0, tid, curv);
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Triangulate bottom (k = 0) and top (k = K - 1) planar caps with holes
-    if (cap_ends) {
-        var outer_poly = try allocator.alloc(PolyVert2D, outer_loop.points.len);
-        defer allocator.free(outer_poly);
-        for (outer_loop.points, 0..) |pt, i| {
-            outer_poly[i] = .{ .u = pt.u, .v = pt.v, .orig_idx = @intCast(i) };
-        }
-
-        var hole_polys = try allocator.alloc([]PolyVert2D, hole_loops.len);
-        defer {
-            for (hole_polys) |hp| allocator.free(hp);
-            allocator.free(hole_polys);
-        }
-
-        var cum_offset: u32 = @intCast(outer_loop.points.len);
-        for (hole_loops, 0..) |hl, h_idx| {
-            hole_polys[h_idx] = try allocator.alloc(PolyVert2D, hl.points.len);
-            for (hl.points, 0..) |pt, i| {
-                hole_polys[h_idx][i] = .{
-                    .u = pt.u,
-                    .v = pt.v,
-                    .orig_idx = cum_offset + @as(u32, @intCast(i)),
-                };
-            }
-            cum_offset += @intCast(hl.points.len);
-        }
-
-        var cap_tris: std.ArrayList([3]u32) = .empty;
-        defer cap_tris.deinit(allocator);
-        try triangulatePolygonWithHoles2D(allocator, outer_poly, hole_polys, &cap_tris);
-
-        const mapLocalIdx = struct {
-            fn map(local_idx: u32, station_k: usize, num_k: usize, outer_len: usize, holes_slice: []const ProfileLoop2D, offsets: []const u32) u32 {
-                if (local_idx < outer_len) {
-                    return offsets[0 * num_k + station_k] + local_idx;
-                }
-                var rem = local_idx - @as(u32, @intCast(outer_len));
-                for (holes_slice, 0..) |hl, hi| {
-                    const hlen: u32 = @intCast(hl.points.len);
-                    if (rem < hlen) {
-                        return offsets[(1 + hi) * num_k + station_k] + rem;
-                    }
-                    rem -= hlen;
-                }
-                return offsets[station_k];
-            }
-        }.map;
-
-        const bot_tid = TopoId.init(feature_hash, sweep_branch_hash, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.BOUNDARY, 0);
-        const top_tid = TopoId.init(feature_hash, sweep_branch_hash, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.BOUNDARY, 0);
-        const flat_curv = FaceCurvature{ .k_min = 0.0, .k_max = 0.0, .k_gauss = 0.0, .k_mean = 0.0 };
-
-        // Bottom cap (k = 0): reverse winding so normal points along -frame_normal
-        for (cap_tris.items) |tri| {
-            const v0 = mapLocalIdx(tri[0], 0, K, outer_loop.points.len, hole_loops, loop_offsets);
-            const v1 = mapLocalIdx(tri[2], 0, K, outer_loop.points.len, hole_loops, loop_offsets);
-            const v2 = mapLocalIdx(tri[1], 0, K, outer_loop.points.len, hole_loops, loop_offsets);
-            try solid.addTriangle(v0, v1, v2, bot_tid, flat_curv);
-        }
-
-        // Top cap (k = K - 1): forward CCW winding so normal points along +frame_normal
-        for (cap_tris.items) |tri| {
-            const v0 = mapLocalIdx(tri[0], K - 1, K, outer_loop.points.len, hole_loops, loop_offsets);
-            const v1 = mapLocalIdx(tri[1], K - 1, K, outer_loop.points.len, hole_loops, loop_offsets);
-            const v2 = mapLocalIdx(tri[2], K - 1, K, outer_loop.points.len, hole_loops, loop_offsets);
-            try solid.addTriangle(v0, v1, v2, top_tid, flat_curv);
-        }
-    }
-
-    const handle: u64 = (@as(u64, 0b00) << 62) | @as(u64, solid_id);
-    try solid_brep_store.put(handle, solid);
-    recordSweepSource(handle, feature_hash, sweep_branch_hash, frame_p0, frame_e1, frame_e2, outer_loop, hole_loops, traj_steps, cap_ends) catch {};
-    return handle;
+    const sections = [1]MorphSection{.{
+        .v_param = 0.0,
+        .frame_p0 = frame_p0,
+        .frame_e1 = frame_e1,
+        .frame_e2 = frame_e2,
+        .outer = outer_loop,
+        .holes = hole_loops,
+    }};
+    return sweepMorphingSE3(
+        allocator,
+        feature_hash,
+        sweep_branch_hash,
+        &sections,
+        traj_steps,
+        .G0,
+        false,
+        1,
+        cap_ends,
+    );
 }
 
 // ============================================================================
@@ -2750,6 +3790,7 @@ fn sampleWireSection(
 }
 
 /// Evaluates a bivariate tensor-product NURBS loft across `count` profile wires of longitudinal degree `degree_v` (§7.2).
+/// Delegates directly to the unified `sweepMorphingSE3` evaluator with an identity SE(3) trajectory.
 pub fn solid_tensor_loft(
     wire_handles_ptr: [*]const u64,
     count: u32,
@@ -2787,245 +3828,71 @@ pub fn solid_tensor_loft(
         alloc.free(raw_sections);
     }
 
+    var loop_pts = alloc.alloc([]ProfileEdgeSample2D, K) catch return 0;
+    var loop_pts_init: usize = 0;
+    defer {
+        for (0..loop_pts_init) |k| alloc.free(loop_pts[k]);
+        alloc.free(loop_pts);
+    }
+
+    var morph_secs = alloc.alloc(MorphSection, K) catch return 0;
+    defer alloc.free(morph_secs);
+
     const steps_per_curve: usize = if (same_curve_counts and all_degree_one) 1 else 16;
     for (0..K) |k| {
         const w = curve_wire.wire_store.get(wire_handles_ptr[k]).?;
         sampleWireSection(alloc, w, steps_per_curve, &raw_sections[k]) catch return 0;
         if (raw_sections[k].items.len < 3) return 0;
-    }
 
-    // Harmonize perimeter sample count M across all K sections
-    var M: usize = raw_sections[0].items.len;
-    var need_resample = false;
-    for (1..K) |k| {
-        if (raw_sections[k].items.len != M) {
-            need_resample = true;
-            if (raw_sections[k].items.len > M) M = raw_sections[k].items.len;
+        const pts = alloc.alloc(ProfileEdgeSample2D, raw_sections[k].items.len) catch return 0;
+        loop_pts_init += 1;
+        for (raw_sections[k].items, 0..) |rs, i| {
+            pts[i] = .{
+                .u = rs.local_u,
+                .v = rs.local_v,
+                .curve_hash = rs.curve_hash,
+                .curvature_2d = rs.curvature_2d,
+            };
         }
-    }
-    if (need_resample and M < 64) M = 64;
-
-    var sections = alloc.alloc([]LoftSectionSample, K) catch return 0;
-    var sec_allocated: usize = 0;
-    defer {
-        for (0..sec_allocated) |k| alloc.free(sections[k]);
-        alloc.free(sections);
-    }
-
-    for (0..K) |k| {
-        const src = raw_sections[k].items;
-        const dst = alloc.alloc(LoftSectionSample, M) catch return 0;
-        sec_allocated += 1;
-        if (src.len == M) {
-            @memcpy(dst, src);
-        } else {
-            const src_len_f = @as(f64, @floatFromInt(src.len));
-            for (0..M) |j| {
-                const pos = (@as(f64, @floatFromInt(j)) / @as(f64, @floatFromInt(M))) * src_len_f;
-                const idx0: usize = @min(@as(usize, @intFromFloat(@floor(pos))), src.len - 1);
-                const idx1: usize = (idx0 + 1) % src.len;
-                const alpha = pos - @floor(pos);
-                dst[j] = .{
-                    .world_p = src[idx0].world_p.scale(1.0 - alpha).add(src[idx1].world_p.scale(alpha)),
-                    .local_u = src[idx0].local_u * (1.0 - alpha) + src[idx1].local_u * alpha,
-                    .local_v = src[idx0].local_v * (1.0 - alpha) + src[idx1].local_v * alpha,
-                    .curve_hash = src[idx0].curve_hash,
-                    .curvature_2d = src[idx0].curvature_2d * (1.0 - alpha) + src[idx1].curvature_2d * alpha,
-                };
-            }
-        }
-        sections[k] = dst;
+        loop_pts[k] = pts;
+        morph_secs[k] = .{
+            .v_param = @as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(K - 1)),
+            .frame_p0 = w.frame_origin,
+            .frame_e1 = w.frame_u,
+            .frame_e2 = w.frame_v,
+            .outer = .{ .wire_id = "loft", .is_hole = false, .points = pts },
+            .holes = &[_]ProfileLoop2D{},
+        };
     }
 
-    // Longitudinal B-spline degree p_v in [1, K - 1]
     const p_v: u32 = @min(@max(degree_v, 1), @as(u32, @intCast(K - 1)));
-    const knot_count = K + @as(usize, p_v) + 1;
-    var knots_v = alloc.alloc(f64, knot_count) catch return 0;
-    defer alloc.free(knots_v);
-
-    for (0..@as(usize, p_v) + 1) |i| {
-        knots_v[i] = 0.0;
-        knots_v[knot_count - 1 - i] = 1.0;
-    }
-    const interior_spans = K - @as(usize, p_v);
-    if (interior_spans > 1) {
-        for (1..interior_spans) |j| {
-            knots_v[@as(usize, p_v) + j] = @as(f64, @floatFromInt(j)) / @as(f64, @floatFromInt(interior_spans));
-        }
-    }
-
-    // Number of longitudinal evaluation stations N_v
     const N_v: usize = if (p_v == 1) K else (8 * (K - 1) + 1);
-
-    const solid_id = next_solid_id;
-    next_solid_id += 1;
-    const f_hash = (@as(u64, solid_id) << 32) | 1;
-    const loft_branch_hash = wire_handles_ptr[0] & 0x3FFFFFFFFFFFFFFF;
-
-    var solid = BRepSolid.init(alloc, solid_id);
-    errdefer solid.deinit();
-    solid.feature_hash = f_hash;
-
-    // 1. Evaluate bivariate tensor surface S(u_j, v_s) and longitudinal derivative dS/dv
-    var ds_dv_grid = alloc.alloc(Vec3d, N_v * M) catch {
-        solid.deinit();
-        return 0;
-    };
-    defer alloc.free(ds_dv_grid);
-
-    var d2s_dv2_grid = alloc.alloc(Vec3d, N_v * M) catch {
-        solid.deinit();
-        return 0;
-    };
-    defer alloc.free(d2s_dv2_grid);
-
+    var id_steps = alloc.alloc(TrajectoryStep, N_v) catch return 0;
+    defer alloc.free(id_steps);
     for (0..N_v) |s| {
-        const v_param = @as(f64, @floatFromInt(s)) / @as(f64, @floatFromInt(N_v - 1));
-        const span = nurbs.findSpan(@intCast(K - 1), p_v, v_param, knots_v);
-        var N0: [16]f64 = undefined;
-        var N1: [16]f64 = undefined;
-        var N2: [16]f64 = undefined;
-        nurbs.evalBasisAndDerivs(span, v_param, p_v, knots_v, N0[0 .. p_v + 1], N1[0 .. p_v + 1], N2[0 .. p_v + 1]);
-
-        for (0..M) |j| {
-            var pt = Vec3d.zero();
-            var d1v = Vec3d.zero();
-            var d2v = Vec3d.zero();
-            for (0..@as(usize, p_v) + 1) |b| {
-                const sec_idx = @as(usize, span - p_v) + b;
-                const cp = sections[sec_idx][j].world_p;
-                pt = pt.add(cp.scale(N0[b]));
-                d1v = d1v.add(cp.scale(N1[b]));
-                d2v = d2v.add(cp.scale(N2[b]));
-            }
-            solid.vertices.append(alloc, pt) catch {
-                solid.deinit();
-                return 0;
-            };
-            solid.normals.append(alloc, Vec3d.init(0.0, 0.0, 1.0)) catch {
-                solid.deinit();
-                return 0;
-            };
-            ds_dv_grid[s * M + j] = d1v;
-            d2s_dv2_grid[s * M + j] = d2v;
-        }
-    }
-
-    // 2. Emit lateral faces and compute analytical surface normals & fundamental form curvatures
-    for (0..N_v - 1) |s| {
-        for (0..M) |j| {
-            const next_j = (j + 1) % M;
-            const b0: u32 = @intCast(s * M + j);
-            const b1: u32 = @intCast(s * M + next_j);
-            const t0: u32 = @intCast((s + 1) * M + j);
-            const t1: u32 = @intCast((s + 1) * M + next_j);
-
-            const p_b0 = solid.vertices.items[b0];
-            const p_b1 = solid.vertices.items[b1];
-            const p_t0 = solid.vertices.items[t0];
-
-            const ds_du = p_b1.sub(p_b0);
-            const ds_dv_chord = p_t0.sub(p_b0);
-            const cross_uv = ds_du.cross(ds_dv_chord);
-            if (cross_uv.length() < 1e-10) {
-                last_brep_status = ERR_SWEEP_SELF_INTERSECT;
-                solid.deinit();
-                return 0;
-            }
-
-            const n_unit = cross_uv.normalize();
-            solid.normals.items[b0] = n_unit;
-            solid.normals.items[t0] = n_unit;
-
-            // Curvature from profile 2D curvature and longitudinal B-spline second derivative
-            const k_u = sections[0][j].curvature_2d;
-            const d1v = ds_dv_grid[s * M + j];
-            const d2v = d2s_dv2_grid[s * M + j];
-            const v_speed2 = d1v.dot(d1v);
-            const k_v = if (v_speed2 > 1e-12) d2v.dot(n_unit) / v_speed2 else 0.0;
-            const k1 = @min(k_u, k_v);
-            const k2 = @max(k_u, k_v);
-            const curv = FaceCurvature{
-                .k_min = k1,
-                .k_max = k2,
-                .k_gauss = k1 * k2,
-                .k_mean = 0.5 * (k1 + k2),
-            };
-
-            const c_hash = if (sections[0][j].curve_hash != 0) sections[0][j].curve_hash else loft_branch_hash;
-            const tid = TopoId.init(f_hash, c_hash, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.PRESERVE, 0);
-
-            solid.addTriangle(b0, b1, t1, tid, curv) catch {
-                solid.deinit();
-                return 0;
-            };
-            solid.addTriangle(b0, t1, t0, tid, curv) catch {
-                solid.deinit();
-                return 0;
-            };
-        }
-    }
-
-    // 3. Triangulate bottom cap (section 0, s = 0) and top cap (section K-1, s = N_v - 1)
-    var bot_poly = alloc.alloc(PolyVert2D, M) catch {
-        solid.deinit();
-        return 0;
-    };
-    defer alloc.free(bot_poly);
-    for (0..M) |j| {
-        bot_poly[j] = .{ .u = sections[0][j].local_u, .v = sections[0][j].local_v, .orig_idx = @intCast(j) };
-    }
-    var bot_tris: std.ArrayList([3]u32) = .empty;
-    defer bot_tris.deinit(alloc);
-    triangulatePolygonWithHoles2D(alloc, bot_poly, &[_][]PolyVert2D{}, &bot_tris) catch {
-        solid.deinit();
-        return 0;
-    };
-
-    const bot_tid = TopoId.init(f_hash, loft_branch_hash, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.BOUNDARY, 0);
-    const top_tid = TopoId.init(f_hash, wire_handles_ptr[K - 1] & 0x3FFFFFFFFFFFFFFF, SUBSHAPE_FACE, TopoFlags.ANALYTIC | TopoFlags.BOUNDARY, 0);
-    const flat_curv = FaceCurvature{};
-
-    for (bot_tris.items) |tri| {
-        solid.addTriangle(tri[0], tri[2], tri[1], bot_tid, flat_curv) catch {
-            solid.deinit();
-            return 0;
+        id_steps[s] = .{
+            .v = @as(f64, @floatFromInt(s)) / @as(f64, @floatFromInt(N_v - 1)),
+            .translation = Vec3d.zero(),
+            .axis = Vec3d.init(0.0, 0.0, 1.0),
+            .angle_rad = 0.0,
         };
     }
 
-    var top_poly = alloc.alloc(PolyVert2D, M) catch {
-        solid.deinit();
-        return 0;
-    };
-    defer alloc.free(top_poly);
-    const top_base: u32 = @intCast((N_v - 1) * M);
-    for (0..M) |j| {
-        top_poly[j] = .{
-            .u = sections[K - 1][j].local_u,
-            .v = sections[K - 1][j].local_v,
-            .orig_idx = top_base + @as(u32, @intCast(j)),
-        };
-    }
-    var top_tris: std.ArrayList([3]u32) = .empty;
-    defer top_tris.deinit(alloc);
-    triangulatePolygonWithHoles2D(alloc, top_poly, &[_][]PolyVert2D{}, &top_tris) catch {
-        solid.deinit();
-        return 0;
-    };
+    const f_hash = (@as(u64, next_solid_id) << 32) | 1;
+    const loft_branch_hash = wire_handles_ptr[0] & 0x3FFFFFFFFFFFFFFF;
+    const cont: SectionContinuity = if (p_v <= 1) .G0 else if (p_v == 2) .G1 else .G2;
 
-    for (top_tris.items) |tri| {
-        solid.addTriangle(tri[0], tri[1], tri[2], top_tid, flat_curv) catch {
-            solid.deinit();
-            return 0;
-        };
-    }
-
-    const handle: u64 = (@as(u64, 0b00) << 62) | @as(u64, solid_id);
-    solid_brep_store.put(handle, solid) catch {
-        solid.deinit();
-        return 0;
-    };
-    return handle;
+    return sweepMorphingSE3(
+        alloc,
+        f_hash,
+        loft_branch_hash,
+        morph_secs,
+        id_steps,
+        cont,
+        true,
+        p_v,
+        true,
+    ) catch 0;
 }
 
 pub fn solid_envelope_fillet(

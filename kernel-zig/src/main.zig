@@ -134,6 +134,10 @@ pub export fn cad_kernel_deinit() CadStatus {
     wasm_stl_export_buf.deinit(alloc);
     wasm_stl_export_buf = .empty;
     tess_export.freeDynamicTessBuffer();
+    if (cdml.evaluator.active_evaluator) |*ev| {
+        ev.deinit();
+        cdml.evaluator.active_evaluator = null;
+    }
 
     main_wasm.deinitWasmBuffers();
     return .Ok;

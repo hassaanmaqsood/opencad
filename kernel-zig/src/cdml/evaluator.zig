@@ -95,6 +95,16 @@ pub const SketchDef = struct {
     }
 };
 
+pub const Curve3DDef = struct {
+    id: []const u8,
+    param_name: []const u8,
+    domain_str: []const u8,
+    x_expr: []const u8,
+    y_expr: []const u8,
+    z_expr: []const u8,
+    line: u32 = 0,
+};
+
 pub const DocumentEvaluator = struct {
     allocator: std.mem.Allocator,
     root_node: ?*XmlNode = null,
@@ -105,6 +115,7 @@ pub const DocumentEvaluator = struct {
     field_slots: std.AutoHashMap(u32, FieldSlotDef),
     charts: std.StringHashMap(ChartDef),
     sketches: std.StringHashMap(SketchDef),
+    curves: std.StringHashMap(Curve3DDef),
     surfaces: std.StringHashMap([]const u8),
     regions: std.StringHashMap(*const XmlNode),
     probes: std.StringHashMap(ProbeDef),
@@ -127,6 +138,7 @@ pub const DocumentEvaluator = struct {
             .field_slots = std.AutoHashMap(u32, FieldSlotDef).init(allocator),
             .charts = std.StringHashMap(ChartDef).init(allocator),
             .sketches = std.StringHashMap(SketchDef).init(allocator),
+            .curves = std.StringHashMap(Curve3DDef).init(allocator),
             .surfaces = std.StringHashMap([]const u8).init(allocator),
             .regions = std.StringHashMap(*const XmlNode).init(allocator),
             .probes = std.StringHashMap(ProbeDef).init(allocator),
@@ -142,6 +154,7 @@ pub const DocumentEvaluator = struct {
         var it_sk = self.sketches.valueIterator();
         while (it_sk.next()) |sk| sk.deinit(self.allocator);
         self.sketches.deinit();
+        self.curves.deinit();
         self.charts.deinit();
         self.surfaces.deinit();
         self.regions.deinit();
@@ -570,6 +583,25 @@ pub fn executeBodyAndExports(ev: *DocumentEvaluator) u32 {
             } else if (std.mem.eql(u8, child.tag, "sketch")) {
                 const status = evaluateSketchNode(ev, child);
                 if (status != types.CDML_OK) return status;
+            } else if (std.mem.eql(u8, child.tag, "curve")) {
+                const c_id = child.getAttr("id") orelse continue;
+                const param_name = child.getAttr("param") orelse "t";
+                const dom_str = child.getAttr("domain-expr") orelse (child.getAttr("domain") orelse "0 1");
+                var x_e = child.getAttr("x-expr") orelse (child.getAttr("x") orelse "0.0");
+                var y_e = child.getAttr("y-expr") orelse (child.getAttr("y") orelse "0.0");
+                var z_e = child.getAttr("z-expr") orelse (child.getAttr("z") orelse "0.0");
+                if (child.findChild("x")) |xn| x_e = std.mem.trim(u8, xn.text, " \t\r\n");
+                if (child.findChild("y")) |yn| y_e = std.mem.trim(u8, yn.text, " \t\r\n");
+                if (child.findChild("z")) |zn| z_e = std.mem.trim(u8, zn.text, " \t\r\n");
+                ev.curves.put(c_id, .{
+                    .id = c_id,
+                    .param_name = param_name,
+                    .domain_str = dom_str,
+                    .x_expr = x_e,
+                    .y_expr = y_e,
+                    .z_expr = z_e,
+                    .line = child.line,
+                }) catch {};
             } else if (std.mem.eql(u8, child.tag, "surface")) {
                 const s_id = child.getAttr("id") orelse continue;
                 var eq_str = child.getAttr("eq") orelse "";
@@ -1193,6 +1225,531 @@ fn getSketchPtr(ev: *DocumentEvaluator, sk_id: []const u8) ?*SketchDef {
     return null;
 }
 
+const ResolvedWire = struct {
+    loop: *const OwnedLoop2D,
+    chart: ChartDef,
+};
+
+fn defaultChartXY() ChartDef {
+    return .{
+        .id = "default",
+        .p0 = Vec3d.init(0.0, 0.0, 0.0),
+        .e1 = Vec3d.init(1.0, 0.0, 0.0),
+        .e2 = Vec3d.init(0.0, 1.0, 0.0),
+    };
+}
+
+fn findWireById(ev: *DocumentEvaluator, wire_id: []const u8) ?ResolvedWire {
+    if (wire_id.len == 0) return null;
+    var it = ev.sketches.valueIterator();
+    while (it.next()) |sk| {
+        const ch = ev.charts.get(sk.chart_id) orelse defaultChartXY();
+        for (sk.outer_loops.items) |*l| {
+            if (std.mem.eql(u8, l.wire_id, wire_id)) return .{ .loop = l, .chart = ch };
+        }
+        for (sk.hole_loops.items) |*l| {
+            if (std.mem.eql(u8, l.wire_id, wire_id)) return .{ .loop = l, .chart = ch };
+        }
+    }
+    return null;
+}
+
+fn parseDomainRange(ev: *DocumentEvaluator, dom_str: []const u8) [2]f64 {
+    const trimmed = std.mem.trim(u8, dom_str, " \t\r\n");
+    if (trimmed.len == 0) return .{ 0.0, 1.0 };
+
+    if (std.mem.indexOfScalar(u8, trimmed, ',')) |comma| {
+        const s0 = std.mem.trim(u8, trimmed[0..comma], " \t\r\n");
+        const s1 = std.mem.trim(u8, trimmed[comma + 1 ..], " \t\r\n");
+        const t0 = ev.evaluateExpression(s0, .residual) catch 0.0;
+        const t1 = ev.evaluateExpression(s1, .residual) catch 1.0;
+        return .{ t0, t1 };
+    }
+
+    var ws_idx: ?usize = null;
+    for (trimmed, 0..) |c, idx| {
+        if (c == ' ' or c == '\t' or c == '\r' or c == '\n') {
+            ws_idx = idx;
+            break;
+        }
+    }
+    if (ws_idx) |split| {
+        const s0 = trimmed[0..split];
+        const s1 = std.mem.trim(u8, trimmed[split + 1 ..], " \t\r\n");
+        if (s1.len > 0) {
+            const t0 = ev.evaluateExpression(s0, .residual) catch 0.0;
+            const t1 = ev.evaluateExpression(s1, .residual) catch 1.0;
+            return .{ t0, t1 };
+        }
+    }
+    return .{ 0.0, 1.0 };
+}
+
+fn parseContinuityAttr(str: ?[]const u8, default_val: surface_brep.SectionContinuity) surface_brep.SectionContinuity {
+    const s = str orelse return default_val;
+    if (std.mem.eql(u8, s, "G0") or std.mem.eql(u8, s, "g0")) return .G0;
+    if (std.mem.eql(u8, s, "G1") or std.mem.eql(u8, s, "g1")) return .G1;
+    if (std.mem.eql(u8, s, "G2") or std.mem.eql(u8, s, "g2")) return .G2;
+    return default_val;
+}
+
+fn parsePathFrameMode(str: ?[]const u8) surface_brep.PathFrameMode {
+    const s = str orelse return .rmf;
+    if (std.mem.eql(u8, s, "axis-locked") or std.mem.eql(u8, s, "axis_locked")) return .axis_locked;
+    if (std.mem.eql(u8, s, "fixed")) return .fixed;
+    return .rmf;
+}
+
+fn compileOptionalParamExpr(
+    alloc: std.mem.Allocator,
+    expr_str_opt: ?[]const u8,
+    param_map: *const std.StringHashMap(u32),
+    consts: *const std.StringHashMap(f64),
+    out_err_code: *u32,
+) !?autodiff.Expression {
+    const raw = expr_str_opt orelse return null;
+    const trimmed = std.mem.trim(u8, raw, " \t\r\n");
+    if (trimmed.len == 0) return null;
+    return autodiff.compileExpressionFull(alloc, trimmed, .residual, param_map, consts, null) catch |err| {
+        if (err == error.ErrExprContext) {
+            out_err_code.* = types.ERR_EXPR_CONTEXT;
+            return error.ErrExprContext;
+        }
+        out_err_code.* = types.ERR_UNDEFINED_REF;
+        return error.UndefinedRef;
+    };
+}
+
+fn buildSweepOrLoftSolid(
+    ev: *DocumentEvaluator,
+    op_node: *const XmlNode,
+    is_loft: bool,
+    feature_hash: u64,
+    out_err_code: *u32,
+) !u64 {
+    const alloc = ev.allocator;
+    const op_id = op_node.getAttr("id") orelse (if (is_loft) "loft" else "sweep");
+    const cap_ends = if (op_node.getAttr("cap-ends")) |c| std.mem.eql(u8, c, "true") else true;
+
+    // 1. Collect MorphSection(s) from <section> children OR wire/wires/sketch attributes
+    var sections: std.ArrayList(surface_brep.MorphSection) = .empty;
+    defer sections.deinit(alloc);
+
+    var owned_hole_slices: std.ArrayList([]surface_brep.ProfileLoop2D) = .empty;
+    defer {
+        for (owned_hole_slices.items) |hs| alloc.free(hs);
+        owned_hole_slices.deinit(alloc);
+    }
+
+    var section_nodes: std.ArrayList(*const XmlNode) = .empty;
+    defer section_nodes.deinit(alloc);
+    for (op_node.children.items) |ch| {
+        if (std.mem.eql(u8, ch.tag, "section")) {
+            try section_nodes.append(alloc, ch);
+        }
+    }
+
+    if (section_nodes.items.len > 0) {
+        const n_sec = section_nodes.items.len;
+        for (section_nodes.items, 0..) |s_node, idx| {
+            const default_v = if (n_sec > 1)
+                @as(f64, @floatFromInt(idx)) / @as(f64, @floatFromInt(n_sec - 1))
+            else
+                0.0;
+            const v_val = if (s_node.getAttr("v")) |vs|
+                (ev.evaluateExpression(vs, .residual) catch default_v)
+            else
+                default_v;
+
+            if (s_node.getAttr("wire")) |w_id| {
+                const rw = findWireById(ev, w_id) orelse {
+                    out_err_code.* = types.ERR_UNDEFINED_REF;
+                    return error.UndefinedWire;
+                };
+                try sections.append(alloc, .{
+                    .v_param = v_val,
+                    .frame_p0 = rw.chart.p0,
+                    .frame_e1 = rw.chart.e1,
+                    .frame_e2 = rw.chart.e2,
+                    .outer = .{ .wire_id = rw.loop.wire_id, .is_hole = false, .points = rw.loop.samples.items },
+                    .holes = &[_]surface_brep.ProfileLoop2D{},
+                });
+            } else if (s_node.getAttr("sketch")) |sk_id| {
+                const sk = getSketchPtr(ev, sk_id) orelse {
+                    out_err_code.* = types.ERR_UNDEFINED_REF;
+                    return error.UndefinedSketch;
+                };
+                if (sk.outer_loops.items.len == 0) {
+                    out_err_code.* = types.ERR_PROFILE_INVALID;
+                    return error.ProfileInvalid;
+                }
+                const chart = ev.charts.get(sk.chart_id) orelse defaultChartXY();
+                const hs = try alloc.alloc(surface_brep.ProfileLoop2D, sk.hole_loops.items.len);
+                try owned_hole_slices.append(alloc, hs);
+                for (sk.hole_loops.items, 0..) |hl, hi| {
+                    hs[hi] = .{ .wire_id = hl.wire_id, .is_hole = true, .points = hl.samples.items };
+                }
+                try sections.append(alloc, .{
+                    .v_param = v_val,
+                    .frame_p0 = chart.p0,
+                    .frame_e1 = chart.e1,
+                    .frame_e2 = chart.e2,
+                    .outer = .{ .wire_id = sk.outer_loops.items[0].wire_id, .is_hole = false, .points = sk.outer_loops.items[0].samples.items },
+                    .holes = hs,
+                });
+            } else {
+                out_err_code.* = types.ERR_UNDEFINED_REF;
+                return error.UndefinedWire;
+            }
+        }
+        const Sorter = struct {
+            fn lessThan(_: void, a: surface_brep.MorphSection, b: surface_brep.MorphSection) bool {
+                return a.v_param < b.v_param;
+            }
+        };
+        std.mem.sort(surface_brep.MorphSection, sections.items, {}, Sorter.lessThan);
+    } else if (op_node.getAttr("wires")) |wires_str| {
+        var outer_rw: ?ResolvedWire = null;
+        var holes_tmp: std.ArrayList(surface_brep.ProfileLoop2D) = .empty;
+        defer holes_tmp.deinit(alloc);
+        var w_it = std.mem.tokenizeAny(u8, wires_str, " ,\t\r\n");
+        while (w_it.next()) |wid| {
+            const rw = findWireById(ev, wid) orelse {
+                out_err_code.* = types.ERR_UNDEFINED_REF;
+                return error.UndefinedWire;
+            };
+            if (outer_rw == null and !rw.loop.is_hole) {
+                outer_rw = rw;
+            } else {
+                try holes_tmp.append(alloc, .{ .wire_id = rw.loop.wire_id, .is_hole = true, .points = rw.loop.samples.items });
+            }
+        }
+        const orw = outer_rw orelse {
+            out_err_code.* = types.ERR_PROFILE_INVALID;
+            return error.ProfileInvalid;
+        };
+        const hs = try alloc.dupe(surface_brep.ProfileLoop2D, holes_tmp.items);
+        try owned_hole_slices.append(alloc, hs);
+        try sections.append(alloc, .{
+            .v_param = 0.0,
+            .frame_p0 = orw.chart.p0,
+            .frame_e1 = orw.chart.e1,
+            .frame_e2 = orw.chart.e2,
+            .outer = .{ .wire_id = orw.loop.wire_id, .is_hole = false, .points = orw.loop.samples.items },
+            .holes = hs,
+        });
+    } else if (op_node.getAttr("wire")) |w_id| {
+        const rw = findWireById(ev, w_id) orelse {
+            out_err_code.* = types.ERR_UNDEFINED_REF;
+            return error.UndefinedWire;
+        };
+        try sections.append(alloc, .{
+            .v_param = 0.0,
+            .frame_p0 = rw.chart.p0,
+            .frame_e1 = rw.chart.e1,
+            .frame_e2 = rw.chart.e2,
+            .outer = .{ .wire_id = rw.loop.wire_id, .is_hole = false, .points = rw.loop.samples.items },
+            .holes = &[_]surface_brep.ProfileLoop2D{},
+        });
+    } else {
+        const sk_id = op_node.getAttr("sketch") orelse "";
+        const sk = getSketchPtr(ev, sk_id) orelse {
+            out_err_code.* = types.ERR_UNDEFINED_REF;
+            return error.UndefinedSketch;
+        };
+        if (sk.outer_loops.items.len == 0) {
+            out_err_code.* = types.ERR_PROFILE_INVALID;
+            return error.ProfileInvalid;
+        }
+        const chart = ev.charts.get(sk.chart_id) orelse defaultChartXY();
+        const hs = try alloc.alloc(surface_brep.ProfileLoop2D, sk.hole_loops.items.len);
+        try owned_hole_slices.append(alloc, hs);
+        for (sk.hole_loops.items, 0..) |hl, hi| {
+            hs[hi] = .{ .wire_id = hl.wire_id, .is_hole = true, .points = hl.samples.items };
+        }
+        try sections.append(alloc, .{
+            .v_param = 0.0,
+            .frame_p0 = chart.p0,
+            .frame_e1 = chart.e1,
+            .frame_e2 = chart.e2,
+            .outer = .{ .wire_id = sk.outer_loops.items[0].wire_id, .is_hole = false, .points = sk.outer_loops.items[0].samples.items },
+            .holes = hs,
+        });
+    }
+
+    if (sections.items.len == 0) {
+        out_err_code.* = types.ERR_PROFILE_INVALID;
+        return error.ProfileInvalid;
+    }
+
+    const default_cont: surface_brep.SectionContinuity = if (sections.items.len > 1) .G1 else .G0;
+    const continuity = parseContinuityAttr(op_node.getAttr("continuity"), default_cont);
+
+    var total_m: usize = sections.items[0].outer.points.len;
+    for (sections.items[0].holes) |hl| total_m += hl.points.len;
+    const max_budget_stations: usize = @min(@as(usize, 1025), @max(@as(usize, 25), 1_536_000 / (96 * @max(@as(usize, 3), total_m))));
+
+    var explicit_stations: ?usize = null;
+    if (op_node.getAttr("stations")) |st_str| {
+        explicit_stations = std.fmt.parseInt(usize, st_str, 10) catch null;
+    }
+
+    var v_map = std.StringHashMap(u32).init(alloc);
+    defer v_map.deinit();
+    try v_map.put("v", 0);
+
+    const tr_node_opt = op_node.findChild("trajectory");
+    const scale_node_opt = if (tr_node_opt) |tr| (tr.findChild("scale") orelse op_node.findChild("scale")) else op_node.findChild("scale");
+    const twist_node_opt = op_node.findChild("twist");
+
+    var sx_expr = try compileOptionalParamExpr(alloc, if (scale_node_opt) |sn| (sn.getAttr("x-expr") orelse sn.getAttr("x") orelse sn.getAttr("s-expr") orelse sn.getAttr("s")) else null, &v_map, &ev.const_values, out_err_code);
+    defer if (sx_expr) |*e| e.deinit();
+    var sy_expr = try compileOptionalParamExpr(alloc, if (scale_node_opt) |sn| (sn.getAttr("y-expr") orelse sn.getAttr("y") orelse sn.getAttr("s-expr") orelse sn.getAttr("s")) else null, &v_map, &ev.const_values, out_err_code);
+    defer if (sy_expr) |*e| e.deinit();
+    var sz_expr = try compileOptionalParamExpr(alloc, if (scale_node_opt) |sn| (sn.getAttr("z-expr") orelse sn.getAttr("z") orelse sn.getAttr("s-expr") orelse sn.getAttr("s")) else null, &v_map, &ev.const_values, out_err_code);
+    defer if (sz_expr) |*e| e.deinit();
+    var twist_expr = try compileOptionalParamExpr(alloc, if (twist_node_opt) |tn| (tn.getAttr("angle-expr") orelse tn.getAttr("angle")) else null, &v_map, &ev.const_values, out_err_code);
+    defer if (twist_expr) |*e| e.deinit();
+
+    const evalScaleAt = struct {
+        fn get(v_val: f64, ex: ?*const autodiff.Expression, ey: ?*const autodiff.Expression, ez: ?*const autodiff.Expression) Vec3d {
+            const v_arr = [_]f64{v_val};
+            const sx = if (ex) |e| e.evalScalar(&v_arr) else 1.0;
+            const sy = if (ey) |e| e.evalScalar(&v_arr) else 1.0;
+            const sz = if (ez) |e| e.evalScalar(&v_arr) else 1.0;
+            return Vec3d.init(sx, sy, sz);
+        }
+    }.get;
+
+    // 2. Build TrajectoryStep stations (Path Curve mode vs Expression SE(3) mode vs Identity Loft mode)
+    var steps: []surface_brep.TrajectoryStep = undefined;
+
+    if (op_node.getAttr("path")) |path_id| {
+        const c_def = ev.curves.get(path_id) orelse {
+            out_err_code.* = types.ERR_UNDEFINED_REF;
+            return error.UndefinedCurve;
+        };
+        const dom = parseDomainRange(ev, c_def.domain_str);
+        const t0 = dom[0];
+        const t1 = dom[1];
+        const frame_mode = parsePathFrameMode(op_node.getAttr("frame"));
+        const up_hint = if (op_node.getAttr("up")) |u_str| parseVec3(u_str) else Vec3d.init(0.0, 0.0, 1.0);
+
+        var t_map = std.StringHashMap(u32).init(alloc);
+        defer t_map.deinit();
+        try t_map.put(c_def.param_name, 0);
+
+        var x_comp = (try compileOptionalParamExpr(alloc, c_def.x_expr, &t_map, &ev.const_values, out_err_code)) orelse {
+            out_err_code.* = types.ERR_UNDEFINED_REF;
+            return error.UndefinedRef;
+        };
+        defer x_comp.deinit();
+        var y_comp = (try compileOptionalParamExpr(alloc, c_def.y_expr, &t_map, &ev.const_values, out_err_code)) orelse {
+            out_err_code.* = types.ERR_UNDEFINED_REF;
+            return error.UndefinedRef;
+        };
+        defer y_comp.deinit();
+        var z_comp = (try compileOptionalParamExpr(alloc, c_def.z_expr, &t_map, &ev.const_values, out_err_code)) orelse {
+            out_err_code.* = types.ERR_UNDEFINED_REF;
+            return error.UndefinedRef;
+        };
+        defer z_comp.deinit();
+
+        // Probe path turning angle and twist angle for adaptive angular v-subdivision (<= pi/12 = 24/turn)
+        const probe_n: usize = 64;
+        var prev_t_hat: ?Vec3d = null;
+        var total_turn: f64 = 0.0;
+        var total_twist: f64 = 0.0;
+        var prev_tw: f64 = 0.0;
+        for (0..probe_n + 1) |pi| {
+            const frac = @as(f64, @floatFromInt(pi)) / @as(f64, @floatFromInt(probe_n));
+            const t_val = t0 + frac * (t1 - t0);
+            const d_in = [_]autodiff.Dual{autodiff.Dual.variable(t_val, true)};
+            const dx = x_comp.evalDual(&d_in).der;
+            const dy = y_comp.evalDual(&d_in).der;
+            const dz = z_comp.evalDual(&d_in).der;
+            const tang = Vec3d.init(dx, dy, dz);
+            if (tang.length() > 1e-12) {
+                const th = tang.normalize();
+                if (prev_t_hat) |pt| {
+                    total_turn += std.math.acos(std.math.clamp(pt.dot(th), -1.0, 1.0));
+                }
+                prev_t_hat = th;
+            }
+            if (twist_expr) |*te| {
+                const tw = te.evalScalar(&[_]f64{frac});
+                if (pi > 0) total_twist += @abs(tw - prev_tw);
+                prev_tw = tw;
+            }
+        }
+
+        const effective_ang = @max(total_turn, total_twist);
+        const auto_stations: usize = @as(usize, @intFromFloat(@ceil(effective_ang / (std.math.pi / 12.0)))) + 1;
+        const min_sec_st: usize = if (sections.items.len > 1) @max(@as(usize, 33), 8 * (sections.items.len - 1) + 1) else 25;
+        const n_stations: usize = if (explicit_stations) |s|
+            @min(max_budget_stations, @max(@as(usize, 2), s))
+        else
+            @min(max_budget_stations, @max(min_sec_st, auto_stations));
+
+        var path_samples = try alloc.alloc(surface_brep.PathSample3D, n_stations);
+        defer alloc.free(path_samples);
+        const dt_dv = t1 - t0;
+        for (0..n_stations) |k| {
+            const frac = @as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(n_stations - 1));
+            const t_val = t0 + frac * dt_dv;
+            const d_in = [_]autodiff.Dual{autodiff.Dual.variable(t_val, true)};
+            const xd = x_comp.evalDual(&d_in);
+            const yd = y_comp.evalDual(&d_in);
+            const zd = z_comp.evalDual(&d_in);
+            const tw = if (twist_expr) |*te| te.evalScalar(&[_]f64{frac}) else 0.0;
+            path_samples[k] = .{
+                .v = frac,
+                .point = Vec3d.init(xd.val, yd.val, zd.val),
+                .tangent = Vec3d.init(xd.der * dt_dv, yd.der * dt_dv, zd.der * dt_dv),
+                .twist_rad = tw,
+                .scale = evalScaleAt(frac, if (sx_expr) |*e| e else null, if (sy_expr) |*e| e else null, if (sz_expr) |*e| e else null),
+            };
+        }
+
+        steps = surface_brep.buildPathTrajectorySteps(
+            alloc,
+            path_samples,
+            frame_mode,
+            up_hint,
+            sections.items[0].frame_e1,
+            sections.items[0].frame_e2,
+        ) catch |err| {
+            out_err_code.* = types.ERR_SWEEP_SELF_INTERSECT;
+            return err;
+        };
+    } else if (tr_node_opt) |tr_node| {
+        if (explicit_stations == null) {
+            if (tr_node.getAttr("stations")) |st_str| {
+                explicit_stations = std.fmt.parseInt(usize, st_str, 10) catch null;
+            }
+        }
+
+        const t_node_opt = tr_node.findChild("translate");
+        const r_node_opt = tr_node.findChild("rotate");
+
+        var tx_expr = try compileOptionalParamExpr(alloc, if (t_node_opt) |tn| (tn.getAttr("x-expr") orelse tn.getAttr("x")) else null, &v_map, &ev.const_values, out_err_code);
+        defer if (tx_expr) |*e| e.deinit();
+        var ty_expr = try compileOptionalParamExpr(alloc, if (t_node_opt) |tn| (tn.getAttr("y-expr") orelse tn.getAttr("y")) else null, &v_map, &ev.const_values, out_err_code);
+        defer if (ty_expr) |*e| e.deinit();
+        var tz_expr = try compileOptionalParamExpr(alloc, if (t_node_opt) |tn| (tn.getAttr("z-expr") orelse tn.getAttr("z")) else null, &v_map, &ev.const_values, out_err_code);
+        defer if (tz_expr) |*e| e.deinit();
+        var ang_expr = try compileOptionalParamExpr(alloc, if (r_node_opt) |rn| (rn.getAttr("angle-expr") orelse rn.getAttr("angle")) else null, &v_map, &ev.const_values, out_err_code);
+        defer if (ang_expr) |*e| e.deinit();
+
+        var rot_axis = Vec3d.init(0.0, 0.0, 1.0);
+        if (r_node_opt) |rn| {
+            if (rn.getAttr("axis")) |ax_str| {
+                const parsed_ax = parseVec3(ax_str);
+                if (parsed_ax.length() > 1e-12) rot_axis = parsed_ax.normalize();
+            }
+        }
+
+        const has_rotate = (ang_expr != null);
+        const has_scale = (sx_expr != null or sy_expr != null or sz_expr != null);
+
+        var angle_span: f64 = 0.0;
+        if (ang_expr) |*ae| {
+            const p_steps: usize = 16;
+            var prev_a = ae.evalScalar(&[_]f64{0.0});
+            for (1..p_steps + 1) |pi| {
+                const vf = @as(f64, @floatFromInt(pi)) / @as(f64, @floatFromInt(p_steps));
+                const cur_a = ae.evalScalar(&[_]f64{vf});
+                angle_span += @abs(cur_a - prev_a);
+                prev_a = cur_a;
+            }
+        }
+
+        const clamped_span = if (std.math.isFinite(angle_span)) @min(angle_span, 256.0 * std.math.pi) else 0.0;
+        // Adaptive angular v-subdivision: <= pi/12 (15 deg = 24 segments per full turn)
+        const auto_stations: usize = @as(usize, @intFromFloat(@ceil(clamped_span / (std.math.pi / 12.0)))) + 1;
+        const min_morph_st: usize = if (sections.items.len > 1) @max(@as(usize, 41), 10 * (sections.items.len - 1) + 1) else if (has_scale) 17 else 2;
+        const n_stations: usize = if (explicit_stations) |s|
+            @min(max_budget_stations, @max(@as(usize, 2), s))
+        else if (has_rotate)
+            @min(max_budget_stations, @max(@max(@as(usize, 25), min_morph_st), auto_stations))
+        else
+            @min(max_budget_stations, min_morph_st);
+
+        steps = try alloc.alloc(surface_brep.TrajectoryStep, n_stations);
+        for (0..n_stations) |k| {
+            const v_val = @as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(n_stations - 1));
+            const d_in = [_]autodiff.Dual{autodiff.Dual.variable(v_val, true)};
+
+            const tx_d = if (tx_expr) |*e| e.evalDual(&d_in) else autodiff.Dual.constant(0.0);
+            const ty_d = if (ty_expr) |*e| e.evalDual(&d_in) else autodiff.Dual.constant(0.0);
+            const tz_d = if (tz_expr) |*e| e.evalDual(&d_in) else autodiff.Dual.constant(0.0);
+            const ang_d = if (ang_expr) |*e| e.evalDual(&d_in) else autodiff.Dual.constant(0.0);
+
+            // Exact co-moving body-frame velocities via dual numbers:
+            // Omega_body(v) = theta'(v) * omega_hat, V_body(v) = R(v)^T * d'(v)
+            const R_k = surface_brep.Mat3d.fromAxisAngle(rot_axis, ang_d.val);
+            const omega_body = rot_axis.scale(ang_d.der);
+            const vel_body = R_k.transposeMulVec(Vec3d.init(tx_d.der, ty_d.der, tz_d.der));
+
+            steps[k] = .{
+                .v = v_val,
+                .translation = Vec3d.init(tx_d.val, ty_d.val, tz_d.val),
+                .axis = rot_axis,
+                .angle_rad = ang_d.val,
+                .scale = evalScaleAt(v_val, if (sx_expr) |*e| e else null, if (sy_expr) |*e| e else null, if (sz_expr) |*e| e else null),
+                .omega_body = omega_body,
+                .vel_body = vel_body,
+            };
+        }
+    } else {
+        if (sections.items.len < 2) {
+            out_err_code.* = types.ERR_SWEEP_SELF_INTERSECT;
+            return error.SweepSelfIntersect;
+        }
+        const n_stations: usize = if (explicit_stations) |s|
+            @min(max_budget_stations, @max(@as(usize, 2), s))
+        else if (continuity == .G0)
+            sections.items.len
+        else
+            @min(max_budget_stations, @max(@as(usize, 17), 8 * (sections.items.len - 1) + 1));
+
+        steps = try alloc.alloc(surface_brep.TrajectoryStep, n_stations);
+        for (0..n_stations) |k| {
+            const v_val = if (continuity == .G0 and n_stations == sections.items.len)
+                sections.items[k].v_param
+            else
+                @as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(n_stations - 1));
+            steps[k] = .{
+                .v = v_val,
+                .translation = Vec3d.zero(),
+                .axis = Vec3d.init(0.0, 0.0, 1.0),
+                .angle_rad = 0.0,
+                .scale = evalScaleAt(v_val, if (sx_expr) |*e| e else null, if (sy_expr) |*e| e else null, if (sz_expr) |*e| e else null),
+                .omega_body = Vec3d.zero(),
+                .vel_body = Vec3d.zero(),
+            };
+        }
+    }
+    defer alloc.free(steps);
+
+    return surface_brep.sweepMorphingSE3(
+        memory.persistent_allocator,
+        feature_hash,
+        topo_id.h64(op_id),
+        sections.items,
+        steps,
+        continuity,
+        false,
+        1,
+        cap_ends,
+    ) catch |err| {
+        if (err == error.SweepSelfIntersect or err == error.InvalidLoftSections) {
+            out_err_code.* = types.ERR_SWEEP_SELF_INTERSECT;
+        }
+        return err;
+    };
+}
+
 fn constructBrepSolid(ev: *DocumentEvaluator, node: *const XmlNode, out_err_code: *u32) !u64 {
     const alloc = ev.allocator;
     const brep_id = node.getAttr("id") orelse "brep";
@@ -1268,164 +1825,13 @@ fn constructBrepSolid(ev: *DocumentEvaluator, node: *const XmlNode, out_err_code
         return h;
     }
 
-    // Case 2: Kinematic SE(3) Sweep + Optional Differential Fillet (§7)
+    // Case 2: Unified SE(3) Sweep / Morphing Sweep / Tensor Loft + Optional Differential Fillet (§7)
     var solid_h: u64 = 0;
 
     if (node.findChild("sweep")) |sw_node| {
-        const sw_id = sw_node.getAttr("id") orelse "sweep";
-        const sk_id = sw_node.getAttr("sketch") orelse "";
-        const cap_ends = if (sw_node.getAttr("cap-ends")) |c| std.mem.eql(u8, c, "true") else true;
-
-        const sk = getSketchPtr(ev, sk_id) orelse {
-            out_err_code.* = types.ERR_UNDEFINED_REF;
-            return error.UndefinedSketch;
-        };
-
-        const chart = ev.charts.get(sk.chart_id) orelse ChartDef{
-            .id = "default",
-            .p0 = Vec3d.init(0.0, 0.0, 0.0),
-            .e1 = Vec3d.init(1.0, 0.0, 0.0),
-            .e2 = Vec3d.init(0.0, 1.0, 0.0),
-        };
-
-        var v_map = std.StringHashMap(u32).init(alloc);
-        defer v_map.deinit();
-        try v_map.put("v", 0);
-
-        // Evaluate trajectory steps across v in [0, 1]
-        var has_rotate = false;
-        var explicit_stations: ?usize = null;
-        var angle_span: f64 = 0.0;
-        if (sw_node.getAttr("stations")) |st_str| {
-            explicit_stations = std.fmt.parseInt(usize, st_str, 10) catch null;
-        }
-        if (sw_node.findChild("trajectory")) |tr_node| {
-            if (explicit_stations == null) {
-                if (tr_node.getAttr("stations")) |st_str| {
-                    explicit_stations = std.fmt.parseInt(usize, st_str, 10) catch null;
-                }
-            }
-            if (tr_node.findChild("rotate")) |r_node| {
-                has_rotate = true;
-                if (r_node.getAttr("angle-expr") orelse r_node.getAttr("angle")) |ang_str| {
-                    if (autodiff.compileExpressionFull(alloc, ang_str, .residual, &v_map, &ev.const_values, null)) |ce| {
-                        var mut_ce = ce;
-                        defer mut_ce.deinit();
-                        const a0 = mut_ce.evalScalar(&[_]f64{0.0});
-                        const a1 = mut_ce.evalScalar(&[_]f64{1.0});
-                        angle_span = @abs(a1 - a0);
-                    } else |_| {}
-                }
-            }
-        }
-        if (sk.outer_loops.items.len == 0) {
-            out_err_code.* = types.ERR_PROFILE_INVALID;
-            return error.ProfileInvalid;
-        }
-        var total_m: usize = sk.outer_loops.items[0].samples.items.len;
-        for (sk.hole_loops.items) |hl| total_m += hl.samples.items.len;
-        const max_budget_stations: usize = @min(@as(usize, 1025), @max(@as(usize, 17), 4_000_000 / (96 * @max(@as(usize, 3), total_m))));
-
-        const clamped_span = if (std.math.isFinite(angle_span)) @min(angle_span, 128.0 * std.math.pi) else 0.0;
-        const auto_stations: usize = @as(usize, @intFromFloat(@ceil(clamped_span / (std.math.pi / 8.0)))) + 1;
-        const n_stations: usize = if (explicit_stations) |s|
-            @min(max_budget_stations, @max(@as(usize, 2), s))
-        else if (has_rotate)
-            @min(max_budget_stations, @max(@as(usize, 17), auto_stations))
-        else
-            2;
-        var steps = try alloc.alloc(surface_brep.TrajectoryStep, n_stations);
-        defer alloc.free(steps);
-
-        for (0..n_stations) |k| {
-            const v_val = @as(f64, @floatFromInt(k)) / @as(f64, @floatFromInt(n_stations - 1));
-            var tx: f64 = 0.0;
-            var ty: f64 = 0.0;
-            var tz: f64 = 0.0;
-            var rot_axis = Vec3d.init(0.0, 0.0, 1.0);
-            var rot_angle: f64 = 0.0;
-
-            if (sw_node.findChild("trajectory")) |tr_node| {
-                if (tr_node.findChild("translate")) |t_node| {
-                    if (t_node.getAttr("x-expr") orelse t_node.getAttr("x")) |sx| {
-                        if (autodiff.compileExpressionFull(alloc, sx, .residual, &v_map, &ev.const_values, null)) |ce| {
-                            var mut_ce = ce;
-                            defer mut_ce.deinit();
-                            tx = mut_ce.evalScalar(&[_]f64{v_val});
-                        } else |_| {}
-                    }
-                    if (t_node.getAttr("y-expr") orelse t_node.getAttr("y")) |sy| {
-                        if (autodiff.compileExpressionFull(alloc, sy, .residual, &v_map, &ev.const_values, null)) |ce| {
-                            var mut_ce = ce;
-                            defer mut_ce.deinit();
-                            ty = mut_ce.evalScalar(&[_]f64{v_val});
-                        } else |_| {}
-                    }
-                    if (t_node.getAttr("z-expr") orelse t_node.getAttr("z")) |sz| {
-                        if (autodiff.compileExpressionFull(alloc, sz, .residual, &v_map, &ev.const_values, null)) |ce| {
-                            var mut_ce = ce;
-                            defer mut_ce.deinit();
-                            tz = mut_ce.evalScalar(&[_]f64{v_val});
-                        } else |_| {}
-                    }
-                }
-                if (tr_node.findChild("rotate")) |r_node| {
-                    if (r_node.getAttr("axis")) |ax_str| {
-                        var ax_it = std.mem.tokenizeAny(u8, ax_str, " \t\r\n");
-                        const ax = if (ax_it.next()) |s| (std.fmt.parseFloat(f64, s) catch 0.0) else 0.0;
-                        const ay = if (ax_it.next()) |s| (std.fmt.parseFloat(f64, s) catch 0.0) else 0.0;
-                        const az = if (ax_it.next()) |s| (std.fmt.parseFloat(f64, s) catch 1.0) else 1.0;
-                        rot_axis = Vec3d.init(ax, ay, az);
-                    }
-                    if (r_node.getAttr("angle-expr") orelse r_node.getAttr("angle")) |ang_str| {
-                        if (autodiff.compileExpressionFull(alloc, ang_str, .residual, &v_map, &ev.const_values, null)) |ce| {
-                            var mut_ce = ce;
-                            defer mut_ce.deinit();
-                            rot_angle = mut_ce.evalScalar(&[_]f64{v_val});
-                        } else |_| {}
-                    }
-                }
-            }
-
-            steps[k] = .{
-                .v = v_val,
-                .translation = Vec3d.init(tx, ty, tz),
-                .axis = rot_axis,
-                .angle_rad = rot_angle,
-            };
-        }
-
-        const outer_l = surface_brep.ProfileLoop2D{
-            .wire_id = sk.outer_loops.items[0].wire_id,
-            .is_hole = false,
-            .points = sk.outer_loops.items[0].samples.items,
-        };
-
-        var hole_slice = try alloc.alloc(surface_brep.ProfileLoop2D, sk.hole_loops.items.len);
-        defer alloc.free(hole_slice);
-        for (sk.hole_loops.items, 0..) |hl, hi| {
-            hole_slice[hi] = .{
-                .wire_id = hl.wire_id,
-                .is_hole = true,
-                .points = hl.samples.items,
-            };
-        }
-
-        solid_h = surface_brep.sweepProfileLoopsSE3(
-            memory.persistent_allocator,
-            feature_hash,
-            topo_id.h64(sw_id),
-            chart.p0,
-            chart.e1,
-            chart.e2,
-            outer_l,
-            hole_slice,
-            steps,
-            cap_ends,
-        ) catch |err| {
-            out_err_code.* = types.ERR_SWEEP_SELF_INTERSECT;
-            return err;
-        };
+        solid_h = try buildSweepOrLoftSolid(ev, sw_node, false, feature_hash, out_err_code);
+    } else if (node.findChild("loft")) |loft_node| {
+        solid_h = try buildSweepOrLoftSolid(ev, loft_node, true, feature_hash, out_err_code);
     } else if (node.findChild("solid_extrude")) |ext_node| {
         const ext_id = ext_node.getAttr("id") orelse "extrude";
         const sk_id = ext_node.getAttr("sketch") orelse "";
