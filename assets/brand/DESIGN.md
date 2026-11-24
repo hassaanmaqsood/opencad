@@ -1,6 +1,6 @@
-# OpenCAD Design System (`Cream & Navy`)
+# OpenCAD Design System
 
-Single-source design specification for all OpenCAD web applications (`web-app/` Studio, `<opencad-viewer>` embed, and `feascript-demo.html`).
+Single-source design specification for all OpenCAD web applications.
 
 ---
 
