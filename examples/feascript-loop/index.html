@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>OpenCAD × FEAScript — Closed-Loop Thermal CAD/FEM Demo</title>
+  <!-- Ensure Cross-Origin Isolation (SharedArrayBuffer) on static hosts (GitHub Pages, etc.) -->
+  <script src="https://cdn.jsdelivr.net/npm/coi-serviceworker@0.1.7/coi-serviceworker.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=STIX+Two+Text:ital,wght@0,600;0,700;1,400&display=swap" rel="stylesheet" />
+
+  <!--
+    ============================================================================
+    1. EXTERNAL CDN DEPENDENCIES (Import Map)
+    ============================================================================
+    Pinned ESM dependencies loaded directly from jsDelivr:
+      - three (0.170.0): WebGL 3D B-Rep viewport & OrbitControls
+      - lil-gui (0.20.0): Real-time parameter & boundary condition controls
+      - feascript (0.4.1): 2D finite-element thermal solver & Gmsh worker
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+        "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.20.0/dist/lil-gui.esm.min.js",
+        "feascript": "https://cdn.jsdelivr.net/npm/feascript@0.4.1/dist/feascript.esm.js"
+      }
+    }
+  </script>
+
+  <!--
+    ============================================================================
+    2. MONOGRAPH & PAPER SURFACE STYLESHEET
+    ============================================================================
+  -->
+  <link rel="stylesheet" href="./styles/demo.css" />
+</head>
+<body>
+  <div id="stage-root">
+    <!-- 3D OpenCAD B-Rep + Thermal Field Viewport -->
+    <div id="pane-3d" class="view-pane">
+      <div class="pane-pill">3D · OpenCAD B-Rep + Thermal Field</div>
+      <canvas id="cad-3d-canvas"></canvas>
+    </div>
+
+    <!-- 2D FEAScript Triangular Mesh & Contour Viewport -->
+    <div id="pane-2d" class="view-pane hidden">
+      <div class="pane-pill">2D · FEAScript Unstructured Mesh (T2D)</div>
+      <canvas id="fem-2d-canvas"></canvas>
+      <div id="fem-hover" class="fem-probe-pill">Hover mesh to probe T(x, y)</div>
+    </div>
+
+    <!-- Left Floating Viewport Dock -->
+    <nav class="viewport-dock" aria-label="Demo Actions">
+      <button id="btn-view-3d" class="dock-btn active" title="Toggle 3D OpenCAD Viewport" aria-pressed="true">3D</button>
+      <button id="btn-view-2d" class="dock-btn" title="Toggle 2D FEAScript Viewport" aria-pressed="false">2D</button>
+      <div class="dock-sep"></div>
+      <button id="btn-fit" class="dock-btn" title="Fit Camera to Solid" aria-label="Fit Camera">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      </button>
+      <button id="btn-wire" class="dock-btn" title="Toggle Wireframe / FEM Elements" aria-pressed="false">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      </button>
+      <button id="btn-gui" class="dock-btn active" title="Toggle Parameters GUI" aria-pressed="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+      </button>
+      <div class="dock-sep"></div>
+      <button id="btn-info" class="dock-btn" title="About Projects &amp; Drop-In Modules" aria-label="Project Info">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </button>
+      <a id="btn-code-link" class="dock-btn" href="https://github.com/hassaanmaqsood/open-cad/tree/main/examples/feascript-loop" target="_blank" rel="noopener noreferrer" title="View Modular Source on GitHub">&lt;/&gt;</a>
+    </nav>
+
+    <!-- Bottom-Left Thermal Scale Bar -->
+    <div class="thermal-legend" aria-hidden="true">
+      <div class="thermal-bar"></div>
+      <div class="thermal-ticks">
+        <span id="cb-min">70.0 °C</span>
+        <span id="cb-mid">125.0 °C</span>
+        <span id="cb-max">180.0 °C</span>
+      </div>
+    </div>
+
+    <!-- Bottom-Right Engineering Telemetry HUD -->
+    <div class="viewport-telemetry" aria-live="polite">
+      <div class="telemetry-brand">FEAScript × OpenCAD Demo</div>
+      <div class="telemetry-loop">
+        <span id="tel-dot" class="status-dot"></span>
+        <span id="tel-loop">BOOTING KERNEL &amp; SOLVER…</span>
+      </div>
+      <div id="tel-thermal" class="telemetry-item">T(y=H): -- °C · Bore Probe: -- °C</div>
+      <div id="tel-geom" class="telemetry-item">90 × 60 × 12 mm · r = 9.0 mm</div>
+      <div id="tel-mesh" class="telemetry-item">0 Nodes · 0 FEM Tri · 0 B-Rep Tri</div>
+    </div>
+  </div>
+
+  <!-- Info & Usage Modal (Centered Card on Desktop / Bottom Sheet on Mobile) -->
+  <dialog id="info-dialog" aria-labelledby="info-dialog-title">
+    <div class="dialog-shell">
+      <div class="dialog-head">
+        <span id="info-dialog-title" class="dialog-title">FEAScript × OpenCAD — Modular Drop-In Architecture</span>
+        <button id="btn-close-info" class="dialog-close" type="button">ESC</button>
+      </div>
+      <div class="dialog-body">
+        <div class="project-cards">
+          <div class="project-card">
+            <h2>FEAScript (v0.4.1)</h2>
+            <p>Browser &amp; Node.js finite-element library solving 2D/3D heat conduction, front propagation, and multiphysics PDEs in pure JavaScript.</p>
+            <a href="https://feascript.com" target="_blank" rel="noopener noreferrer">feascript.com ↗</a> &nbsp;·&nbsp;
+            <a href="https://github.com/FEAScript/FEAScript-core" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+          </div>
+          <div class="project-card">
+            <h2>OpenCAD Kernel</h2>
+            <p>Browser-native parametric B-Rep &amp; implicit CAD kernel in Zig/WASM with declarative CDML XML, exact booleans, and zero-copy field injection.</p>
+            <a href="https://github.com/hassaanmaqsood/open-cad" target="_blank" rel="noopener noreferrer">GitHub Repository ↗</a> &nbsp;·&nbsp;
+            <a href="https://github.com/hassaanmaqsood/open-cad/tree/main/examples/feascript-loop" target="_blank" rel="noopener noreferrer">Modular Example ↗</a>
+          </div>
+        </div>
+        <div class="usage-section">
+          <h3>Drop-In Reusable ES Modules (./js/)</h3>
+          <pre><code>import { OpenCadBridge } from './js/opencad-bridge.js';
+import { cdmlToFEAScriptGeometry } from './js/cdml-to-feascript.js';
+import { solveThermal2D, buildNearestWallFieldGrid } from './js/feascript-solver.js';
+
+// 1. Convert any OpenCAD CDML &lt;sketch&gt; directly into FEAScript geometry &amp; boundaries
+const cad = await OpenCadBridge.create();
+const pass1 = cad.evalCdml(cdmlXml);
+const cdmlGeom = cdmlToFEAScriptGeometry(cdmlXml);
+
+// 2. Solve 2D PDE in FEAScript &amp; inject nearest-wall 3D voxel field into OpenCAD
+const fem = solveThermal2D(cdmlGeom, params);
+cad.writeFieldBuffer(buildNearestWallFieldGrid(fem, pass1.bbox, params));
+const pass2 = cad.evalCdml(cdmlXml); // Evaluates B-Rep + &lt;probe id="bore_temp"&gt;</code></pre>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!--
+    ============================================================================
+    3. APPLICATION ENTRY POINT (ES Modules)
+    ============================================================================
+  -->
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

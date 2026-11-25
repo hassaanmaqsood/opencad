@@ -1,1362 +1,148 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FEAScript × OpenCAD — Closed-Loop CAD-to-FEA Studio</title>
-  <meta name="description" content="Lightweight browser-native closed-loop parametric CAD and 2D Finite Element thermal simulation coupling OpenCAD WebAssembly and FEAScript." />
-  <link rel="icon" type="image/svg+xml" href="./branding/opencad-mark.svg" />
-  <script src="./coi-serviceworker.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>OpenCAD × FEAScript — Closed-Loop Thermal CAD/FEM Demo</title>
+  <!-- Ensure Cross-Origin Isolation (SharedArrayBuffer) on static hosts (GitHub Pages, etc.) -->
+  <script src="https://cdn.jsdelivr.net/npm/coi-serviceworker@0.1.7/coi-serviceworker.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=STIX+Two+Text:ital,wght@0,600;0,700;1,400&display=swap" rel="stylesheet" />
+
+  <!--
+    ============================================================================
+    1. EXTERNAL CDN DEPENDENCIES (Import Map)
+    ============================================================================
+    Pinned ESM dependencies loaded directly from jsDelivr:
+      - three (0.170.0): WebGL 3D B-Rep viewport & OrbitControls
+      - lil-gui (0.20.0): Real-time parameter & boundary condition controls
+      - feascript (0.4.1): 2D finite-element thermal solver & Gmsh worker
+  -->
   <script type="importmap">
     {
       "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
         "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
         "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.20.0/dist/lil-gui.esm.min.js",
-        "feascript": "https://core.feascript.com/dist/feascript.esm.js"
+        "feascript": "https://cdn.jsdelivr.net/npm/feascript@0.4.1/dist/feascript.esm.js"
       }
     }
   </script>
-  <style>
-    :root {
-      --paper: #FAF7F3;
-      --surface: #F5F0E8;
-      --surface-2: #EDE6DB;
-      --surface-hover: #E4DDD0;
-      --ink: #050F1F;
-      --ink-2: #0A2351;
-      --ink-3: #6B6560;
-      --line: #C8C0B4;
-      --accent: #0A2351;
-      --state-nominal: #0A5C38;
-      --state-caution: #9A6700;
-      --state-fault: #8B1A1A;
-      --font-display: 'Arial Black', 'Arial', system-ui, -apple-system, sans-serif;
-      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-mono: 'Courier New', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      --radius-sm: 4px;
-      --radius-md: 6px;
-    }
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: var(--paper);
-      color: var(--ink);
-      font-family: var(--font-mono);
-      font-size: 12px;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* Full-bleed central stage */
-    #stage-root {
-      position: relative;
-      width: 100vw;
-      height: 100dvh;
-      display: flex;
-      flex-direction: row;
-      background: var(--paper);
-      overflow: hidden;
-    }
-
-    .view-pane {
-      position: relative;
-      flex: 1 1 0%;
-      min-width: 0;
-      min-height: 0;
-      overflow: hidden;
-      background: var(--paper);
-    }
-
-    .view-pane.hidden {
-      display: none;
-    }
-
-    #pane-2d.split-border {
-      border-left: 1px solid var(--line);
-    }
-
-    @media (max-width: 767px) {
-      #stage-root {
-        flex-direction: column;
-      }
-      #pane-2d.split-border {
-        border-left: none;
-        border-top: 1px solid var(--line);
-      }
-    }
-
-    .view-pane canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-
-    .pane-pill {
-      position: absolute;
-      top: 14px;
-      left: 14px;
-      z-index: 20;
-      padding: 4px 9px;
-      background: rgba(245, 240, 232, 0.90);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      font-weight: 700;
-      color: var(--ink-2);
-      pointer-events: none;
-      letter-spacing: 0.03em;
-    }
-
-    .fem-probe-pill {
-      position: absolute;
-      bottom: 14px;
-      left: 64px;
-      z-index: 20;
-      padding: 4px 9px;
-      background: rgba(250, 247, 243, 0.92);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      color: var(--ink-2);
-      pointer-events: none;
-    }
-
-    /* Docked Left Sidebar (Matches OpenCAD Studio Viewport Dock) */
-    .viewport-dock {
-      position: absolute;
-      top: 50%;
-      left: 14px;
-      transform: translateY(-50%);
-      z-index: 120;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      background: rgba(245, 240, 232, 0.92);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      padding: 5px;
-      box-shadow: 0 4px 16px rgba(5, 15, 31, 0.10);
-      user-select: none;
-    }
-
-    .dock-sep {
-      height: 1px;
-      background: var(--line);
-      margin: 1px 3px;
-    }
-
-    .dock-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 34px;
-      height: 34px;
-      background: transparent;
-      border: 1px solid transparent;
-      border-radius: var(--radius-sm);
-      color: var(--ink-2);
-      cursor: pointer;
-      padding: 0;
-      text-decoration: none;
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      font-weight: 700;
-      transition: all 0.15s ease;
-    }
-
-    .dock-btn:hover {
-      background: var(--surface-hover);
-      color: var(--ink);
-      border-color: var(--line);
-    }
-
-    .dock-btn.active {
-      background: #0A2351;
-      color: #FAF7F3;
-      border-color: #0A2351;
-    }
-
-    .dock-btn.active:hover {
-      background: #050F1F;
-      border-color: #050F1F;
-    }
-
-    /* Compact Thermal Legend (Bottom-Left) */
-    .thermal-legend {
-      position: absolute;
-      bottom: 14px;
-      left: 14px;
-      z-index: 40;
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      padding: 5px 9px;
-      background: rgba(245, 240, 232, 0.90);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      font-family: var(--font-mono);
-      font-size: 10.5px;
-      color: var(--ink-2);
-      pointer-events: none;
-    }
-
-    .thermal-bar {
-      width: 96px;
-      height: 8px;
-      border-radius: 2px;
-      border: 1px solid var(--line);
-      background: linear-gradient(90deg, #1d3557, #2a9d8f, #e9c46a, #f4a261, #c1121f);
-    }
-
-    /* Minimalist Unified Telemetry HUD (Bottom-Right Corner) */
-    .viewport-telemetry {
-      position: absolute;
-      bottom: 14px;
-      right: 14px;
-      z-index: 40;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 2px;
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--ink-2);
-      pointer-events: none;
-      user-select: none;
-      background: rgba(250, 247, 243, 0.78);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      padding: 6px 10px;
-      border-radius: var(--radius-sm);
-      border: 1px solid rgba(200, 192, 180, 0.7);
-    }
-
-    .telemetry-brand {
-      font-family: var(--font-display);
-      font-weight: 900;
-      font-size: 11px;
-      color: var(--ink-2);
-      letter-spacing: 0.04em;
-    }
-
-    .telemetry-loop {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 10.5px;
-      font-weight: 700;
-    }
-
-    .status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--state-caution);
-      display: inline-block;
-    }
-    .status-dot.ok { background: var(--state-nominal); }
-    .status-dot.err { background: var(--state-fault); }
-
-    .telemetry-item {
-      font-size: 10.5px;
-      color: var(--ink-2);
-    }
-
-    .telemetry-sep { opacity: 0.45; margin: 0 3px; }
-
-    /* OpenCAD Cream & Navy Theme Overrides for lil-gui */
-    .lil-gui.root {
-      position: absolute !important;
-      top: 14px !important;
-      right: 14px !important;
-      width: 284px !important;
-      max-height: calc(100dvh - 135px) !important;
-      overflow-y: auto !important;
-      background: rgba(245, 240, 232, 0.95) !important;
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border: 1px solid var(--line) !important;
-      border-radius: var(--radius-md) !important;
-      box-shadow: 0 8px 28px rgba(5, 15, 31, 0.12) !important;
-      z-index: 100 !important;
-      --background-color: #F5F0E8 !important;
-      --text-color: #050F1F !important;
-      --title-background-color: #EDE6DB !important;
-      --title-text-color: #0A2351 !important;
-      --widget-color: #FAF7F3 !important;
-      --hover-color: #E4DDD0 !important;
-      --focus-color: #0A2351 !important;
-      --number-color: #0A2351 !important;
-      --string-color: #0A5C38 !important;
-      --font-family: var(--font-sans) !important;
-      --font-family-mono: var(--font-mono) !important;
-      --font-size: 11px !important;
-      --input-font-size: 11px !important;
-      --widget-height: 22px !important;
-      --name-width: 48% !important;
-    }
-
-    .lil-gui .title {
-      color: #0A2351 !important;
-      background: #EDE6DB !important;
-      border-bottom: 1px solid #C8C0B4 !important;
-      font-weight: 700 !important;
-    }
-
-    .lil-gui .controller .name { color: #050F1F !important; }
-    .lil-gui .controller.number .slider {
-      background: #FAF7F3 !important;
-      border: 1px solid #C8C0B4 !important;
-    }
-    .lil-gui .controller.number .slider .fill { background: #0A2351 !important; }
-    .lil-gui .controller input,
-    .lil-gui .controller select {
-      background: #FAF7F3 !important;
-      color: #0A2351 !important;
-      border: 1px solid #C8C0B4 !important;
-    }
-    .lil-gui .controller.function button {
-      background: #FAF7F3 !important;
-      color: #0A2351 !important;
-      border: 1px solid #C8C0B4 !important;
-      font-weight: 600 !important;
-    }
-    .lil-gui .controller.function button:hover,
-    .lil-gui .controller.function button:active {
-      background: #0A2351 !important;
-      color: #FAF7F3 !important;
-      border-color: #0A2351 !important;
-    }
-
-    .lil-gui.hidden-gui { display: none !important; }
-
-    /* Native Modal (Desktop Dialog -> Mobile Bottom Sheet) */
-    dialog#info-dialog {
-      margin: auto;
-      width: min(680px, calc(100vw - 28px));
-      max-height: 85dvh;
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      background: var(--paper);
-      color: var(--ink);
-      box-shadow: 0 20px 50px rgba(5, 15, 31, 0.22);
-      padding: 0;
-      overflow: hidden;
-    }
-
-    dialog#info-dialog::backdrop {
-      background: rgba(5, 15, 31, 0.42);
-      backdrop-filter: blur(3px);
-    }
-
-    @media (max-width: 767px) {
-      .viewport-dock { left: 8px; }
-      .pane-pill { left: 54px; top: 8px; font-size: 10px; }
-      .lil-gui.root {
-        width: 224px !important;
-        right: 8px !important;
-        top: 8px !important;
-        max-height: calc(100dvh - 140px) !important;
-      }
-      .viewport-telemetry { right: 8px; bottom: 8px; font-size: 9.5px; padding: 5px 8px; }
-      .thermal-legend { left: 8px; bottom: 8px; font-size: 9.5px; padding: 4px 7px; }
-      .thermal-bar { width: 48px; }
-      .fem-probe-pill { display: none; }
-
-      /* Bottom Sheet on Mobile */
-      dialog#info-dialog {
-        margin: auto 0 0 0;
-        width: 100vw;
-        max-width: 100vw;
-        max-height: 82dvh;
-        border-radius: 12px 12px 0 0;
-        border-bottom: none;
-      }
-    }
-
-    .dialog-shell {
-      display: flex;
-      flex-direction: column;
-      max-height: 85dvh;
-    }
-
-    .dialog-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--line);
-    }
-
-    .dialog-title {
-      font-family: var(--font-display);
-      font-size: 14px;
-      color: var(--ink-2);
-    }
-
-    .dialog-close {
-      background: var(--paper);
-      border: 1px solid var(--line);
-      color: var(--ink-2);
-      font-family: var(--font-mono);
-      font-size: 12px;
-      font-weight: 700;
-      padding: 4px 9px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-    }
-    .dialog-close:hover { background: var(--surface-hover); }
-
-    .dialog-body {
-      padding: 16px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      font-family: var(--font-sans);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .project-cards {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    @media (max-width: 600px) {
-      .project-cards { grid-template-columns: 1fr; }
-    }
-
-    .project-card {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      padding: 10px 12px;
-    }
-    .project-card h2 {
-      font-family: var(--font-display);
-      font-size: 12.5px;
-      color: var(--ink-2);
-      margin-bottom: 4px;
-    }
-    .project-card p { font-size: 12px; color: var(--ink); margin-bottom: 6px; }
-    .project-card a {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--ink-2);
-      font-weight: 700;
-    }
-
-    .usage-section h3 {
-      font-family: var(--font-mono);
-      font-size: 11.5px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--ink-2);
-      margin-bottom: 6px;
-    }
-
-    .usage-section pre {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      padding: 10px 12px;
-      overflow-x: auto;
-      font-family: var(--font-mono);
-      font-size: 11px;
-      line-height: 1.45;
-      color: var(--ink);
-    }
-  </style>
+  <!--
+    ============================================================================
+    2. MONOGRAPH & PAPER SURFACE STYLESHEET
+    ============================================================================
+  -->
+  <link rel="stylesheet" href="./feascript-demo/styles/demo.css" />
 </head>
 <body>
-  <main id="stage-root">
-    <!-- 3D OpenCAD B-Rep + Thermal Field Pane -->
-    <section id="pane-3d" class="view-pane" aria-label="OpenCAD 3D B-Rep Viewport">
-      <div class="pane-pill">3D · OpenCAD B-Rep</div>
+  <div id="stage-root">
+    <!-- 3D OpenCAD B-Rep + Thermal Field Viewport -->
+    <div id="pane-3d" class="view-pane">
+      <div class="pane-pill">3D · OpenCAD B-Rep + Thermal Field</div>
       <canvas id="cad-3d-canvas"></canvas>
-    </section>
-
-    <!-- 2D FEAScript FEM Mesh & Contour Pane -->
-    <section id="pane-2d" class="view-pane hidden" aria-label="FEAScript 2D Finite Element Viewport">
-      <div class="pane-pill">2D · FEAScript FEM</div>
-      <canvas id="fem-2d-canvas"></canvas>
-      <div class="fem-probe-pill" id="fem-hover">Hover mesh to probe T(x, y)</div>
-    </section>
-
-    <!-- Docked Left Action Bar (OpenCAD Studio Pattern) -->
-    <nav class="viewport-dock" aria-label="Demo Controls">
-      <!-- Toggle 3D Display -->
-      <button type="button" id="btn-view-3d" class="dock-btn active" title="Toggle 3D B-Rep Display" aria-pressed="true">3D</button>
-      <!-- Toggle 2D FEM Display -->
-      <button type="button" id="btn-view-2d" class="dock-btn" title="Toggle 2D FEAScript Display (Split or Solo)" aria-pressed="false">2D</button>
-
-      <div class="dock-sep" role="separator"></div>
-
-      <!-- Fit Camera -->
-      <button type="button" id="btn-fit" class="dock-btn" title="Reset Isometric 3D View">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-          <line x1="12" y1="22.08" x2="12" y2="12"/>
-        </svg>
-      </button>
-
-      <!-- Wireframe / Mesh Overlay -->
-      <button type="button" id="btn-wire" class="dock-btn" title="Toggle Wireframe / FEM Mesh Edges" aria-pressed="false">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-          <polyline points="2 17 12 22 22 17"/>
-          <polyline points="2 12 12 17 22 12"/>
-        </svg>
-      </button>
-
-      <!-- Toggle lil-gui Parameters -->
-      <button type="button" id="btn-gui" class="dock-btn active" title="Toggle Parameters & Boundary Conditions (lil-gui)" aria-pressed="true">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
-          <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
-          <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-          <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
-        </svg>
-      </button>
-
-      <div class="dock-sep" role="separator"></div>
-
-      <!-- Info & Basic Usage Modal / Bottom Sheet -->
-      <button type="button" id="btn-info" class="dock-btn" title="About OpenCAD × FEAScript & Usage">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
-      </button>
-
-      <!-- Three.js-style View Source on GitHub -->
-      <a class="dock-btn" href="https://github.com/hassaanmaqsood/opencad/blob/main/web-app/public/feascript-demo.html" target="_blank" rel="noopener noreferrer" title="View Clean JS Example Source on GitHub">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-        </svg>
-      </a>
-    </nav>
-
-    <!-- Thermal Color Scale (Bottom-Left) -->
-    <div class="thermal-legend" aria-label="Temperature scale">
-      <span id="cb-min">25.0 °C</span>
-      <div class="thermal-bar" aria-hidden="true"></div>
-      <span id="cb-max">180.0 °C</span>
     </div>
 
-    <!-- Minimalist Unified Telemetry HUD (Bottom-Right) -->
-    <aside class="viewport-telemetry" aria-label="Closed-loop telemetry">
-      <div class="telemetry-brand">FEAScript × OpenCAD</div>
-      <div class="telemetry-loop">
-        <span class="status-dot" id="tel-dot"></span>
-        <span id="tel-loop">BOOTING WASM + FEM…</span>
-      </div>
-      <div class="telemetry-item" id="tel-thermal">T_top: — · Bore Probe: —</div>
-      <div class="telemetry-item" id="tel-geom">90 × 60 × 12 mm · — cm³</div>
-      <div class="telemetry-item" id="tel-mesh">— Nodes · — FEM Tri · — B-Rep Tri</div>
-    </aside>
-  </main>
+    <!-- 2D FEAScript Triangular Mesh & Contour Viewport -->
+    <div id="pane-2d" class="view-pane hidden">
+      <div class="pane-pill">2D · FEAScript Unstructured Mesh (T2D)</div>
+      <canvas id="fem-2d-canvas"></canvas>
+      <div id="fem-hover" class="fem-probe-pill">Hover mesh to probe T(x, y)</div>
+    </div>
 
-  <!-- Info & Usage Modal (Dialog on Desktop, Bottom Sheet on Mobile) -->
-  <dialog id="info-dialog" closedby="any" aria-labelledby="info-dialog-title">
+    <!-- Left Floating Viewport Dock -->
+    <nav class="viewport-dock" aria-label="Demo Actions">
+      <button id="btn-view-3d" class="dock-btn active" title="Toggle 3D OpenCAD Viewport" aria-pressed="true">3D</button>
+      <button id="btn-view-2d" class="dock-btn" title="Toggle 2D FEAScript Viewport" aria-pressed="false">2D</button>
+      <div class="dock-sep"></div>
+      <button id="btn-fit" class="dock-btn" title="Fit Camera to Solid" aria-label="Fit Camera">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      </button>
+      <button id="btn-wire" class="dock-btn" title="Toggle Wireframe / FEM Elements" aria-pressed="false">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      </button>
+      <button id="btn-gui" class="dock-btn active" title="Toggle Parameters GUI" aria-pressed="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+      </button>
+      <div class="dock-sep"></div>
+      <button id="btn-info" class="dock-btn" title="About Projects &amp; Drop-In Modules" aria-label="Project Info">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </button>
+      <a id="btn-code-link" class="dock-btn" href="https://github.com/hassaanmaqsood/open-cad/tree/main/examples/feascript-loop" target="_blank" rel="noopener noreferrer" title="View Modular Source on GitHub">&lt;/&gt;</a>
+    </nav>
+
+    <!-- Bottom-Left Thermal Scale Bar -->
+    <div class="thermal-legend" aria-hidden="true">
+      <div class="thermal-bar"></div>
+      <div class="thermal-ticks">
+        <span id="cb-min">70.0 °C</span>
+        <span id="cb-mid">125.0 °C</span>
+        <span id="cb-max">180.0 °C</span>
+      </div>
+    </div>
+
+    <!-- Bottom-Right Engineering Telemetry HUD -->
+    <div class="viewport-telemetry" aria-live="polite">
+      <div class="telemetry-brand">FEAScript × OpenCAD Demo</div>
+      <div class="telemetry-loop">
+        <span id="tel-dot" class="status-dot"></span>
+        <span id="tel-loop">BOOTING KERNEL &amp; SOLVER…</span>
+      </div>
+      <div id="tel-thermal" class="telemetry-item">T(y=H): -- °C · Bore Probe: -- °C</div>
+      <div id="tel-geom" class="telemetry-item">90 × 60 × 12 mm · r = 9.0 mm</div>
+      <div id="tel-mesh" class="telemetry-item">0 Nodes · 0 FEM Tri · 0 B-Rep Tri</div>
+    </div>
+  </div>
+
+  <!-- Info & Usage Modal (Centered Card on Desktop / Bottom Sheet on Mobile) -->
+  <dialog id="info-dialog" aria-labelledby="info-dialog-title">
     <div class="dialog-shell">
-      <header class="dialog-head">
-        <span class="dialog-title" id="info-dialog-title">FEAScript × OpenCAD — Closed-Loop Demo</span>
-        <button type="button" class="dialog-close" id="btn-close-info">Close ✕</button>
-      </header>
+      <div class="dialog-head">
+        <span id="info-dialog-title" class="dialog-title">FEAScript × OpenCAD — Modular Drop-In Architecture</span>
+        <button id="btn-close-info" class="dialog-close" type="button">ESC</button>
+      </div>
       <div class="dialog-body">
         <div class="project-cards">
           <div class="project-card">
-            <h2>OpenCAD (Zig + WASM)</h2>
-            <p>Freestanding mathematical B-Rep, CDML v1.0, and SDF kernel compiled to WebAssembly with zero-copy <code>SharedArrayBuffer</code> field coupling at <code>0x1F0000</code>.</p>
-            <a href="https://github.com/hassaanmaqsood/opencad" target="_blank" rel="noopener noreferrer">github.com/hassaanmaqsood/opencad &rarr;</a>
+            <h2>FEAScript (v0.4.1)</h2>
+            <p>Browser &amp; Node.js finite-element library solving 2D/3D heat conduction, front propagation, and multiphysics PDEs in pure JavaScript.</p>
+            <a href="https://feascript.com" target="_blank" rel="noopener noreferrer">feascript.com ↗</a> &nbsp;·&nbsp;
+            <a href="https://github.com/FEAScript/FEAScript-core" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
           </div>
           <div class="project-card">
-            <h2>FEAScript (Pure JS FEM)</h2>
-            <p>Browser-native finite element solver for 1D/2D heat conduction, creeping flow, and beams with triangular/quad meshing and <code>evaluateSolution()</code>.</p>
-            <a href="https://feascript.com" target="_blank" rel="noopener noreferrer">feascript.com &rarr;</a>
+            <h2>OpenCAD Kernel</h2>
+            <p>Browser-native parametric B-Rep &amp; implicit CAD kernel in Zig/WASM with declarative CDML XML, exact booleans, and zero-copy field injection.</p>
+            <a href="https://github.com/hassaanmaqsood/open-cad" target="_blank" rel="noopener noreferrer">GitHub Repository ↗</a> &nbsp;·&nbsp;
+            <a href="https://github.com/hassaanmaqsood/open-cad/tree/main/examples/feascript-loop" target="_blank" rel="noopener noreferrer">Modular Example ↗</a>
           </div>
         </div>
-
         <div class="usage-section">
-          <h3>Closed-Loop Architecture</h3>
-          <p>Every parameter change runs in real time inside your browser: <strong>(1)</strong> OpenCAD builds the 3D B-Rep plate from CDML, <strong>(2)</strong> FEAScript solves 2D steady heat conduction on the exact cross-section, <strong>(3)</strong> the solution field is written into OpenCAD's shared memory at <code>0x1F0000</code>, and <strong>(4)</strong> OpenCAD's native <code>&lt;probe&gt;</code> reads <code>field_scalar(0, x, y, z)</code> to drive optimization.</p>
-        </div>
+          <h3>Drop-In Reusable ES Modules (examples/feascript-loop/js/)</h3>
+          <pre><code>import { OpenCadBridge } from './js/opencad-bridge.js';
+import { cdmlToFEAScriptGeometry } from './js/cdml-to-feascript.js';
+import { solveThermal2D, buildNearestWallFieldGrid } from './js/feascript-solver.js';
 
-        <div class="usage-section">
-          <h3>Basic Usage (CDN + Import Map)</h3>
-          <pre tabindex="0"><code>import * as THREE from "three";
-import { FEAScriptModel, evaluateSolution } from "https://core.feascript.com/dist/feascript.esm.js";
+// 1. Convert any OpenCAD CDML &lt;sketch&gt; directly into FEAScript geometry &amp; boundaries
+const cad = await OpenCadBridge.create();
+const pass1 = cad.evalCdml(cdmlXml);
+const cdmlGeom = cdmlToFEAScriptGeometry(cdmlXml);
 
-// 1. Instantiate OpenCAD WASM with SharedArrayBuffer (requires COOP/COEP or coi-serviceworker.js)
-const mem = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
-const wasm = await fetch("https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/cad_core.wasm").then(r =&gt; r.arrayBuffer());
-const { instance } = await WebAssembly.instantiate(wasm, {
-  env: { memory: mem },
-  opencad: { field_alloc: () =&gt; 0, field_eval_scalar: (_s,_x,_y,_z,d) =&gt; d, field_eval_vec3: () =&gt; {}, cmd_write: () =&gt; {} }
-});
-instance.exports.kernel_init();
-
-// 2. Solve 2D thermal field in FEAScript and inject into OpenCAD's 0x1F0000 buffer
-const model = new FEAScriptModel();
-model.setModelConfig("heatConduction", { coefficientFunctions: { thermalConductivity: 15.0, heatSource: 0.0 } });
-model.setGeometry({ shape: { start: [0, 0], boundaries: [...] }, holes: [{ name: "bore", points: [...] }] });
-model.setMeshConfig({ elements: "triangles", elementOrder: "linear", size: 0.004 });
-const result = model.solve();</code></pre>
-        </div>
-
-        <div class="usage-section">
-          <h3>Embed via &lt;iframe&gt;</h3>
-          <pre tabindex="0"><code>&lt;iframe src="https://hassaanmaqsood.github.io/opencad/feascript-demo.html"
-  width="100%" height="620" style="border:1px solid #C8C0B4;border-radius:6px;"&gt;&lt;/iframe&gt;</code></pre>
+// 2. Solve 2D PDE in FEAScript &amp; inject nearest-wall 3D voxel field into OpenCAD
+const fem = solveThermal2D(cdmlGeom, params);
+cad.writeFieldBuffer(buildNearestWallFieldGrid(fem, pass1.bbox, params));
+const pass2 = cad.evalCdml(cdmlXml); // Evaluates B-Rep + &lt;probe id="bore_temp"&gt;</code></pre>
         </div>
       </div>
     </div>
   </dialog>
 
-  <script type="module">
-    import * as THREE from 'three';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import GUI from 'lil-gui';
-    import { FEAScriptModel, evaluateSolution, transformSolverOutputToVTP, version as feaVersion } from 'feascript';
-
-    // -------------------------------------------------------------------------
-    // 1. Reactive State (Driven by lil-gui)
-    // -------------------------------------------------------------------------
-    const params = {
-      // Geometry (OpenCAD)
-      W: 90,
-      H: 60,
-      thickness: 12,
-      hole_r: 9.0,
-      // Boundary Conditions (FEAScript)
-      k_cond: 15.0,
-      base_T: 180,
-      top_h: 18,
-      hole_T: 25,
-      hole_h: 45,
-      // Display & Closed-Loop Target
-      shading: 'Thermal Field',
-      wireframe: false,
-      target_top_T: 82,
-      // Actions
-      optimizeLoop: () => runClosedLoopOptimization(),
-      resetDefaults: () => resetAllParams(),
-      exportStep: () => downloadExport('step'),
-      exportStl: () => downloadExport('stl'),
-      exportVtp: () => downloadVTP(),
-    };
-
-    const viewState = { show3D: true, show2D: false };
-    let cad = null;
-    let lastFemModel = null;
-    let lastFemResult = null;
-    let lastFemMesh = null;
-    let lastMinT = 25;
-    let lastMaxT = 180;
-    let optimizing = false;
-
-    // -------------------------------------------------------------------------
-    // 2. OpenCAD WASM Loader (SharedArrayBuffer via COOP/COEP or coi-serviceworker)
-    // -------------------------------------------------------------------------
-    async function loadOpenCAD() {
-      if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) {
-        throw new Error('SharedArrayBuffer requires COOP/COEP headers or coi-serviceworker.js');
-      }
-      const candidates = [
-        './cad_kernel.wasm',
-        './cad_core.wasm',
-        'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/cad_core.wasm',
-      ];
-      let lastErr;
-      for (const url of candidates) {
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) continue;
-          const bytes = await resp.arrayBuffer();
-          const memory = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
-          const { instance } = await WebAssembly.instantiate(bytes, {
-            env: { memory, abort: () => { throw new Error('OpenCAD WASM abort'); } },
-            opencad: {
-              field_alloc: () => 0,
-              field_eval_scalar: (_s, _x, _y, _z, defVal) => defVal,
-              field_eval_vec3: () => {},
-              cmd_write: () => {},
-            },
-          });
-          instance.exports.kernel_init();
-          return { api: instance.exports, memory };
-        } catch (err) {
-          lastErr = err;
-        }
-      }
-      throw lastErr || new Error('Failed to load cad_kernel.wasm');
-    }
-
-    function writeWasmStr(str, offset = 0x5A0000) {
-      const bytes = new TextEncoder().encode(str);
-      new Uint8Array(cad.memory.buffer, offset, bytes.length).set(bytes);
-      return { ptr: offset, len: bytes.length };
-    }
-
-    function readProbe(name) {
-      const p = writeWasmStr(name, 0x5E8000);
-      const outPtr = 0x5E9000;
-      if (cad.api.cdml_get_probe_value(p.ptr, p.len, outPtr) !== 0) return NaN;
-      return new DataView(cad.memory.buffer).getFloat64(outPtr, true);
-    }
-
-    function buildCDML(p) {
-      const hw = (p.W / 2).toFixed(2);
-      const hh = (p.H / 2).toFixed(2);
-      return `<?xml version="1.0" encoding="UTF-8"?>
-<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
-  <defs>
-    <var id="plate_w" value="${p.W.toFixed(2)}" min="60" max="120" unit="mm"/>
-    <var id="plate_h" value="${p.H.toFixed(2)}" min="44" max="96" unit="mm"/>
-    <var id="plate_t" value="${p.thickness.toFixed(2)}" min="6" max="24" unit="mm"/>
-    <var id="hole_r"  value="${p.hole_r.toFixed(2)}" min="5" max="22" unit="mm"/>
-    <field-slot id="temp_field" slot="0" semantic="temperature" grid-x="32" grid-y="24" grid-z="4" default="${p.hole_T.toFixed(1)}"/>
-    <assert id="wall_margin" expr="(plate_h * 0.5) - hole_r - 5.0" error="hole_r exceeds 5 mm wall margin"/>
-  </defs>
-  <body>
-    <chart id="chart_xy">
-      <vars>
-        <vec3 id="p0" x="0" y="0" z="0" fixed="true"/>
-        <vec3 id="e1" x="1" y="0" z="0" fixed="true"/>
-        <vec3 id="e2" x="0" y="1" z="0" fixed="true"/>
-      </vars>
-    </chart>
-    <sketch id="sk_plate" chart="chart_xy" max-iter="50">
-      <vars>
-        <point2d id="v0" u="-${hw}" v="-${hh}"/>
-        <point2d id="v1" u="${hw}"  v="-${hh}"/>
-        <point2d id="v2" u="${hw}"  v="${hh}"/>
-        <point2d id="v3" u="-${hw}" v="${hh}"/>
-      </vars>
-      <wire id="wire_outer" closed="true" role="outer">
-        <curve id="bottom" degree="1" ctrl="v0 v1" weights="1 1" knots="0 0 1 1"/>
-        <curve id="right"  degree="1" ctrl="v1 v2" weights="1 1" knots="0 0 1 1"/>
-        <curve id="top"    degree="1" ctrl="v2 v3" weights="1 1" knots="0 0 1 1"/>
-        <curve id="left"   degree="1" ctrl="v3 v0" weights="1 1" knots="0 0 1 1"/>
-      </wire>
-      <wire id="wire_bore" closed="true" role="hole">
-        <param-curve id="bore" param="t" domain="0 1"
-          u-expr="ref(hole_r) * cos(2 * PI * t)"
-          v-expr="ref(hole_r) * sin(2 * PI * t)"/>
-      </wire>
-    </sketch>
-    <brep id="solid_plate">
-      <sweep id="sw_plate" sketch="sk_plate" cap-ends="true">
-        <trajectory><translate x="0" y="0" z-expr="ref(plate_t) * v"/></trajectory>
-      </sweep>
-    </brep>
-    <probe id="plate_volume" type="volume" target="solid_plate"/>
-    <probe id="mean_bore_temp" type="face-mean" target="solid_plate"
-           face-predicate="from_id('bore')" quantity="field_scalar(0, x, y, z, ${p.hole_T.toFixed(1)})"/>
-  </body>
-  <exports>
-    <tessellate target="solid_plate" chord-tol="0.02" angle-tol="0.05"/>
-    <step target="solid_plate" schema="AP214"/>
-    <stl target="solid_plate" binary="true"/>
-  </exports>
-</cdml>`;
-    }
-
-    function evalOpenCAD(xml) {
-      const s = writeWasmStr(xml, 0x5A0000);
-      const status = cad.api.cdml_eval_document(s.ptr, s.len);
-      if (status !== 0) throw new Error(`OpenCAD error 0x${status.toString(16)}`);
-      const hdr = new DataView(cad.memory.buffer, 0x0F0000, 128);
-      const vertexCount = hdr.getUint32(0x04, true);
-      const triangleCount = hdr.getUint32(0x08, true);
-      const posOffset = hdr.getUint32(0x0C, true);
-      const idxOffset = hdr.getUint32(0x14, true);
-      const bbox = [
-        hdr.getFloat64(0x20, true), hdr.getFloat64(0x28, true), hdr.getFloat64(0x30, true),
-        hdr.getFloat64(0x38, true), hdr.getFloat64(0x40, true), hdr.getFloat64(0x48, true),
-      ];
-      return {
-        vertexCount,
-        triangleCount,
-        positions: new Float32Array(new Float32Array(cad.memory.buffer, posOffset, vertexCount * 3)),
-        indices: new Uint32Array(new Uint32Array(cad.memory.buffer, idxOffset, triangleCount * 3)),
-        bbox,
-        volume: readProbe('plate_volume'),
-        boreTempProbe: readProbe('mean_bore_temp'),
-      };
-    }
-
-    // -------------------------------------------------------------------------
-    // 3. FEAScript 2D Thermal Solve + 0x1F0000 Field Buffer Injection
-    // -------------------------------------------------------------------------
-    function solveFEAScript(p) {
-      const W = p.W / 1000;
-      const H = p.H / 1000;
-      const R = p.hole_r / 1000;
-      const cx = W / 2, cy = H / 2;
-
-      const borePts = Array.from({ length: 28 }, (_, i) => {
-        const a = (2 * Math.PI * i) / 28;
-        return [cx + R * Math.cos(a), cy + R * Math.sin(a)];
-      });
-
-      const model = new FEAScriptModel();
-      model.setModelConfig('heatConduction', {
-        solver: { method: 'lusolve' },
-        coefficientFunctions: { thermalConductivity: p.k_cond, heatSource: 0.0 },
-      });
-      model.setGeometry({
-        shape: {
-          start: [0, 0],
-          boundaries: [
-            { name: 'bottom', to: [W, 0] },
-            { name: 'right',  to: [W, H] },
-            { name: 'top',    to: [0, H] },
-            { name: 'left' },
-          ],
-        },
-        holes: [{ name: 'bore', points: borePts }],
-      });
-      model.setMeshConfig({
-        elements: 'triangles',
-        elementOrder: 'linear',
-        size: Math.max(0.0038, Math.min(W, H) / 13),
-        minAngle: 25,
-      });
-
-      model.addBoundaryCondition('bottom', { type: 'constantTemperature', temperature: p.base_T });
-      model.addBoundaryCondition('top',    { type: 'convection', h: p.top_h, ambientTemperature: 25.0 });
-      model.addBoundaryCondition('bore',   { type: 'convection', h: p.hole_h * 12.0, ambientTemperature: p.hole_T });
-      model.addBoundaryCondition('left',   { type: 'convection', h: 12.0, ambientTemperature: 25.0 });
-      model.addBoundaryCondition('right',  { type: 'convection', h: 12.0, ambientTemperature: 25.0 });
-
-      const result = model.solve();
-      const mesh = model.getMesh();
-
-      let minT = Infinity, maxT = -Infinity;
-      for (const v of result.solutionVector) {
-        if (v < minT) minT = v;
-        if (v > maxT) maxT = v;
-      }
-
-      const topSamples = Array.from({ length: 21 }, (_, i) => [((i + 0.5) / 21) * W, H - 1e-5]);
-      const topVals = evaluateSolution(model, result, topSamples).filter(Number.isFinite);
-      const topMeanT = topVals.length ? topVals.reduce((a, b) => a + b, 0) / topVals.length : maxT;
-
-      const boreSamples = Array.from({ length: 24 }, (_, i) => {
-        const a = (2 * Math.PI * i) / 24;
-        return [cx + (R + 0.0004) * Math.cos(a), cy + (R + 0.0004) * Math.sin(a)];
-      });
-      const boreVals = evaluateSolution(model, result, boreSamples).filter(Number.isFinite);
-      const boreMeanT = boreVals.length ? boreVals.reduce((a, b) => a + b, 0) / boreVals.length : p.hole_T;
-
-      return { model, result, mesh, minT, maxT, topMeanT, boreMeanT };
-    }
-
-    function injectFieldBuffer(model, result, bbox, fallbackT) {
-      const gx = 32, gy = 24, gz = 4;
-      const [minX, minY, , maxX, maxY] = bbox;
-      const pts = [];
-      for (let iy = 0; iy < gy; iy++) {
-        const y = minY + ((maxY - minY) * iy) / (gy - 1);
-        for (let ix = 0; ix < gx; ix++) {
-          const x = minX + ((maxX - minX) * ix) / (gx - 1);
-          pts.push([(x - minX) / 1000, (y - minY) / 1000]);
-        }
-      }
-      const sampled = evaluateSolution(model, result, pts);
-      const field = new Float32Array(cad.memory.buffer, 0x1F0000, gx * gy * gz);
-      for (let iz = 0; iz < gz; iz++) {
-        const off = iz * gy * gx;
-        for (let i = 0; i < gx * gy; i++) {
-          field[off + i] = Number.isFinite(sampled[i]) ? sampled[i] : fallbackT;
-        }
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // 4. Three.js 3D Viewport + 2D FEM Canvas Renderer
-    // -------------------------------------------------------------------------
-    const cadCanvas = document.getElementById('cad-3d-canvas');
-    const renderer = new THREE.WebGLRenderer({ canvas: cadCanvas, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0xFAF7F3, 1);
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 2000);
-    camera.up.set(0, 0, 1);
-
-    const controls = new OrbitControls(camera, cadCanvas);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-
-    function fitCamera() {
-      camera.position.set(105, -100, 90);
-      controls.target.set(0, 0, params.thickness * 0.4);
-      controls.update();
-    }
-    fitCamera();
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.72));
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
-    keyLight.position.set(120, -90, 160);
-    scene.add(keyLight);
-    const fillLight = new THREE.DirectionalLight(0xdce6f5, 0.45);
-    fillLight.position.set(-100, 100, -80);
-    scene.add(fillLight);
-
-    const grid = new THREE.GridHelper(180, 18, 0xC8C0B4, 0xE5DED2);
-    grid.rotation.x = Math.PI / 2;
-    grid.position.z = -0.2;
-    scene.add(grid);
-
-    let cadMeshObj = null;
-    let cadWireObj = null;
-
-    function thermalRGB(tNorm) {
-      const t = Math.max(0, Math.min(1, tNorm));
-      const stops = [[29, 53, 87], [42, 157, 143], [233, 196, 106], [244, 162, 97], [193, 18, 31]];
-      const s = t * (stops.length - 1);
-      const i = Math.min(stops.length - 2, Math.floor(s));
-      const f = s - i;
-      return [
-        Math.round(stops[i][0] + (stops[i + 1][0] - stops[i][0]) * f),
-        Math.round(stops[i][1] + (stops[i + 1][1] - stops[i][1]) * f),
-        Math.round(stops[i][2] + (stops[i + 1][2] - stops[i][2]) * f),
-      ];
-    }
-
-    function updateThreeScene(cadData, fem) {
-      if (cadMeshObj) { scene.remove(cadMeshObj); cadMeshObj.geometry.dispose(); cadMeshObj.material.dispose(); }
-      if (cadWireObj) { scene.remove(cadWireObj); cadWireObj.geometry.dispose(); cadWireObj.material.dispose(); }
-
-      const outPos = [], outNrm = [];
-      const pushTri = (ax, ay, az, bx, by, bz, cx, cy, cz, nx, ny, nz, depth) => {
-        const maxE = Math.max(
-          Math.hypot(bx - ax, by - ay, bz - az),
-          Math.hypot(cx - bx, cy - by, cz - bz),
-          Math.hypot(ax - cx, ay - cy, az - cz)
-        );
-        if (depth < 3 && maxE > 11.0) {
-          const mabx = (ax + bx) * 0.5, maby = (ay + by) * 0.5, mabz = (az + bz) * 0.5;
-          const mbcx = (bx + cx) * 0.5, mbcy = (by + cy) * 0.5, mbcz = (bz + cz) * 0.5;
-          const mcax = (cx + ax) * 0.5, mcay = (cy + ay) * 0.5, mcaz = (cz + az) * 0.5;
-          pushTri(ax, ay, az, mabx, maby, mabz, mcax, mcay, mcaz, nx, ny, nz, depth + 1);
-          pushTri(mabx, maby, mabz, bx, by, bz, mbcx, mbcy, mbcz, nx, ny, nz, depth + 1);
-          pushTri(mcax, mcay, mcaz, mbcx, mbcy, mbcz, cx, cy, cz, nx, ny, nz, depth + 1);
-          pushTri(mabx, maby, mabz, mbcx, mbcy, mbcz, mcax, mcay, mcaz, nx, ny, nz, depth + 1);
-          return;
-        }
-        outPos.push(ax, ay, az, bx, by, bz, cx, cy, cz);
-        outNrm.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
-      };
-
-      const pos = cadData.positions, idx = cadData.indices;
-      for (let t = 0; t < cadData.triangleCount; t++) {
-        const i0 = idx[t * 3] * 3, i1 = idx[t * 3 + 1] * 3, i2 = idx[t * 3 + 2] * 3;
-        const ax = pos[i0], ay = pos[i0 + 1], az = pos[i0 + 2];
-        const bx = pos[i1], by = pos[i1 + 1], bz = pos[i1 + 2];
-        const cx = pos[i2], cy = pos[i2 + 1], cz = pos[i2 + 2];
-        let nx = (by - ay) * (cz - az) - (bz - az) * (cy - ay);
-        let ny = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
-        let nz = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-        const nl = Math.hypot(nx, ny, nz) || 1;
-        pushTri(ax, ay, az, bx, by, bz, cx, cy, cz, nx / nl, ny / nl, nz / nl, 0);
-      }
-
-      const geom = new THREE.BufferGeometry();
-      const dispPos = new Float32Array(outPos);
-      geom.setAttribute('position', new THREE.BufferAttribute(dispPos, 3));
-      geom.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(outNrm), 3));
-
-      const [minX, minY] = cadData.bbox;
-      const vCount = dispPos.length / 3;
-      const qPts = Array.from({ length: vCount }, (_, i) => [
-        Math.max(0, (dispPos[i * 3] - minX) / 1000),
-        Math.max(0, (dispPos[i * 3 + 1] - minY) / 1000),
-      ]);
-      const temps = evaluateSolution(fem.model, fem.result, qPts);
-      const colors = new Float32Array(vCount * 3);
-      const span = Math.max(1e-6, fem.maxT - fem.minT);
-      for (let i = 0; i < vCount; i++) {
-        const tVal = Number.isFinite(temps[i]) ? temps[i] : fem.boreMeanT;
-        const [r, g, b] = thermalRGB((tVal - fem.minT) / span);
-        colors[i * 3] = r / 255; colors[i * 3 + 1] = g / 255; colors[i * 3 + 2] = b / 255;
-      }
-      geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-      const useThermal = params.shading === 'Thermal Field';
-      cadMeshObj = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
-        vertexColors: useThermal,
-        color: useThermal ? 0xffffff : 0xd8d1c5,
-        roughness: 0.42,
-        metalness: 0.08,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-      }));
-      scene.add(cadMeshObj);
-
-      if (params.wireframe) {
-        cadWireObj = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({
-          color: 0x0A2351, wireframe: true, transparent: true, opacity: 0.25,
-        }));
-        scene.add(cadWireObj);
-      }
-    }
-
-    const femCanvas = document.getElementById('fem-2d-canvas');
-    const femCtx = femCanvas.getContext('2d');
-    let femXform = { scale: 1, ox: 0, oy: 0, W: 0.09, H: 0.06 };
-
-    function renderFem2D() {
-      if (!viewState.show2D || !lastFemMesh || !lastFemResult) return;
-      const pane = document.getElementById('pane-2d');
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const cw = pane.clientWidth, ch = pane.clientHeight;
-      if (cw === 0 || ch === 0) return;
-      femCanvas.width = Math.round(cw * dpr);
-      femCanvas.height = Math.round(ch * dpr);
-      femCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      femCtx.fillStyle = '#FAF7F3';
-      femCtx.fillRect(0, 0, cw, ch);
-
-      const W = params.W / 1000, H = params.H / 1000;
-      const scale = Math.min((cw - 120) / W, (ch - 140) / H);
-      const ox = (cw - W * scale) / 2;
-      const oy = (ch + H * scale) / 2 - 12;
-      femXform = { scale, ox, oy, W, H };
-      const toS = (x, y) => [ox + x * scale, oy - y * scale];
-
-      const xs = lastFemResult.nodesCoordinates.nodesXCoordinates;
-      const ys = lastFemResult.nodesCoordinates.nodesYCoordinates;
-      const sol = lastFemResult.solutionVector;
-      const elems = lastFemMesh.nodalNumbering;
-      const span = Math.max(1e-6, lastMaxT - lastMinT);
-
-      for (const tri of elems) {
-        const i0 = tri[0] - 1, i1 = tri[1] - 1, i2 = tri[2] - 1;
-        const [x0, y0] = toS(xs[i0], ys[i0]);
-        const [x1, y1] = toS(xs[i1], ys[i1]);
-        const [x2, y2] = toS(xs[i2], ys[i2]);
-        const [r, g, b] = thermalRGB((((sol[i0] + sol[i1] + sol[i2]) / 3) - lastMinT) / span);
-        femCtx.fillStyle = `rgb(${r},${g},${b})`;
-        femCtx.beginPath();
-        femCtx.moveTo(x0, y0); femCtx.lineTo(x1, y1); femCtx.lineTo(x2, y2);
-        femCtx.closePath();
-        femCtx.fill();
-        if (params.wireframe) {
-          femCtx.strokeStyle = 'rgba(5, 15, 31, 0.22)';
-          femCtx.lineWidth = 0.7;
-          femCtx.stroke();
-        }
-      }
-
-      const [bx0, by0] = toS(0, 0), [bx1, by1] = toS(W, H), [cxS, cyS] = toS(W / 2, H / 2);
-      femCtx.strokeStyle = '#050F1F';
-      femCtx.lineWidth = 1.6;
-      femCtx.strokeRect(bx0, by1, bx1 - bx0, by0 - by1);
-
-      const rPx = (params.hole_r / 1000) * scale;
-      femCtx.beginPath();
-      femCtx.arc(cxS, cyS, rPx, 0, Math.PI * 2);
-      femCtx.fillStyle = '#FAF7F3';
-      femCtx.fill();
-      femCtx.strokeStyle = '#0A2351';
-      femCtx.lineWidth = 1.8;
-      femCtx.stroke();
-
-      femCtx.font = '700 11px "Courier New", monospace';
-      femCtx.textAlign = 'center';
-      femCtx.fillStyle = '#8B1A1A';
-      femCtx.fillText(`base_T = ${params.base_T}°C`, (bx0 + bx1) / 2, by0 + 18);
-      femCtx.fillStyle = '#0A2351';
-      femCtx.fillText(`top_h = ${params.top_h} W/m²K`, (bx0 + bx1) / 2, by1 - 10);
-      if (rPx >= 24) {
-        femCtx.font = rPx >= 36 ? '700 10.5px "Courier New", monospace' : '700 9px "Courier New", monospace';
-        femCtx.fillStyle = '#0A5C38';
-        femCtx.fillText(`T_∞=${params.hole_T}°C`, cxS, cyS + 3);
-      }
-    }
-
-    femCanvas.addEventListener('pointermove', (ev) => {
-      if (!lastFemModel || !lastFemResult) return;
-      const rect = femCanvas.getBoundingClientRect();
-      const x = (ev.clientX - rect.left - femXform.ox) / femXform.scale;
-      const y = (femXform.oy - (ev.clientY - rect.top)) / femXform.scale;
-      if (x >= 0 && x <= femXform.W && y >= 0 && y <= femXform.H) {
-        const val = evaluateSolution(lastFemModel, lastFemResult, [[x, y]])[0];
-        document.getElementById('fem-hover').textContent = Number.isFinite(val)
-          ? `(${(x * 1000).toFixed(1)}, ${(y * 1000).toFixed(1)} mm): ${val.toFixed(2)} °C`
-          : `Cooling bore interior (T_∞ = ${params.hole_T} °C)`;
-      }
-    });
-
-    function resizeViewports() {
-      if (viewState.show3D) {
-        const p3 = document.getElementById('pane-3d');
-        const w = p3.clientWidth, h = p3.clientHeight;
-        if (w > 0 && h > 0) {
-          renderer.setSize(w, h, false);
-          camera.aspect = w / h;
-          camera.updateProjectionMatrix();
-        }
-      }
-      renderFem2D();
-    }
-
-    function animate() {
-      requestAnimationFrame(animate);
-      if (viewState.show3D) {
-        controls.update();
-        renderer.render(scene, camera);
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // 5. Coupled Loop Execution + Telemetry + Exports
-    // -------------------------------------------------------------------------
-    function setTelemetryLoop(kind, text) {
-      document.getElementById('tel-dot').className = `status-dot ${kind}`;
-      document.getElementById('tel-loop').textContent = text;
-    }
-
-    function runCoupledStep(loopLabel = null) {
-      if (!cad) return null;
-      const t0 = performance.now();
-      try {
-        const maxSafeR = Math.max(5.0, params.H / 2 - 5.5);
-        if (params.hole_r > maxSafeR) {
-          params.hole_r = Math.floor(maxSafeR * 2) / 2;
-          guiControllers.forEach((c) => c.updateDisplay());
-        }
-
-        const xml = buildCDML(params);
-        const pass1 = evalOpenCAD(xml);
-        const fem = solveFEAScript(params);
-        lastFemModel = fem.model;
-        lastFemResult = fem.result;
-        lastFemMesh = fem.mesh;
-        lastMinT = fem.minT;
-        lastMaxT = fem.maxT;
-
-        injectFieldBuffer(fem.model, fem.result, pass1.bbox, fem.boreMeanT);
-        const pass2 = evalOpenCAD(xml);
-
-        updateThreeScene(pass2, fem);
-        renderFem2D();
-
-        const loopMs = (performance.now() - t0).toFixed(0);
-        setTelemetryLoop('ok', loopLabel || `LOOP: SYNCED (${loopMs} ms)`);
-        document.getElementById('tel-thermal').textContent =
-          `T_top: ${fem.topMeanT.toFixed(1)} °C · Bore Probe: ${pass2.boreTempProbe.toFixed(1)} °C`;
-        document.getElementById('tel-geom').textContent =
-          `${params.W} × ${params.H} × ${params.thickness} mm · ${(pass2.volume / 1000).toFixed(2)} cm³`;
-        document.getElementById('tel-mesh').textContent =
-          `${fem.result.solutionVector.length} Nodes · ${fem.mesh.nodalNumbering.length} FEM Tri · ${pass2.triangleCount} B-Rep Tri`;
-        document.getElementById('cb-min').textContent = `${fem.minT.toFixed(1)} °C`;
-        document.getElementById('cb-max').textContent = `${fem.maxT.toFixed(1)} °C`;
-        return { pass2, fem, loopMs };
-      } catch (err) {
-        console.error(err);
-        setTelemetryLoop('err', `ERR: ${err.message || err}`);
-        return null;
-      }
-    }
-
-    async function runClosedLoopOptimization() {
-      if (optimizing || !cad) return;
-      optimizing = true;
-      const tStart = performance.now();
-      const maxSafeR = Math.min(22.0, params.H / 2 - 5.5);
-      for (let k = 0; k < 10; k++) {
-        const res = runCoupledStep(`LOOP: ITERATING #${k + 1}…`);
-        if (!res) break;
-        const errT = res.fem.topMeanT - params.target_top_T;
-        if (Math.abs(errT) <= 0.8) {
-          const totalMs = (performance.now() - tStart).toFixed(0);
-          setTelemetryLoop('ok', `LOOP: CONVERGED (${k + 1} iters · ${totalMs} ms)`);
-          break;
-        }
-        if (errT > 0 && params.hole_r >= maxSafeR - 0.05) {
-          setTelemetryLoop('ok', `LOOP: WALL LIMIT @ ${params.hole_r.toFixed(1)} mm`);
-          break;
-        }
-        const step = Math.max(-2.0, Math.min(2.5, errT * 0.16));
-        params.hole_r = Math.max(5.0, Math.min(maxSafeR, Math.round((params.hole_r + step) * 2) / 2));
-        guiControllers.forEach((c) => c.updateDisplay());
-        await new Promise((r) => setTimeout(r, 110));
-      }
-      optimizing = false;
-    }
-
-    function downloadExport(kind) {
-      if (!cad) return;
-      const ptr = kind === 'step' ? cad.api.get_step_ptr() : cad.api.get_stl_ptr();
-      const len = kind === 'step' ? cad.api.get_step_len() : cad.api.get_stl_len();
-      if (!ptr || !len) return;
-      const blob = new Blob([new Uint8Array(cad.memory.buffer, ptr, len).slice()], {
-        type: kind === 'step' ? 'application/step' : 'model/stl',
-      });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `opencad_feascript_r${params.hole_r.toFixed(1)}.${kind}`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }
-
-    async function downloadVTP() {
-      if (!lastFemModel || !lastFemResult) return;
-      const vtp = await transformSolverOutputToVTP(lastFemModel, lastFemResult, null, { mode: 'surface' });
-      const blob = new Blob([vtp], { type: 'application/xml' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `feascript_thermal_r${params.hole_r.toFixed(1)}.vtp`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }
-
-    // -------------------------------------------------------------------------
-    // 6. lil-gui Reactive Controls
-    // -------------------------------------------------------------------------
-    const gui = new GUI({ title: 'FEAScript × OpenCAD' });
-    if (window.innerWidth < 768) {
-      gui.domElement.classList.add('hidden-gui');
-      const btnGui = document.getElementById('btn-gui');
-      btnGui.classList.remove('active');
-      btnGui.setAttribute('aria-pressed', 'false');
-    }
-    const guiControllers = [];
-    let debounceId = null;
-    const scheduleSync = () => {
-      clearTimeout(debounceId);
-      debounceId = setTimeout(() => runCoupledStep(), 35);
-    };
-
-    const fGeom = gui.addFolder('Geometry (OpenCAD)');
-    guiControllers.push(
-      fGeom.add(params, 'W', 60, 120, 2).name('Width W (mm)').onChange(scheduleSync),
-      fGeom.add(params, 'H', 44, 96, 2).name('Height H (mm)').onChange(scheduleSync),
-      fGeom.add(params, 'thickness', 6, 24, 1).name('Thickness (mm)').onChange(scheduleSync),
-      fGeom.add(params, 'hole_r', 5, 22, 0.5).name('hole_r (mm)').onChange(scheduleSync)
-    );
-
-    const fBC = gui.addFolder('Boundary Conditions (FEA)');
-    guiControllers.push(
-      fBC.add(params, 'k_cond', 1, 200, 1).name('Conduction k').onChange(scheduleSync),
-      fBC.add(params, 'base_T', 60, 250, 5).name('Base Temp (°C)').onChange(scheduleSync),
-      fBC.add(params, 'top_h', 5, 150, 1).name('Top Conv h').onChange(scheduleSync),
-      fBC.add(params, 'hole_T', 10, 60, 1).name('Coolant Temp (°C)').onChange(scheduleSync),
-      fBC.add(params, 'hole_h', 10, 200, 5).name('Bore Conv h').onChange(scheduleSync)
-    );
-
-    const fLoop = gui.addFolder('Closed Loop & Display');
-    guiControllers.push(
-      fLoop.add(params, 'target_top_T', 45, 140, 1).name('Target T_top (°C)'),
-      fLoop.add(params, 'shading', ['Thermal Field', 'CAD Clay']).name('3D Shading').onChange(scheduleSync),
-      fLoop.add(params, 'wireframe').name('Wireframe / Mesh').onChange(() => {
-        document.getElementById('btn-wire').classList.toggle('active', params.wireframe);
-        runCoupledStep();
-      }),
-      fLoop.add(params, 'optimizeLoop').name('▶ Run Closed-Loop Optimize'),
-      fLoop.add(params, 'resetDefaults').name('↺ Reset Parameters')
-    );
-
-    const fExp = gui.addFolder('Data Export');
-    fExp.add(params, 'exportStep').name('Export AP214 STEP');
-    fExp.add(params, 'exportStl').name('Export Binary STL');
-    fExp.add(params, 'exportVtp').name('Export FEM VTP');
-    fExp.close();
-
-    function resetAllParams() {
-      Object.assign(params, {
-        W: 90, H: 60, thickness: 12, hole_r: 9.0,
-        k_cond: 15.0, base_T: 180, top_h: 18, hole_T: 25, hole_h: 45,
-        shading: 'Thermal Field', wireframe: false, target_top_T: 82,
-      });
-      guiControllers.forEach((c) => c.updateDisplay());
-      document.getElementById('btn-wire').classList.remove('active');
-      runCoupledStep();
-    }
-
-    // -------------------------------------------------------------------------
-    // 7. Docked Sidebar Actions (3D / 2D Display Switch, Fit, Wire, GUI, Info)
-    // -------------------------------------------------------------------------
-    function syncViewPanes() {
-      const p3 = document.getElementById('pane-3d');
-      const p2 = document.getElementById('pane-2d');
-      p3.classList.toggle('hidden', !viewState.show3D);
-      p2.classList.toggle('hidden', !viewState.show2D);
-      p2.classList.toggle('split-border', viewState.show3D && viewState.show2D);
-      const b3 = document.getElementById('btn-view-3d');
-      const b2 = document.getElementById('btn-view-2d');
-      b3.classList.toggle('active', viewState.show3D);
-      b2.classList.toggle('active', viewState.show2D);
-      b3.setAttribute('aria-pressed', String(viewState.show3D));
-      b2.setAttribute('aria-pressed', String(viewState.show2D));
-      resizeViewports();
-    }
-
-    document.getElementById('btn-view-3d').addEventListener('click', () => {
-      if (viewState.show3D && !viewState.show2D) return;
-      viewState.show3D = !viewState.show3D;
-      syncViewPanes();
-    });
-
-    document.getElementById('btn-view-2d').addEventListener('click', () => {
-      if (viewState.show2D && !viewState.show3D) return;
-      viewState.show2D = !viewState.show2D;
-      syncViewPanes();
-    });
-
-    document.getElementById('btn-fit').addEventListener('click', fitCamera);
-
-    document.getElementById('btn-wire').addEventListener('click', (e) => {
-      params.wireframe = !params.wireframe;
-      e.currentTarget.classList.toggle('active', params.wireframe);
-      e.currentTarget.setAttribute('aria-pressed', String(params.wireframe));
-      guiControllers.forEach((c) => c.updateDisplay());
-      runCoupledStep();
-    });
-
-    document.getElementById('btn-gui').addEventListener('click', (e) => {
-      const hidden = gui.domElement.classList.toggle('hidden-gui');
-      e.currentTarget.classList.toggle('active', !hidden);
-      e.currentTarget.setAttribute('aria-pressed', String(!hidden));
-    });
-
-    const infoDialog = document.getElementById('info-dialog');
-    document.getElementById('btn-info').addEventListener('click', () => infoDialog.showModal());
-    document.getElementById('btn-close-info').addEventListener('click', () => infoDialog.close());
-
-    window.addEventListener('resize', resizeViewports);
-
-    // Boot
-    (async () => {
-      syncViewPanes();
-      animate();
-      try {
-        cad = await loadOpenCAD();
-        runCoupledStep();
-      } catch (err) {
-        console.error(err);
-        setTelemetryLoop('err', err.message || String(err));
-      }
-    })();
-  </script>
+  <!--
+    ============================================================================
+    3. APPLICATION ENTRY POINT (ES Modules)
+    ============================================================================
+  -->
+  <script type="module" src="./feascript-demo/js/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,402 @@
+/* ========================================================================== */
+/* OpenCAD × FEAScript Closed-Loop Demo — Monograph & Paper Surface Styles    */
+/* Specification: assets/brand/DESIGN.md                                      */
+/* ========================================================================== */
+
+:root {
+  --paper: #FFFFFF;
+  --surface: #F6F6F6;
+  --surface-2: #ECECEC;
+  --surface-hover: #E5E5E5;
+  --ink: #111111;
+  --ink-2: #404040;
+  --ink-3: #737373;
+  --line: #D4D4D4;
+  --line-strong: #111111;
+  --accent: #1B3B8C;
+  --state-nominal: #14532D;
+  --state-caution: #92400E;
+  --state-fault: #991B1B;
+  --font-serif: 'STIX Two Text', 'CMU Serif', 'Latin Modern Roman', Georgia, serif;
+  --font-sans: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'CMU Typewriter Text', ui-monospace, monospace;
+  --radius-none: 0px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-sheet: 8px;
+}
+
+[data-theme="dark"] {
+  --paper: #161615;
+  --surface: #1F1F1E;
+  --surface-2: #2A2A28;
+  --surface-hover: #353532;
+  --ink: #F4F4F2;
+  --ink-2: #C7C7C2;
+  --ink-3: #8A8A84;
+  --line: #333330;
+  --line-strong: #F4F4F2;
+  --accent: #6B93F5;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Central Viewport Layout */
+#stage-root {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  display: flex;
+  flex-direction: row;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.view-pane {
+  position: relative;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.view-pane.hidden {
+  display: none;
+}
+
+#pane-2d.split-border {
+  border-left: 1px solid var(--line);
+}
+
+@media (max-width: 767px) {
+  #stage-root {
+    flex-direction: column;
+  }
+  #pane-2d.split-border {
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}
+
+.view-pane canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pane-pill {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  padding: 4px 9px;
+  background: rgba(246, 246, 246, 0.92);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.fem-probe-pill {
+  position: absolute;
+  bottom: 12px;
+  left: 180px;
+  z-index: 20;
+  padding: 4px 9px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+/* Left Floating Viewport Dock */
+.viewport-dock {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(246, 246, 246, 0.94);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  box-shadow: 0 2px 10px rgba(17, 17, 17, 0.06);
+  user-select: none;
+}
+
+.dock-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 1px 3px;
+}
+
+.dock-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  transition: all 0.15s ease;
+}
+
+.dock-btn:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.dock-btn.active {
+  background: #111111;
+  color: #FFFFFF;
+  border-color: #111111;
+}
+
+.dock-btn.active:hover {
+  background: #000000;
+  border-color: #000000;
+}
+
+/* Compact Thermal Scale Bar (0px radius with min / mid / max ticks) */
+.thermal-legend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 8px;
+  background: rgba(246, 246, 246, 0.94);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-none);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.thermal-bar {
+  width: 148px;
+  height: 8px;
+  border-radius: var(--radius-none);
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, #1d3557, #2a9d8f, #e9c46a, #f4a261, #c1121f);
+}
+
+.thermal-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--ink-2);
+}
+
+/* Engineering Telemetry HUD (Bottom-Right Corner) */
+.viewport-telemetry {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--ink);
+  pointer-events: none;
+  user-select: none;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
+.telemetry-brand {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.telemetry-loop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--state-caution);
+  display: inline-block;
+}
+.status-dot.ok { background: var(--state-nominal); }
+.status-dot.err { background: var(--state-fault); }
+
+.telemetry-item {
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+
+/* OpenCAD Monograph Paper Overrides for lil-gui */
+.lil-gui.root {
+  position: absolute !important;
+  top: 12px !important;
+  right: 12px !important;
+  width: 272px !important;
+  max-height: calc(100dvh - 130px) !important;
+  overflow-y: auto !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 4px 18px rgba(17, 17, 17, 0.08) !important;
+  z-index: 100 !important;
+  --background-color: var(--surface) !important;
+  --text-color: var(--ink-2) !important;
+  --title-background-color: var(--surface-2) !important;
+  --title-text-color: var(--ink) !important;
+  --widget-color: var(--paper) !important;
+  --hover-color: var(--surface-hover) !important;
+  --focus-color: var(--paper) !important;
+  --number-color: var(--accent) !important;
+  --string-color: var(--ink) !important;
+  --font-family: var(--font-mono) !important;
+  --font-family-mono: var(--font-mono) !important;
+  --font-size: 11px !important;
+  --input-font-size: 11px !important;
+  --widget-height: 22px !important;
+  --name-width: 48% !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.lil-gui .title {
+  color: var(--ink) !important;
+  background: var(--surface-2) !important;
+  border-bottom: 1px solid var(--line) !important;
+  font-weight: 700 !important;
+}
+.lil-gui .controller .name { color: var(--ink-2) !important; }
+.lil-gui .controller.number .slider { background: var(--paper) !important; border: 1px solid var(--line) !important; }
+.lil-gui .controller.number .slider .fill { background: var(--ink) !important; }
+.lil-gui .controller input,
+.lil-gui .controller select {
+  background: var(--paper) !important;
+  color: var(--accent) !important;
+  border: 1px solid var(--line) !important;
+  font-variant-numeric: tabular-nums;
+}
+.lil-gui .controller.function button {
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  font-weight: 600 !important;
+}
+.lil-gui .controller.function button:hover,
+.lil-gui .controller.function button:active {
+  background: var(--ink) !important;
+  color: var(--paper) !important;
+  border-color: var(--ink) !important;
+}
+.lil-gui.hidden-gui { display: none !important; }
+
+/* Native Modal (Desktop Dialog -> Mobile Bottom Sheet) */
+dialog#info-dialog {
+  margin: auto;
+  width: min(680px, calc(100vw - 28px));
+  max-height: 85dvh;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 20px 50px rgba(17, 17, 17, 0.22);
+  padding: 0;
+  overflow: hidden;
+}
+
+dialog#info-dialog::backdrop {
+  background: rgba(17, 17, 17, 0.38);
+  backdrop-filter: blur(3px);
+}
+
+@media (max-width: 767px) {
+  .viewport-dock { left: 8px; }
+  .pane-pill { left: 54px; top: 8px; font-size: 10px; }
+  .lil-gui.root {
+    width: 210px !important;
+    right: 8px !important;
+    top: 8px !important;
+    max-height: calc(100dvh - 140px) !important;
+  }
+  .viewport-telemetry { right: 8px; bottom: 8px; font-size: 9.5px; padding: 5px 8px; }
+  .thermal-legend { left: 8px; bottom: 8px; font-size: 9.5px; padding: 4px 7px; }
+  .thermal-bar { width: 96px; }
+  .fem-probe-pill { display: none; }
+  dialog#info-dialog {
+    margin: auto 0 0 0;
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 82dvh;
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    border-bottom: none;
+  }
+}
+
+.dialog-shell { display: flex; flex-direction: column; max-height: 85dvh; }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.dialog-title { font-family: var(--font-serif); font-weight: 700; font-size: 16px; color: var(--ink); }
+.dialog-close { background: var(--paper); border: 1px solid var(--line); color: var(--ink); font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 4px 9px; border-radius: var(--radius-sm); cursor: pointer; }
+.dialog-close:hover { background: var(--surface-hover); }
+.dialog-body { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; font-family: var(--font-sans); font-size: 13px; line-height: 1.5; }
+.project-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 600px) { .project-cards { grid-template-columns: 1fr; } }
+.project-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 10px 12px; }
+.project-card h2 { font-family: var(--font-serif); font-weight: 700; font-size: 14px; color: var(--ink); margin-bottom: 4px; }
+.project-card p { font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
+.project-card a { font-family: var(--font-mono); font-size: 11px; color: var(--accent); font-weight: 600; }
+.usage-section h3 { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink); margin-bottom: 6px; }
+.usage-section pre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; overflow-x: auto; font-family: var(--font-mono); font-size: 11px; line-height: 1.45; color: var(--ink); }

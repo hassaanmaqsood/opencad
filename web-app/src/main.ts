@@ -763,45 +763,45 @@ async function initApp() {
     }, 200);
   };
 
-  // Cream Light Theme for CodeMirror 6 matching OpenCAD Design System
+  // Monograph & Paper Light Theme for CodeMirror 6 matching OpenCAD Design System
   const openCadLightTheme = EditorView.theme({
     '&': {
-      backgroundColor: '#FAF7F3',
-      color: '#050F1F',
-      fontFamily: "'Courier New', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      backgroundColor: '#FFFFFF',
+      color: '#111111',
+      fontFamily: "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
     },
     '.cm-content': {
-      caretColor: '#0A2351',
+      caretColor: '#111111',
     },
     '.cm-cursor, .cm-dropCursor': {
-      borderLeftColor: '#0A2351',
+      borderLeftColor: '#111111',
     },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-      backgroundColor: 'rgba(10, 35, 81, 0.14)',
+      backgroundColor: 'rgba(27, 59, 140, 0.12)',
     },
     '.cm-activeLine': {
-      backgroundColor: 'rgba(200, 192, 180, 0.18)',
+      backgroundColor: 'rgba(17, 17, 17, 0.04)',
     },
     '.cm-gutters': {
-      backgroundColor: '#F5F0E8',
-      color: '#6B6560',
-      borderRight: '1px solid #C8C0B4',
+      backgroundColor: '#F6F6F6',
+      color: '#737373',
+      borderRight: '1px solid #D4D4D4',
     },
     '.cm-activeLineGutter': {
-      backgroundColor: '#EDE6DB',
-      color: '#0A2351',
+      backgroundColor: '#ECECEC',
+      color: '#111111',
     },
   }, { dark: false });
 
   const openCadLightHighlight = HighlightStyle.define([
-    { tag: tags.tagName, color: '#0A2351', fontWeight: '700' },
-    { tag: tags.angleBracket, color: '#6B6560' },
-    { tag: tags.attributeName, color: '#050F1F', fontWeight: '600' },
-    { tag: tags.attributeValue, color: '#0A5C38' },
-    { tag: tags.string, color: '#0A5C38' },
-    { tag: tags.number, color: '#0A2351' },
-    { tag: tags.comment, color: '#6B6560', fontStyle: 'italic' },
-    { tag: tags.processingInstruction, color: '#6B6560' },
+    { tag: tags.tagName, color: '#1B3B8C', fontWeight: '700' },
+    { tag: tags.angleBracket, color: '#737373' },
+    { tag: tags.attributeName, color: '#111111', fontWeight: '600' },
+    { tag: tags.attributeValue, color: '#14532D' },
+    { tag: tags.string, color: '#14532D' },
+    { tag: tags.number, color: '#1B3B8C' },
+    { tag: tags.comment, color: '#737373', fontStyle: 'italic' },
+    { tag: tags.processingInstruction, color: '#737373' },
   ]);
 
   // Mount CodeMirror 6 in #codemirror-mount
