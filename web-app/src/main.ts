@@ -26,52 +26,28 @@ declare global {
 window.LilController = LilController;
 
 /**
- * OpenCAD Official Identity Mark: Simple Isometric Cube
- * - Isometric projection with illuminated top face, mid-tone left face, and shadow right face
- * - Outer precision technical contour
- * - Central constraint solver origin node reactive to kernel state
+ * OpenCAD Official Identity Mark: Canonical 4-Lobe Twisted Toroidal Ring (DESIGN.md §4.3 & §10)
+ * - Exact C4-symmetric orthographic projection of OpenCAD's B-Rep SE(3) twisted square-section sweep
+ * - Rendered in var(--ink) so it adapts automatically between Light Paper and Dark Graphite
+ * - Central constraint solver origin node reactive to kernel state (--state-*)
  */
 export function renderOpenCadLogoSvg(
   size: number,
   statusState: 'nominal' | 'caution' | 'fault' | 'offline' | 'linked' | 'neutral' = 'neutral'
 ): string {
-  let originColor = 'var(--state-nominal, #3FB950)';
-  if (statusState === 'caution') originColor = 'var(--state-caution, #D29922)';
-  else if (statusState === 'fault') originColor = 'var(--state-fault, #F85149)';
-  else if (statusState === 'offline') originColor = 'var(--state-offline, #6E7681)';
-  else if (statusState === 'linked') originColor = 'var(--state-linked, #58A6FF)';
-  else if (statusState === 'neutral') originColor = 'var(--ink, #E6EDF3)';
+  let originColor = 'var(--state-nominal, #14532D)';
+  if (statusState === 'caution') originColor = 'var(--state-caution, #92400E)';
+  else if (statusState === 'fault') originColor = 'var(--state-fault, #991B1B)';
+  else if (statusState === 'offline') originColor = 'var(--state-offline, #737373)';
+  else if (statusState === 'linked') originColor = 'var(--state-linked, #2E4E9E)';
+  else if (statusState === 'neutral') originColor = 'var(--ink, #111111)';
 
-  if (size < 24) {
-    // Streamlined high-contrast blueprint isometric cube for compact UI / favicon
-    return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-      <polygon points="50,16 82,34.5 50,53 18,34.5" fill="#2563EB" stroke="#60A5FA" stroke-width="3" stroke-linejoin="round"/>
-      <polygon points="18,34.5 50,53 50,90 18,71.5" fill="#1D4ED8" stroke="#3B82F6" stroke-width="3" stroke-linejoin="round"/>
-      <polygon points="50,53 82,34.5 82,71.5 50,90" fill="#1E3A8A" stroke="#2563EB" stroke-width="3" stroke-linejoin="round"/>
-      <polygon points="50,16 82,34.5 82,71.5 50,90 18,71.5 18,34.5" fill="none" stroke="#93C5FD" stroke-width="3.5" stroke-linejoin="round"/>
-      <circle cx="50" cy="53" r="4.5" fill="${originColor}" stroke="#071426" stroke-width="1.5"/>
-    </svg>`;
-  }
-
-  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
-    <!-- OpenCAD Simple Isometric Cube Logo Mark -->
-    <defs>
-      <radialGradient id="cubeGlow_${size}" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#1E3A8A" stop-opacity="0.35"/>
-        <stop offset="100%" stop-color="#0A192F" stop-opacity="0"/>
-      </radialGradient>
-    </defs>
-    <circle cx="50" cy="53" r="42" fill="url(#cubeGlow_${size})"/>
-    <!-- Top Face (Illuminated) -->
-    <polygon points="50,16 82,34.5 50,53 18,34.5" fill="#2563EB" stroke="#60A5FA" stroke-width="2.2" stroke-linejoin="round"/>
-    <!-- Left Face (Mid-tone) -->
-    <polygon points="18,34.5 50,53 50,90 18,71.5" fill="#1D4ED8" stroke="#3B82F6" stroke-width="2.2" stroke-linejoin="round"/>
-    <!-- Right Face (Shadow) -->
-    <polygon points="50,53 82,34.5 82,71.5 50,90" fill="#1E3A8A" stroke="#2563EB" stroke-width="2.2" stroke-linejoin="round"/>
-    <!-- Outer Contour -->
-    <polygon points="50,16 82,34.5 82,71.5 50,90 18,71.5 18,34.5" fill="none" stroke="#93C5FD" stroke-width="2.8" stroke-linejoin="round"/>
-    <!-- Central Origin Node -->
-    <circle cx="50" cy="53" r="3.5" fill="${originColor}" stroke="#071426" stroke-width="1.2"/>
+  return `<svg width="${size}" height="${size}" viewBox="200 272 440 440" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+    <path d="M563.007 619.631C600.066 592.791 623.926 549.741 627.141 503.606C630.591 458.728 613.885 411.863 580.951 379.622C549.216 347.738 501.76 330.45 456.395 336.919C411.31 342.488 369.573 372.525 351.254 414.45C381.957 403.697 414.826 402.872 447.17 405.497C479.045 408.319 510.948 419.831 535.154 442.041C558.976 463.435 575.045 493.706 579.657 525.966C584.429 557.569 578.335 591.291 563.007 619.631Z" fill="var(--ink, #111111)"/>
+    <path d="M292.368 635.006C319.209 672.065 362.259 695.925 408.393 699.14C453.271 702.59 500.137 685.884 532.378 652.95C564.262 621.215 581.549 573.759 575.081 528.394C569.512 483.309 539.474 441.572 497.549 423.253C508.303 453.956 509.128 486.825 506.503 519.169C503.681 551.044 492.168 582.947 469.959 607.153C448.565 630.975 418.293 647.044 386.034 651.656C354.431 656.428 320.709 650.334 292.368 635.006Z" fill="var(--ink, #111111)"/>
+    <path d="M276.993 364.369C239.934 391.209 216.074 434.259 212.859 480.394C209.409 525.272 226.115 572.137 259.049 604.378C290.784 636.262 338.24 653.55 383.605 647.081C428.69 641.512 470.427 611.475 488.746 569.55C458.043 580.303 425.174 581.128 392.83 578.503C360.955 575.681 329.052 564.169 304.846 541.959C281.024 520.565 264.955 490.294 260.343 458.034C255.571 426.431 261.665 392.709 276.993 364.369Z" fill="var(--ink, #111111)"/>
+    <path d="M547.632 348.994C520.791 311.935 477.741 288.075 431.607 284.86C386.729 281.41 339.863 298.116 307.622 331.05C275.738 362.785 258.451 410.241 264.919 455.606C270.488 500.691 300.526 542.428 342.451 560.747C331.697 530.044 330.872 497.175 333.497 464.831C336.319 432.956 347.832 401.053 370.041 376.847C391.435 353.025 421.707 336.956 453.966 332.344C485.569 327.572 519.291 333.666 547.632 348.994Z" fill="var(--ink, #111111)"/>
+    <circle cx="420" cy="492" r="22" fill="${originColor}"/>
   </svg>`;
 }
 
@@ -226,7 +202,12 @@ async function initApp() {
     return null;
   };
 
-  const isEmbed = urlParams.get('embed') === 'true' || urlParams.get('embed') === '1';
+  const isFigure = urlParams.get('figure') === 'true' || urlParams.get('figure') === '1';
+  const isEmbed = isFigure || urlParams.get('embed') === 'true' || urlParams.get('embed') === '1';
+  if (isFigure) {
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.body.classList.add('figure-mode');
+  }
   const cdmlParam = urlParams.get('cdml') || urlParams.get('src');
   const guiParam = urlParams.get('gui') ?? urlParams.get('data-gui');
   const paramsRaw = urlParams.get('params') ?? urlParams.get('parameters');

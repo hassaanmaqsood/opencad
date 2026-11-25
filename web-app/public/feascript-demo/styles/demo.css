@@ -1,42 +1,181 @@
 /* ========================================================================== */
 /* OpenCAD × FEAScript Closed-Loop Demo — Monograph & Paper Surface Styles    */
-/* Specification: assets/brand/DESIGN.md                                      */
+/* Specification: assets/brand/DESIGN.md (§2 Named Primitives → Semantic)     */
 /* ========================================================================== */
 
 :root {
-  --paper: #FFFFFF;
-  --surface: #F6F6F6;
-  --surface-2: #ECECEC;
-  --surface-hover: #E5E5E5;
-  --ink: #111111;
-  --ink-2: #404040;
-  --ink-3: #737373;
-  --line: #D4D4D4;
-  --line-strong: #111111;
-  --accent: #1B3B8C;
-  --state-nominal: #14532D;
-  --state-caution: #92400E;
-  --state-fault: #991B1B;
+  /* §2.1 Primitive Palette — Light */
+  --color-paper-white:      #FFFFFF;
+  --color-archive-100:      #F6F6F6;
+  --color-archive-200:      #ECECEC;
+  --color-archive-300:      #E5E5E5;
+
+  --color-typeset-black:    #111111;
+  --color-graphite-ink:     #404040;
+  --color-graphite-mute:    #737373;
+  --color-hairline-gray:    #D4D4D4;
+
+  --color-hyperref-blue:    #1B3B8C;
+
+  --color-forest-green:     #14532D;
+  --color-amber-ochre:      #92400E;
+  --color-crimson:          #991B1B;
+  --color-neutral-mute:     #737373;
+  --color-linked-blue:      #2E4E9E;
+
+  --color-axis-red:         #B91C1C;
+  --color-axis-green:       #15803D;
+  --color-axis-cobalt:      #26418F;
+
+  --color-thermal-deep-blue:#1D3557;
+  --color-thermal-teal:     #2A9D8F;
+  --color-thermal-gold:     #E9C46A;
+  --color-thermal-orange:   #F4A261;
+  --color-thermal-scarlet:  #C1121F;
+
+  --color-diverging-blue:   #1D4E89;
+  --color-diverging-cream:  #F5F0E8;
+  --color-diverging-red:    #B3261E;
+
+  /* §2.2 Primitive Palette — Dark */
+  --color-carbon-black:     #161615;
+  --color-carbon-100:       #1F1F1E;
+  --color-carbon-200:       #2A2A28;
+  --color-carbon-300:       #353532;
+
+  --color-plaster-white:    #F4F4F2;
+  --color-plaster-mid:      #C7C7C2;
+  --color-plaster-mute:     #8A8A84;
+  --color-carbon-hairline:  #333330;
+
+  --color-sky-blue:         #6B93F5;
+  --color-mint-green:       #4ADE80;
+  --color-sun-amber:        #FBBF24;
+  --color-coral-red:        #F87171;
+  --color-ember-red:        #EF5350;
+
+  --color-thermal-deep-blue-dark: #3E6EA8;
+  --color-thermal-teal-dark:      #4FC3B3;
+  --color-thermal-scarlet-dark:   #E5484D;
+  --color-diverging-blue-dark:    #5A8FD6;
+  --color-diverging-red-dark:     #E5484D;
+
+  /* §2.3 Semantic Tokens — reference primitives only */
+  --paper:            var(--color-paper-white);
+  --surface:          var(--color-archive-100);
+  --surface-2:        var(--color-archive-200);
+  --surface-hover:    var(--color-archive-300);
+  --surface-overlay:  rgba(246, 246, 246, 0.94);
+
+  --ink:              var(--color-typeset-black);
+  --ink-2:            var(--color-graphite-ink);
+  --ink-3:            var(--color-graphite-mute);
+  --ink-inverse:      var(--color-paper-white);
+  --line:             var(--color-hairline-gray);
+  --line-subtle:      rgba(17, 17, 17, 0.07);
+  --line-strong:      var(--color-typeset-black);
+
+  --accent:           var(--color-hyperref-blue);
+  --accent-subtle:    rgba(27, 59, 140, 0.08);
+  --accent-ink:       var(--color-paper-white);
+
+  --state-nominal:    var(--color-forest-green);
+  --state-caution:    var(--color-amber-ochre);
+  --state-fault:      var(--color-crimson);
+  --state-offline:    var(--color-neutral-mute);
+  --state-linked:     var(--color-linked-blue);
+
+  --axis-x:           var(--color-axis-red);
+  --axis-y:           var(--color-axis-green);
+  --axis-z:           var(--color-axis-cobalt);
+
+  --cmap-thermal-0:    var(--color-thermal-deep-blue);
+  --cmap-thermal-25:   var(--color-thermal-teal);
+  --cmap-thermal-50:   var(--color-thermal-gold);
+  --cmap-thermal-75:   var(--color-thermal-orange);
+  --cmap-thermal-100:  var(--color-thermal-scarlet);
+  --cmap-diverging-neg: var(--color-diverging-blue);
+  --cmap-diverging-mid: var(--color-diverging-cream);
+  --cmap-diverging-pos: var(--color-diverging-red);
+
+  --shadow-dock:  0 1px 3px rgba(17, 17, 17, 0.12);
+  --shadow-modal: 0 8px 24px rgba(17, 17, 17, 0.16);
+
+  --stroke-contour: 1.6px;
+  --stroke-mesh:    0.65px;
+  --stroke-axis:    0.9px;
+  --stroke-hidden:  0.85px;
+
   --font-serif: 'STIX Two Text', 'CMU Serif', 'Latin Modern Roman', Georgia, serif;
-  --font-sans: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'CMU Typewriter Text', ui-monospace, monospace;
-  --radius-none: 0px;
-  --radius-sm: 2px;
-  --radius-md: 4px;
+  --font-sans:  'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:  'IBM Plex Mono', 'JetBrains Mono', 'CMU Typewriter Text', ui-monospace, monospace;
+
+  --radius-none:  0px;
+  --radius-sm:    2px;
+  --radius-md:    4px;
   --radius-sheet: 8px;
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 100ms;
+  --duration-base: 160ms;
+
+  --z-canvas: 0;
+  --z-hud: 90;
+  --z-dock: 100;
+  --z-inspector: 110;
+  --z-modal-backdrop: 200;
+  --z-modal: 210;
+
+  /* §2.4 Spacing Scale */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+  --space-7: 32px;
 }
 
 [data-theme="dark"] {
-  --paper: #161615;
-  --surface: #1F1F1E;
-  --surface-2: #2A2A28;
-  --surface-hover: #353532;
-  --ink: #F4F4F2;
-  --ink-2: #C7C7C2;
-  --ink-3: #8A8A84;
-  --line: #333330;
-  --line-strong: #F4F4F2;
-  --accent: #6B93F5;
+  --paper:           var(--color-carbon-black);
+  --surface:         var(--color-carbon-100);
+  --surface-2:       var(--color-carbon-200);
+  --surface-hover:   var(--color-carbon-300);
+  --surface-overlay: rgba(31, 31, 30, 0.94);
+
+  --ink:         var(--color-plaster-white);
+  --ink-2:       var(--color-plaster-mid);
+  --ink-3:       var(--color-plaster-mute);
+  --ink-inverse: var(--color-carbon-black);
+  --line:        var(--color-carbon-hairline);
+  --line-subtle: rgba(244, 244, 242, 0.08);
+  --line-strong: var(--color-plaster-white);
+
+  --accent:        var(--color-sky-blue);
+  --accent-subtle: rgba(107, 147, 245, 0.14);
+  --accent-ink:    var(--color-carbon-black);
+
+  --state-nominal: var(--color-mint-green);
+  --state-caution: var(--color-sun-amber);
+  --state-fault:   var(--color-coral-red);
+  --state-offline: var(--color-plaster-mute);
+  --state-linked:  var(--color-sky-blue);
+
+  --axis-x: var(--color-ember-red);
+  --axis-y: var(--color-mint-green);
+  --axis-z: var(--color-sky-blue);
+
+  --cmap-thermal-0:   var(--color-thermal-deep-blue-dark);
+  --cmap-thermal-25:  var(--color-thermal-teal-dark);
+  --cmap-thermal-50:  var(--color-thermal-gold);
+  --cmap-thermal-75:  var(--color-thermal-orange);
+  --cmap-thermal-100: var(--color-thermal-scarlet-dark);
+  --cmap-diverging-neg: var(--color-diverging-blue-dark);
+  --cmap-diverging-mid: var(--color-carbon-black);
+  --cmap-diverging-pos: var(--color-diverging-red-dark);
+
+  --shadow-dock:  0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 *, *::before, *::after {
@@ -56,7 +195,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Central Viewport Layout */
+/* Central Viewport Layout (§5.1) */
 #stage-root {
   position: relative;
   width: 100vw;
@@ -74,6 +213,7 @@ html, body {
   min-height: 0;
   overflow: hidden;
   background: var(--paper);
+  z-index: var(--z-canvas);
 }
 
 .view-pane.hidden {
@@ -102,60 +242,60 @@ html, body {
 
 .pane-pill {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 20;
-  padding: 4px 9px;
-  background: rgba(246, 246, 246, 0.92);
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: var(--z-hud);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-overlay);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--ink);
   pointer-events: none;
 }
 
 .fem-probe-pill {
   position: absolute;
-  bottom: 12px;
-  left: 180px;
-  z-index: 20;
-  padding: 4px 9px;
-  background: rgba(255, 255, 255, 0.92);
+  bottom: var(--space-4);
+  left: calc(var(--space-7) * 5 + var(--space-5));
+  z-index: var(--z-hud);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-overlay);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink);
   pointer-events: none;
 }
 
-/* Left Floating Viewport Dock */
+/* Left Floating Viewport Dock (§5.2 & §4.1) */
 .viewport-dock {
   position: absolute;
   top: 50%;
-  left: 12px;
+  left: var(--space-4);
   transform: translateY(-50%);
-  z-index: 120;
+  z-index: var(--z-dock);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  background: rgba(246, 246, 246, 0.94);
+  gap: var(--space-2);
+  background: var(--surface-overlay);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 4px;
-  box-shadow: 0 2px 10px rgba(17, 17, 17, 0.06);
+  padding: var(--space-2);
+  box-shadow: var(--shadow-dock);
   user-select: none;
 }
 
 .dock-sep {
   height: 1px;
   background: var(--line);
-  margin: 1px 3px;
+  margin: var(--space-1) var(--space-2);
 }
 
 .dock-btn {
@@ -165,51 +305,58 @@ html, body {
   width: 32px;
   height: 32px;
   background: transparent;
-  border: 1px solid transparent;
+  border: 1.5px solid var(--ink-2);
   border-radius: var(--radius-sm);
   color: var(--ink-2);
   cursor: pointer;
   padding: 0;
   text-decoration: none;
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  transition: all 0.15s ease;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all var(--duration-base) var(--ease-standard);
 }
 
 .dock-btn:hover {
   background: var(--surface-hover);
   color: var(--ink);
-  border-color: var(--line);
+  border: 1px solid var(--line);
 }
 
-.dock-btn.active {
-  background: #111111;
-  color: #FFFFFF;
-  border-color: #111111;
+.dock-btn.active,
+.dock-btn[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--ink-inverse);
+  border-color: var(--ink);
 }
 
-.dock-btn.active:hover {
-  background: #000000;
-  border-color: #000000;
+.dock-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* Compact Thermal Scale Bar (0px radius with min / mid / max ticks) */
+.dock-btn:disabled {
+  color: var(--ink-3);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Compact Thermal Scale Bar (§5.6 — 0px radius with min / mid / max ticks) */
 .thermal-legend {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
-  z-index: 40;
+  bottom: var(--space-4);
+  left: var(--space-4);
+  z-index: var(--z-hud);
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 5px 8px;
-  background: rgba(246, 246, 246, 0.94);
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-overlay);
   border: 1px solid var(--line);
   border-radius: var(--radius-none);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink);
   pointer-events: none;
 }
@@ -219,36 +366,43 @@ html, body {
   height: 8px;
   border-radius: var(--radius-none);
   border: 1px solid var(--line);
-  background: linear-gradient(90deg, #1d3557, #2a9d8f, #e9c46a, #f4a261, #c1121f);
+  background: linear-gradient(
+    90deg,
+    var(--cmap-thermal-0),
+    var(--cmap-thermal-25),
+    var(--cmap-thermal-50),
+    var(--cmap-thermal-75),
+    var(--cmap-thermal-100)
+  );
 }
 
 .thermal-ticks {
   display: flex;
   justify-content: space-between;
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--ink-2);
 }
 
-/* Engineering Telemetry HUD (Bottom-Right Corner) */
+/* Engineering Telemetry HUD (§5.4 — Bottom-Right Corner) */
 .viewport-telemetry {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
-  z-index: 40;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: var(--z-hud);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
+  gap: var(--space-1);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--ink);
   pointer-events: none;
   user-select: none;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--surface-overlay);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
 }
@@ -256,16 +410,16 @@ html, body {
 .telemetry-brand {
   font-family: var(--font-serif);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--ink);
 }
 
 .telemetry-loop {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10.5px;
-  font-weight: 700;
+  gap: var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .status-dot {
@@ -279,30 +433,30 @@ html, body {
 .status-dot.err { background: var(--state-fault); }
 
 .telemetry-item {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-2);
 }
 
-/* OpenCAD Monograph Paper Overrides for lil-gui */
+/* OpenCAD Monograph Paper Overrides for lil-gui (§4.2 & §5.3) */
 .lil-gui.root {
   position: absolute !important;
-  top: 12px !important;
-  right: 12px !important;
+  top: var(--space-4) !important;
+  right: var(--space-4) !important;
   width: 272px !important;
   max-height: calc(100dvh - 130px) !important;
   overflow-y: auto !important;
   background: var(--surface) !important;
   border: 1px solid var(--line) !important;
   border-radius: var(--radius-md) !important;
-  box-shadow: 0 4px 18px rgba(17, 17, 17, 0.08) !important;
-  z-index: 100 !important;
+  box-shadow: var(--shadow-dock) !important;
+  z-index: var(--z-inspector) !important;
   --background-color: var(--surface) !important;
   --text-color: var(--ink-2) !important;
   --title-background-color: var(--surface-2) !important;
   --title-text-color: var(--ink) !important;
   --widget-color: var(--paper) !important;
   --hover-color: var(--surface-hover) !important;
-  --focus-color: var(--paper) !important;
+  --focus-color: var(--accent) !important;
   --number-color: var(--accent) !important;
   --string-color: var(--ink) !important;
   --font-family: var(--font-mono) !important;
@@ -311,6 +465,7 @@ html, body {
   --input-font-size: 11px !important;
   --widget-height: 22px !important;
   --name-width: 48% !important;
+  font-family: var(--font-mono) !important;
   font-variant-numeric: tabular-nums;
 }
 
@@ -318,7 +473,7 @@ html, body {
   color: var(--ink) !important;
   background: var(--surface-2) !important;
   border-bottom: 1px solid var(--line) !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
 }
 .lil-gui .controller .name { color: var(--ink-2) !important; }
 .lil-gui .controller.number .slider { background: var(--paper) !important; border: 1px solid var(--line) !important; }
@@ -339,12 +494,12 @@ html, body {
 .lil-gui .controller.function button:hover,
 .lil-gui .controller.function button:active {
   background: var(--ink) !important;
-  color: var(--paper) !important;
+  color: var(--ink-inverse) !important;
   border-color: var(--ink) !important;
 }
 .lil-gui.hidden-gui { display: none !important; }
 
-/* Native Modal (Desktop Dialog -> Mobile Bottom Sheet) */
+/* Native Modal (§5.5 — Desktop Dialog -> Mobile Bottom Sheet) */
 dialog#info-dialog {
   margin: auto;
   width: min(680px, calc(100vw - 28px));
@@ -353,27 +508,58 @@ dialog#info-dialog {
   border-radius: var(--radius-md);
   background: var(--paper);
   color: var(--ink);
-  box-shadow: 0 20px 50px rgba(17, 17, 17, 0.22);
+  box-shadow: var(--shadow-modal);
   padding: 0;
   overflow: hidden;
+  z-index: var(--z-modal);
 }
 
 dialog#info-dialog::backdrop {
-  background: rgba(17, 17, 17, 0.38);
+  background: rgba(5, 15, 31, 0.38);
   backdrop-filter: blur(3px);
+  z-index: var(--z-modal-backdrop);
+}
+
+/* Equation Callouts (§5.5: --surface-2 background, 2px solid --ink-2 left border, --font-serif math) */
+.equation-callout {
+  background: var(--surface-2);
+  border-left: 2px solid var(--ink-2);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.equation-callout code {
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* Publication / Paper Snapshot Mode (?figure=true per §5.7) */
+body.figure-mode .viewport-dock,
+body.figure-mode .lil-gui,
+body.figure-mode .viewport-telemetry,
+body.figure-mode .pane-pill,
+body.figure-mode .fem-probe-pill {
+  display: none !important;
 }
 
 @media (max-width: 767px) {
-  .viewport-dock { left: 8px; }
-  .pane-pill { left: 54px; top: 8px; font-size: 10px; }
+  .viewport-dock { left: var(--space-3); }
+  .dock-btn { width: 28px; height: 28px; }
+  .pane-pill { left: calc(var(--space-7) + var(--space-5)); top: var(--space-3); font-size: 10px; }
   .lil-gui.root {
     width: 210px !important;
-    right: 8px !important;
-    top: 8px !important;
+    right: var(--space-3) !important;
+    top: var(--space-3) !important;
     max-height: calc(100dvh - 140px) !important;
   }
-  .viewport-telemetry { right: 8px; bottom: 8px; font-size: 9.5px; padding: 5px 8px; }
-  .thermal-legend { left: 8px; bottom: 8px; font-size: 9.5px; padding: 4px 7px; }
+  .viewport-telemetry { right: var(--space-3); bottom: var(--space-3); font-size: 10px; padding: var(--space-2) var(--space-3); }
+  .thermal-legend { left: var(--space-3); bottom: var(--space-3); font-size: 10px; padding: var(--space-2) var(--space-3); }
   .thermal-bar { width: 96px; }
   .fem-probe-pill { display: none; }
   dialog#info-dialog {
@@ -387,16 +573,16 @@ dialog#info-dialog::backdrop {
 }
 
 .dialog-shell { display: flex; flex-direction: column; max-height: 85dvh; }
-.dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4) var(--space-5); background: var(--surface); border-bottom: 1px solid var(--line); }
 .dialog-title { font-family: var(--font-serif); font-weight: 700; font-size: 16px; color: var(--ink); }
-.dialog-close { background: var(--paper); border: 1px solid var(--line); color: var(--ink); font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 4px 9px; border-radius: var(--radius-sm); cursor: pointer; }
+.dialog-close { background: var(--paper); border: 1px solid var(--line); color: var(--ink); font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; }
 .dialog-close:hover { background: var(--surface-hover); }
-.dialog-body { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; font-family: var(--font-sans); font-size: 13px; line-height: 1.5; }
-.project-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dialog-body { padding: var(--space-5); overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-4); font-family: var(--font-sans); font-size: 13px; line-height: 1.4; }
+.project-cards { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 @media (max-width: 600px) { .project-cards { grid-template-columns: 1fr; } }
-.project-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 10px 12px; }
-.project-card h2 { font-family: var(--font-serif); font-weight: 700; font-size: 14px; color: var(--ink); margin-bottom: 4px; }
-.project-card p { font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
+.project-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+.project-card h2 { font-family: var(--font-serif); font-weight: 700; font-size: 15px; color: var(--ink); margin-bottom: var(--space-2); }
+.project-card p { font-family: var(--font-sans); font-size: 12px; color: var(--ink-2); margin-bottom: var(--space-2); }
 .project-card a { font-family: var(--font-mono); font-size: 11px; color: var(--accent); font-weight: 600; }
-.usage-section h3 { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink); margin-bottom: 6px; }
-.usage-section pre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; overflow-x: auto; font-family: var(--font-mono); font-size: 11px; line-height: 1.45; color: var(--ink); }
+.usage-section h3 { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink); margin-bottom: var(--space-2); }
+.usage-section pre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: var(--space-3) var(--space-4); overflow-x: auto; font-family: var(--font-mono); font-size: 11px; line-height: 1.4; color: var(--ink); }

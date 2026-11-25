@@ -10,9 +10,10 @@
     <path d="M547.632 348.994C520.791 311.935 477.741 288.075 431.607 284.86C386.729 281.41 339.863 298.116 307.622 331.05C275.738 362.785 258.451 410.241 264.919 455.606C270.488 500.691 300.526 542.428 342.451 560.747C331.697 530.044 330.872 497.175 333.497 464.831C336.319 432.956 347.832 401.053 370.041 376.847C391.435 353.025 421.707 336.956 453.966 332.344C485.569 327.572 519.291 333.666 547.632 348.994Z" fill="#F4F4F2"/>
   </g>
   <text x="415" y="332" fill="#F4F4F2" font-family="'STIX Two Text', Georgia, serif" font-weight="700" font-size="104" letter-spacing="-2">OpenCAD</text>
-  <text x="420" y="376" fill="#C7C7C2" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="500" font-size="21" letter-spacing="1.2">B-REP · CSG · IMPLICIT FIELDS · ONE SSA CORE</text>
-  <rect x="420" y="402" width="660" height="44" rx="2" fill="#1F1F1E" stroke="#333330" stroke-width="1"/>
-  <text x="438" y="429" fill="#F4F4F2" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="16">S(u, v) = R(v) C(u, v) + d(v)   ·   V − E + F − (L − F) − 2(S − G) = 0</text>
+  <text x="420" y="376" fill="#C7C7C2" font-family="'IBM Plex Sans', system-ui, sans-serif" font-weight="500" font-size="22" letter-spacing="0.4">Unifying B-Rep, CSG, and Implicit Fields in One Mathematical Core</text>
+  <rect x="420" y="402" width="660" height="44" rx="2" fill="#2A2A28" stroke="#333330" stroke-width="1"/>
+  <line x1="421" y1="402" x2="421" y2="446" stroke="#C7C7C2" stroke-width="2"/>
+  <text x="438" y="430" fill="#F4F4F2" font-family="'STIX Two Text', Georgia, serif" font-style="italic" font-size="19">S(u, v) = R(v)C(u, v) + d(v)   ·   V − E + F − (L − F) − 2(S − G) = 0</text>
   <line x1="64" y1="584" x2="1216" y2="584" stroke="#333330" stroke-width="1"/>
   <text x="64" y="608" fill="#C7C7C2" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="14">hassaanmaqsood.github.io/opencad</text>
   <text x="1216" y="608" text-anchor="end" fill="#C7C7C2" font-family="'IBM Plex Mono', ui-monospace, monospace" font-size="14">APACHE-2.0 · ZERO PRIMITIVES</text>

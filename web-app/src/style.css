@@ -1,32 +1,113 @@
 /* ========================================================================== */
-/* OpenCAD Design System Tokens (Monograph & Paper Surface)                   */
+/* OpenCAD Design System Tokens (assets/brand/DESIGN.md §2–§4)                */
 /* ========================================================================== */
 
 :root {
-  /* Surfaces — Pure Research Paper */
-  --paper: #FFFFFF;
-  --surface: #F6F6F6;
-  --surface-2: #ECECEC;
-  --surface-hover: #E5E5E5;
-  --ink: #111111;
-  --ink-2: #404040;
-  --ink-3: #737373;
-  --line: #D4D4D4;
-  --line-subtle: rgba(17, 17, 17, 0.07);
-  --line-strong: #111111;
+  /* §2.1 Primitive Palette — Light */
+  --color-paper-white:      #FFFFFF;
+  --color-archive-100:      #F6F6F6;
+  --color-archive-200:      #ECECEC;
+  --color-archive-300:      #E5E5E5;
 
-  /* Restrained Academic Accent & Semantic Vocabulary */
-  --accent: #1B3B8C;
-  --accent-subtle: rgba(27, 59, 140, 0.08);
-  --state-nominal: #14532D;
-  --state-caution: #92400E;
-  --state-fault: #991B1B;
-  --state-offline: #737373;
-  --state-linked: #1B3B8C;
+  --color-typeset-black:    #111111;
+  --color-graphite-ink:     #404040;
+  --color-graphite-mute:    #737373;
+  --color-hairline-gray:    #D4D4D4;
 
-  /* Typography: LaTeX Serif, Technical Sans, Slashed-Zero Mono */
+  --color-hyperref-blue:    #1B3B8C;
+
+  --color-forest-green:     #14532D;
+  --color-amber-ochre:      #92400E;
+  --color-crimson:          #991B1B;
+  --color-neutral-mute:     #737373;
+  --color-linked-blue:      #2E4E9E;
+
+  --color-axis-red:         #B91C1C;
+  --color-axis-green:       #15803D;
+  --color-axis-cobalt:      #26418F;
+
+  --color-thermal-deep-blue:#1D3557;
+  --color-thermal-teal:     #2A9D8F;
+  --color-thermal-gold:     #E9C46A;
+  --color-thermal-orange:   #F4A261;
+  --color-thermal-scarlet:  #C1121F;
+
+  --color-diverging-blue:   #1D4E89;
+  --color-diverging-cream:  #F5F0E8;
+  --color-diverging-red:    #B3261E;
+
+  /* §2.2 Primitive Palette — Dark */
+  --color-carbon-black:     #161615;
+  --color-carbon-100:       #1F1F1E;
+  --color-carbon-200:       #2A2A28;
+  --color-carbon-300:       #353532;
+
+  --color-plaster-white:    #F4F4F2;
+  --color-plaster-mid:      #C7C7C2;
+  --color-plaster-mute:     #8A8A84;
+  --color-carbon-hairline:  #333330;
+
+  --color-sky-blue:         #6B93F5;
+  --color-mint-green:       #4ADE80;
+  --color-sun-amber:        #FBBF24;
+  --color-coral-red:        #F87171;
+  --color-ember-red:        #EF5350;
+
+  --color-thermal-deep-blue-dark: #3E6EA8;
+  --color-thermal-teal-dark:      #4FC3B3;
+  --color-thermal-scarlet-dark:   #E5484D;
+  --color-diverging-blue-dark:    #5A8FD6;
+  --color-diverging-red-dark:     #E5484D;
+
+  /* §2.3 Semantic Tokens — reference primitives only */
+  --paper:            var(--color-paper-white);
+  --surface:          var(--color-archive-100);
+  --surface-2:        var(--color-archive-200);
+  --surface-hover:    var(--color-archive-300);
+  --surface-overlay:  rgba(246, 246, 246, 0.94);
+
+  --ink:              var(--color-typeset-black);
+  --ink-2:            var(--color-graphite-ink);
+  --ink-3:            var(--color-graphite-mute);
+  --ink-inverse:      var(--color-paper-white);
+  --line:             var(--color-hairline-gray);
+  --line-subtle:      rgba(17, 17, 17, 0.07);
+  --line-strong:      var(--color-typeset-black);
+
+  --accent:           var(--color-hyperref-blue);
+  --accent-subtle:    rgba(27, 59, 140, 0.08);
+  --accent-ink:       var(--color-paper-white);
+
+  --state-nominal:    var(--color-forest-green);
+  --state-caution:    var(--color-amber-ochre);
+  --state-fault:      var(--color-crimson);
+  --state-offline:    var(--color-neutral-mute);
+  --state-linked:     var(--color-linked-blue);
+
+  --axis-x:           var(--color-axis-red);
+  --axis-y:           var(--color-axis-green);
+  --axis-z:           var(--color-axis-cobalt);
+
+  --cmap-thermal-0:    var(--color-thermal-deep-blue);
+  --cmap-thermal-25:   var(--color-thermal-teal);
+  --cmap-thermal-50:   var(--color-thermal-gold);
+  --cmap-thermal-75:   var(--color-thermal-orange);
+  --cmap-thermal-100:  var(--color-thermal-scarlet);
+  --cmap-diverging-neg: var(--color-diverging-blue);
+  --cmap-diverging-mid: var(--color-diverging-cream);
+  --cmap-diverging-pos: var(--color-diverging-red);
+
+  --shadow-dock:  0 1px 3px rgba(17, 17, 17, 0.12);
+  --shadow-modal: 0 8px 24px rgba(17, 17, 17, 0.16);
+
+  --stroke-contour: 1.6px;
+  --stroke-mesh:    0.65px;
+  --stroke-axis:    0.9px;
+  --stroke-hidden:  0.85px;
+
+  /* §3 Typography (Three-Family Ceiling: Serif, Sans, Mono) */
   --font-serif: 'STIX Two Text', 'CMU Serif', 'Latin Modern Roman', Georgia, serif;
-  --font-display: 'STIX Two Text', 'CMU Serif', Georgia, serif;
+  --font-display: var(--font-serif);
   --font-sans: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'CMU Typewriter Text', ui-monospace, monospace;
 
@@ -37,22 +118,69 @@
   --radius-lg: 4px;
   --radius-sheet: 8px;
   --radius-full: 9999px;
+
+  /* Motion & Z-Index */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 100ms;
+  --duration-base: 160ms;
+  --z-canvas: 0;
+  --z-hud: 90;
+  --z-dock: 100;
+  --z-inspector: 110;
+  --z-modal-backdrop: 200;
+  --z-modal: 210;
+
+  /* §2.4 Spacing Scale */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+  --space-7: 32px;
 }
 
-/* Dark Studio Mode — Carbon Graphite & Plaster */
+/* Dark Studio Mode — Carbon Graphite & Plaster (§2.2 -> §2.3) */
 [data-theme="dark"] {
-  --paper: #161615;
-  --surface: #1F1F1E;
-  --surface-2: #2A2A28;
-  --surface-hover: #353532;
-  --ink: #F4F4F2;
-  --ink-2: #C7C7C2;
-  --ink-3: #8A8A84;
-  --line: #333330;
+  --paper:           var(--color-carbon-black);
+  --surface:         var(--color-carbon-100);
+  --surface-2:       var(--color-carbon-200);
+  --surface-hover:   var(--color-carbon-300);
+  --surface-overlay: rgba(31, 31, 30, 0.94);
+
+  --ink:         var(--color-plaster-white);
+  --ink-2:       var(--color-plaster-mid);
+  --ink-3:       var(--color-plaster-mute);
+  --ink-inverse: var(--color-carbon-black);
+  --line:        var(--color-carbon-hairline);
   --line-subtle: rgba(244, 244, 242, 0.08);
-  --line-strong: #F4F4F2;
-  --accent: #6B93F5;
+  --line-strong: var(--color-plaster-white);
+
+  --accent:        var(--color-sky-blue);
   --accent-subtle: rgba(107, 147, 245, 0.14);
+  --accent-ink:    var(--color-carbon-black);
+
+  --state-nominal: var(--color-mint-green);
+  --state-caution: var(--color-sun-amber);
+  --state-fault:   var(--color-coral-red);
+  --state-offline: var(--color-plaster-mute);
+  --state-linked:  var(--color-sky-blue);
+
+  --axis-x: var(--color-ember-red);
+  --axis-y: var(--color-mint-green);
+  --axis-z: var(--color-sky-blue);
+
+  --cmap-thermal-0:   var(--color-thermal-deep-blue-dark);
+  --cmap-thermal-25:  var(--color-thermal-teal-dark);
+  --cmap-thermal-50:  var(--color-thermal-gold);
+  --cmap-thermal-75:  var(--color-thermal-orange);
+  --cmap-thermal-100: var(--color-thermal-scarlet-dark);
+  --cmap-diverging-neg: var(--color-diverging-blue-dark);
+  --cmap-diverging-mid: var(--color-carbon-black);
+  --cmap-diverging-pos: var(--color-diverging-red-dark);
+
+  --shadow-dock:  0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 /* ========================================================================== */
@@ -363,15 +491,15 @@ html, body {
 
 /* Diagnostic Details Drawer (Collapsible & Expandable) */
 .diagnostic-drawer {
-  background: #FAF7F3;
-  border-top: 1px solid #8B1A1A;
-  border-bottom: 1px solid #C8C0B4;
-  padding: 10px 14px;
+  background: var(--paper);
+  border-top: 1px solid var(--state-fault);
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4);
   font-family: var(--font-mono);
   font-size: 11px;
   max-height: 240px;
   overflow-y: auto;
-  box-shadow: 0 -4px 12px rgba(5, 15, 31, 0.08);
+  box-shadow: var(--shadow-dock);
   z-index: 10;
   flex-shrink: 0;
 }
@@ -380,34 +508,34 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  border-bottom: 1px solid rgba(139, 26, 26, 0.2);
-  padding-bottom: 6px;
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-2);
 }
 
 .diagnostic-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .diag-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: var(--space-1) var(--space-2);
   font-size: 10px;
   font-weight: 600;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
 }
 
 .diag-badge-err {
-  background: #8B1A1A;
-  color: #FAF7F3;
+  background: var(--state-fault);
+  color: var(--ink-inverse);
 }
 
 .diagnostic-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .btn-diag-action {
@@ -416,10 +544,10 @@ html, body {
   color: var(--ink-2);
   font-family: var(--font-mono);
   font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 3px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-base) var(--ease-standard);
 }
 
 .btn-diag-action:hover {
@@ -429,8 +557,8 @@ html, body {
 
 .diag-row {
   display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .diag-label {
@@ -441,7 +569,7 @@ html, body {
 }
 
 .diag-val {
-  color: #8B1A1A;
+  color: var(--state-fault);
   word-break: break-all;
 }
 
@@ -532,20 +660,20 @@ html, body {
 }
 
 .btn-diag-toggle {
-  background: rgba(139, 26, 26, 0.10);
-  border: 1px solid #8B1A1A;
-  color: #8B1A1A;
+  background: var(--surface);
+  border: 1px solid var(--state-fault);
+  color: var(--state-fault);
   font-family: var(--font-mono);
   font-size: 10px;
-  padding: 2px 7px;
-  border-radius: 3px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-base) var(--ease-standard);
 }
 
 .btn-diag-toggle:hover {
-  background: #8B1A1A;
-  color: #FAF7F3;
+  background: var(--state-fault);
+  color: var(--ink-inverse);
 }
 
 .status-timing {
@@ -608,24 +736,24 @@ html, body {
   display: block;
 }
 
-/* Minimalist Viewport Dock (Vertically Centered on Left Edge) */
+/* Minimalist Viewport Dock (Vertically Centered on Left Edge, DESIGN.md §4.1 & §5.2) */
 .viewport-dock {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  left: 12px;
+  left: var(--space-4);
   right: auto;
-  z-index: 100;
+  z-index: var(--z-dock);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  background: rgba(246, 246, 246, 0.94);
+  gap: var(--space-2);
+  background: var(--surface-overlay);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 4px;
-  box-shadow: 0 2px 10px rgba(17, 17, 17, 0.06);
+  padding: var(--space-2);
+  box-shadow: var(--shadow-dock);
   user-select: none;
 }
 
@@ -636,53 +764,67 @@ html, body {
   width: 32px;
   height: 32px;
   background: transparent;
-  border: 1px solid transparent;
+  border: 1.5px solid var(--ink-2);
   border-radius: var(--radius-sm);
   color: var(--ink-2);
   cursor: pointer;
   padding: 0;
-  transition: all 0.15s ease;
+  transition: all var(--duration-base) var(--ease-standard);
   position: relative;
 }
 
 .dock-btn:hover {
   background: var(--surface-hover);
   color: var(--ink);
-  border-color: var(--line);
+  border: 1px solid var(--line);
 }
 
 .dock-btn:active {
   transform: scale(0.96);
 }
 
-.dock-btn.active {
-  background: #111111;
-  color: #FFFFFF;
-  border-color: #111111;
+.dock-btn.active,
+.dock-btn[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--ink-inverse);
+  border-color: var(--ink);
 }
 
-.dock-btn.active:hover {
-  background: #000000;
-  color: #FFFFFF;
-  border-color: #000000;
+.dock-btn.active:hover,
+.dock-btn[aria-pressed="true"]:hover {
+  background: var(--ink);
+  color: var(--ink-inverse);
+  border-color: var(--ink);
+}
+
+.dock-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dock-btn:disabled {
+  color: var(--ink-3);
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .dock-label {
   display: none;
 }
 
-/* Minimalist Unified Telemetry Display (Bottom-Right Corner matching OpenCAD specs) */
+/* Minimalist Unified Telemetry Display (Bottom-Right Corner matching DESIGN.md §5.4) */
 .viewport-telemetry {
   position: absolute;
-  bottom: 14px;
-  right: 14px;
+  bottom: var(--space-4);
+  right: var(--space-4);
   left: auto;
-  z-index: 40;
+  z-index: var(--z-hud);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
+  gap: var(--space-1);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--ink-2);
   pointer-events: none;
@@ -690,36 +832,37 @@ html, body {
 }
 
 .telemetry-brand {
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: 11px;
-  color: var(--ink-2);
-  letter-spacing: 0.04em;
-  opacity: 0.9;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
 }
 
 .telemetry-item {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ink-2);
 }
 
 .telemetry-stats {
   display: flex;
   align-items: center;
-  gap: 3px;
-  font-size: 10.5px;
+  gap: var(--space-1);
+  font-size: 11px;
   color: var(--ink-2);
-  margin-top: 1px;
 }
 
 .telemetry-sep {
   opacity: 0.4;
-  margin: 0 1px;
+  margin: 0 var(--space-1);
 }
 
 /* ========================================================================== */
-/* Embed Mode & URL Toggle Controls                                           */
+/* Embed Mode, Publication Snapshot Mode (§5.7–§5.8) & URL Toggle Controls    */
 /* ========================================================================== */
+body.figure-mode .viewport-dock,
+body.figure-mode .viewport-telemetry,
+body.figure-mode .lil-gui,
+body.figure-mode .lil-controller,
 body.embed-mode #viewport-stats,
 body.hide-code-toggle #code-pane,
 body.hide-code-toggle #pane-splitter,
@@ -887,20 +1030,19 @@ body.hide-code-toggle #viewport-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
+  padding: var(--space-3) var(--space-4);
   background: var(--surface-2) !important;
   border-bottom: 1px solid var(--line) !important;
-  font-family: var(--font-display) !important;
-  font-weight: 900;
+  font-family: var(--font-mono) !important;
+  font-weight: 600;
   font-size: 11px;
-  letter-spacing: 0.02em;
-  color: var(--ink-2) !important;
+  color: var(--ink) !important;
 }
 
 .lil-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 /* Status Indicator in Titlebar: 6x6 circle */
@@ -919,9 +1061,9 @@ body.hide-code-toggle #viewport-container {
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1;
-  padding: 2px 4px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-  transition: all 0.12s ease;
+  transition: all var(--duration-fast) var(--ease-standard);
 }
 
 .lil-close:hover {
@@ -936,17 +1078,16 @@ body.hide-code-toggle #viewport-container {
 .lil-folder-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   background: var(--surface-2) !important;
-  font-family: var(--font-display) !important;
-  font-weight: 500;
+  font-family: var(--font-mono) !important;
+  font-weight: 600;
   font-size: 11px;
-  letter-spacing: 0.02em;
   color: var(--ink-2) !important;
   cursor: pointer;
   border-bottom: 1px solid var(--line);
-  transition: all 0.12s ease;
+  transition: all var(--duration-fast) var(--ease-standard);
 }
 
 .lil-folder-header:hover {
@@ -1058,26 +1199,26 @@ body.hide-code-toggle #viewport-container {
   font-weight: 500;
 }
 
-/* Action Buttons: Minimal, Bordered, Refined */
+/* Action Buttons: Minimal, Bordered, Refined (DESIGN.md §3.1 & §4.2) */
 .lil-action-btn {
-  background: var(--surface-2);
+  background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--ink);
-  padding: 6px 10px;
-  font-family: var(--font-display);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   width: 100%;
   text-align: center;
-  transition: all 0.15s ease;
+  transition: all var(--duration-base) var(--ease-standard);
 }
 
 .lil-action-btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--line-strong);
-  color: var(--ink);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--ink-inverse);
 }
 
 /* Primary / Active action state */

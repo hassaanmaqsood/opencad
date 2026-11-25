@@ -272,7 +272,24 @@ document.getElementById('btn-gui').addEventListener('click', (e) => {
 const infoDialog = document.getElementById('info-dialog');
 document.getElementById('btn-info').addEventListener('click', () => infoDialog.showModal());
 document.getElementById('btn-close-info').addEventListener('click', () => infoDialog.close());
+infoDialog.addEventListener('click', (e) => {
+  if (e.target === infoDialog) infoDialog.close();
+});
 window.addEventListener('resize', resizeViewports);
+
+// Publication Snapshot Mode (?figure=true per DESIGN.md §5.7) & Embed Mode (?embed=true per §5.8)
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('figure') === 'true' || urlParams.get('figure') === '1') {
+  document.documentElement.setAttribute('data-theme', 'light');
+  document.body.classList.add('figure-mode');
+}
+if (urlParams.get('view') === 'split') {
+  viewState.show3D = true;
+  viewState.show2D = true;
+} else if (urlParams.get('view') === '2d') {
+  viewState.show3D = false;
+  viewState.show2D = true;
+}
 
 function animate() {
   requestAnimationFrame(animate);

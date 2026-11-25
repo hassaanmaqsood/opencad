@@ -326,7 +326,7 @@ export class Fem2DViewport {
 
     const [cxS, cyS] = toS(0, 0);
     const rPx = (p.hole_r / 1000) * scale;
-    ctx.font = '700 11px "IBM Plex Mono", monospace';
+    ctx.font = '600 11px "IBM Plex Mono", monospace';
     ctx.textAlign = 'center';
     if (p.modelPreset === 'Annular Disk (Benchmark)') {
       ctx.fillStyle = '#991B1B';
@@ -338,7 +338,7 @@ export class Fem2DViewport {
       ctx.fillText(`top_h = ${p.top_h} W/m²K`, cxS, oy - maxY * scale - 10);
     }
     if (rPx >= 24) {
-      ctx.font = rPx >= 36 ? '700 10.5px "IBM Plex Mono", monospace' : '700 9px "IBM Plex Mono", monospace';
+      ctx.font = rPx >= 36 ? '600 11px "IBM Plex Mono", monospace' : '600 10px "IBM Plex Mono", monospace';
       ctx.fillStyle = '#14532D';
       ctx.fillText(`T_∞=${p.hole_T}°C`, cxS, cyS + 3);
     }

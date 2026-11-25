@@ -96,8 +96,8 @@
     </div>
   </div>
 
-  <!-- Info & Usage Modal (Centered Card on Desktop / Bottom Sheet on Mobile) -->
-  <dialog id="info-dialog" aria-labelledby="info-dialog-title">
+  <!-- Info & Usage Modal (Centered Card on Desktop / Bottom Sheet on Mobile, DESIGN.md §5.5) -->
+  <dialog id="info-dialog" closedby="any" aria-labelledby="info-dialog-title">
     <div class="dialog-shell">
       <div class="dialog-head">
         <span id="info-dialog-title" class="dialog-title">FEAScript × OpenCAD — Modular Drop-In Architecture</span>
@@ -117,6 +117,9 @@
             <a href="https://github.com/hassaanmaqsood/open-cad" target="_blank" rel="noopener noreferrer">GitHub Repository ↗</a> &nbsp;·&nbsp;
             <a href="https://github.com/hassaanmaqsood/open-cad/tree/main/examples/feascript-loop" target="_blank" rel="noopener noreferrer">Modular Example ↗</a>
           </div>
+        </div>
+        <div class="equation-callout">
+          ∇ · (k ∇T) = 0 &nbsp;in Ω, &emsp; −k ∂T/∂n = h(T − T<sub>∞</sub>) &nbsp;on Γ<sub>bore</sub>, &emsp; T(r) = T<sub>b</sub> − q′ ln(b / r) / (2πk) &nbsp;(<code>0x1F0000</code>)
         </div>
         <div class="usage-section">
           <h3>Drop-In Reusable ES Modules (examples/feascript-loop/js/)</h3>
