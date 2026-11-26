@@ -10,8 +10,6 @@
 - **CDN Distribution Branch (`@dist`):** `https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/`
 - **Releases & Offline Studio (`opencad-portable.html`, `opencad-wasm-sdk.zip`):** `https://github.com/hassaanmaqsood/opencad/releases`
 
----
-
 ## 1. Architecture & Core Laws
 
 OpenCAD is a zero-primitive mathematical CAD kernel written in freestanding Zig and compiled to WebAssembly.
@@ -53,8 +51,6 @@ Always read array offsets directly from the header rather than hardcoding `0x0F0
 | `0x20 .. 0x4F` | `f64[6]` | `bbox` | `[min_x, min_y, min_z, max_x, max_y, max_z]` |
 | `0x50` | `u32` | `is_heap_spillover` | `0` = Tier-1 inline (`0x0F0080`), `1` = Tier-2 heap (`>= 0x600000`) |
 | `0x54` | `u32` | `payload_byte_len` | Total byte length of the active tessellation payload |
-
----
 
 ## 2. Declarative CDML v1.0 (XML)
 
@@ -227,8 +223,6 @@ Use `abs_smooth`, `r_union`, and `r_intersect` inside `<implicit>` and combine w
 </implicit>
 ```
 
----
-
 ## 3. HTML Web Embedding (`<iframe>` and `<opencad-viewer>`)
 
 ### Option A: `<iframe>` Embed with URL Parameters
@@ -274,8 +268,6 @@ Embed the live GitHub Pages studio inside any page or documentation portal:
   height="520px">
 </opencad-viewer>
 ```
-
----
 
 ## 4. JavaScript & TypeScript (ESM / Browser / Node.js / Bun)
 
@@ -389,8 +381,6 @@ function readTessellationFromSharedMemory(sharedMem: WebAssembly.Memory) {
 }
 ```
 
----
-
 ## 5. Python (`wasmtime` Headless SDK)
 
 ### Installation
@@ -443,8 +433,6 @@ print("Status:", res.status, "Diagnostic:", res.diagnostic)
 print("Probes:", res.probes)
 ```
 
----
-
 ## 6. Rust, C, and Direct WASM C-ABI
 
 ### Rust Crate (`bindings/rust`)
@@ -492,8 +480,6 @@ const { instance } = await WebAssembly.instantiate(wasmBytes, {
 });
 instance.exports.kernel_init();
 ```
-
----
 
 ## 7. Troubleshooting & Diagnostic Error Reference
 

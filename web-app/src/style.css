@@ -800,6 +800,14 @@ html, body {
   font-size: 12px;
   letter-spacing: 0.02em;
   color: var(--ink);
+  text-decoration: none;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.telemetry-brand:hover {
+  color: var(--accent);
 }
 
 .telemetry-item {

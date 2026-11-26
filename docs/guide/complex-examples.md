@@ -2,8 +2,6 @@
 
 This guide presents three verified parametric parts and multi-physics workflows built with the `@open-cad/core` TypeScript SDK and CDML v1.0.
 
----
-
 ## Example 1: Parametric Planetary Gear Carrier & Sun Gear (`Part` Fluent API)
 
 This example models a sun gear, a planet gear, and a 3-pin carrier using the fluent `Part` (`FluentPart`) API.
@@ -49,8 +47,6 @@ try {
 }
 ```
 
----
-
 ## Example 2: 2-DOF Parallel Guiding Flexure Stage with Compliance Extraction
 
 This example models a planar flexure stage with parallel leaf slots and extracts its $6 \times 6$ spatial compliance matrix.
@@ -75,8 +71,6 @@ const flexureStage = new Part('NanoStage')
 console.log('Compliance Matrix:', flexureStage.metadata.flexureAnalysis.complianceMatrix);
 flexureStage.dispose();
 ```
-
----
 
 ## Example 3: Field-Modulated TPMS Gyroid Flange (`flange_normative.cdml`)
 

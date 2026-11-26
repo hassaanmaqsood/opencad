@@ -2,8 +2,6 @@
 
 OpenCAD includes normative parametric parts, implicit TPMS lattices, and multi-physics demo models. Every `.cdml` file is a self-contained executable engineering document that runs in `cad_kernel.wasm`.
 
----
-
 ## 1. Featured Parametric & Multi-Physics Models
 
 | Model | Path | Geometry Formulations | Live Action |
@@ -12,8 +10,6 @@ OpenCAD includes normative parametric parts, implicit TPMS lattices, and multi-p
 | **Normative Parametric Flange** | [`/examples/flange_normative.cdml`](/examples/flange_normative.cdml) | `0b00` 2D Householder QR sketch, NURBS outer wire, `<param-curve>` bore, `SE(3)` sweep, and `0b10` Gyroid core | [Open in Studio ↗](/studio/?cdml=/opencad/examples/flange_normative.cdml) |
 | **Constrained Mounting Bracket** | [`/examples/constrained_bracket.cdml`](/examples/constrained_bracket.cdml) | `0b00` Multi-constraint 2D sketch + `0b01` boolean union/difference + `<probe type="volume">` | [Open in Studio ↗](/studio/?cdml=/opencad/examples/constrained_bracket.cdml) |
 | **FEAScript × OpenCAD Cooling Plate & Disk** | [`examples/feascript-loop/`](/collabs/feascript-thermal-loop) | Closed-loop CDML `<sketch>` to 2D unstructured FEM thermal solve and `0x1F0000` 3D voxel field injection | [Launch Thermal Demo ↗](https://hassaanmaqsood.github.io/opencad/feascript-demo.html) |
-
----
 
 ## 2. Verified Normative Flange Excerpt (`flange_normative.cdml`)
 

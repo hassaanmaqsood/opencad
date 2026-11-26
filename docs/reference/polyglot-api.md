@@ -2,8 +2,6 @@
 
 OpenCAD provides geometric modeling APIs for TypeScript, JavaScript, Python, Rust, and C.
 
----
-
 ## 1. Distribution and Release Artifacts
 
 OpenCAD distributes prebuilt artifacts through GitHub Releases and the `dist` branch:
@@ -11,8 +9,6 @@ OpenCAD distributes prebuilt artifacts through GitHub Releases and the `dist` br
 - **GitHub Releases:** Download `opencad-wasm-sdk.zip`, `opencad-portable.html`, `cad_kernel.wasm`, and `opencad-examples.zip` from [GitHub Releases](https://github.com/hassaanmaqsood/opencad/releases).
 - **GitHub Distribution Branch (`dist`):** Import prebuilt ES modules and Web Components from `https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/`.
 - **GitHub Pages CDN (`/opencad/cdn/`):** Access `opencad.mjs`, `opencad-element.mjs`, `opencad.d.ts`, and `cad_core.wasm` from `https://hassaanmaqsood.github.io/opencad/cdn/`.
-
----
 
 ## 2. TypeScript and JavaScript SDK (`@open-cad/core`)
 
@@ -79,8 +75,6 @@ try {
 }
 ```
 
----
-
 ## 3. Python SDK (`wasmtime`)
 
 ### 3.1 Installation
@@ -115,8 +109,6 @@ step_string = res.to_step()
 stl_bytes = res.to_stl()
 ```
 
----
-
 ## 4. Rust Crate (`bindings/rust`)
 
 Install from the `dist` branch:
@@ -136,8 +128,6 @@ fn main() {
     println!("STEP bytes: {}, STL bytes: {}", step_ap214.len(), stl_binary.len());
 }
 ```
-
----
 
 ## 5. Web Component (`<opencad-viewer>`) and Iframe Embed
 
@@ -165,8 +155,6 @@ fn main() {
   style="width: 100%; height: 500px; display: block;">
 </opencad-viewer>
 ```
-
----
 
 ## 6. C-ABI Header (`abi/cad_kernel.h`)
 

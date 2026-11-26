@@ -2,8 +2,6 @@
 
 OpenCAD is an open-source parametric 3D CAD application and geometric kernel. It runs in web browsers through WebAssembly and WebGL.
 
----
-
 ## 1. Application Layout
 
 The OpenCAD Studio interface uses a split workspace for parametric modeling:
@@ -50,8 +48,6 @@ The OpenCAD Studio interface uses a split workspace for parametric modeling:
 - **Status Message:** Shows the evaluation status, active notices, and kernel execution time in milliseconds.
 - **Diagnostic Drawer:** Click the status message or the `Details` button when an error occurs to open the diagnostic drawer.
 - The diagnostic drawer lists the error code, line number, column number, XML tag name, and diagnostic message.
-
----
 
 ## 2. CDML v1.0 Modeling Workflow
 
@@ -148,8 +144,6 @@ Sweep the solved sketch profile along an $SE(3)$ trajectory, attach physical pro
 </exports>
 ```
 
----
-
 ## 3. Web Page Embedding
 
 You can embed the 3D CAD viewer into documentation pages or web applications.
@@ -190,8 +184,6 @@ Load the web component from the distribution CDN and point `src` to a valid `.cd
   style="width: 100%; height: 500px; display: block;">
 </opencad-viewer>
 ```
-
----
 
 ## 4. Mouse and Keyboard Controls
 

@@ -6,8 +6,6 @@
 > 3. **Matplotlib `plasma` Colormap for 2D & 3D Quantitative Heatmaps:** All continuous physical fields (FEM thermal distributions, stress fields, and implicit field slices) use the perceptually uniform **Matplotlib `plasma` colormap** (`#0D0887 → #7E03A8 → #CC4778 → #F89540 → #F0F921`), calibrated in sRGB space so 3D WebGL meshes and 2D contour plots match pixel-for-pixel.
 > 4. **One Single Typeface Family (`IBM Plex Mono`):** The entire interface, code editor, telemetry HUD, and technical diagrams use **one font family (`IBM Plex Mono`)**, establishing visual hierarchy strictly through **weight** (`300`, `400`, `500`, `600`, `700`), **size**, and **letter-spacing**. (Only standalone $\LaTeX$ math expressions retain standard Computer Modern / STIX math glyphs.)
 
----
-
 ## 1. The High-Action vs. Passive Component Rule (`slicer` Architecture)
 
 Every border, box, or surface must justify its cognitive cost. We divide all visual elements into two categories:
@@ -29,8 +27,6 @@ Every border, box, or surface must justify its cognitive cost. We divide all vis
    - Uses the same unified translucent surface (`background: rgba(var(--surface-rgb), 0.86); backdrop-filter: blur(12px); border: none; border-radius: 10px;`) with generous internal padding (`padding: 12px 14px;`) and zero nested folder or controller borders.
 3. **Executable Document Code Editor (`#code-pane`)**:
    - Uses a unified calm document surface (`background: var(--surface);` — `#F7F7F8` in light mode, `#141417` in dark mode) with generous negative-space padding (`padding: 12px 16px` header, `12px 16px` editor gutter/body, `8px 16px` status bar) and zero nested boxes around status bars or tab headers.
-
----
 
 ## 2. Color System: One Single Accent Hue (`Hue = 212°` Cobalt Azure) + Matplotlib `plasma`
 
@@ -70,8 +66,6 @@ To ensure instant scientific recognition and perceptual uniformity across both 2
 
 > **3D/2D Color-Matching Requirement:** Because Three.js `WebGLRenderer` expects vertex colors in linear-sRGB space and applies output gamma encoding (`SRGBColorSpace`), 3D vertex colors sampled from `plasmaRGB(t)` must be converted via `srgbToLinear(c)` before writing to `BufferAttribute`, and shaded with unlit/balanced normal weighting (`0.94 + 0.06 * nz`) so the 3D surface colors match the 2D HTML5 Canvas colors within $\Delta E < 1.5$.
 
----
-
 ## 3. Typography: One Typeface Family (`IBM Plex Mono`)
 
 All visual hierarchy is achieved within **`IBM Plex Mono`** through **font-weight**, **font-size**, and **letter-spacing**:
@@ -91,8 +85,6 @@ All visual hierarchy is achieved within **`IBM Plex Mono`** through **font-weigh
 | **Body & Diagram Labels** | `400` (Regular) | `11px – 12px` | `0em` | `--ink-2` (`#52525B`) | Diagram node subtitles, documentation copy |
 | **Passive Telemetry** | `300` (Light) | `10.5px – 11px` | `+0.02em` (`tabular-nums`) | `--ink-2` / `--ink-3` | Bottom-right `#info` stats, colorbar ticks, hover probes |
 
----
-
 ## 4. Strategic Positioning & Simple Wording
 
 1. **Simple, Direct Verbs**: Always prefer direct engineering verbs—use **"Merging"** instead of `"Unifying"`, **"Zero-Copy"** instead of `"Harmonized"`, and **"Exact"** instead of `"Sophisticated"`.
@@ -101,17 +93,12 @@ All visual hierarchy is achieved within **`IBM Plex Mono`** through **font-weigh
    - **`B-REP · CSG · IMPLICIT · C-ABI`**
    - **Merging exact B-Rep topology, Rvachev $C^1$ CSG, and implicit TPMS fields in a single deterministic Zig/WASM kernel.**
 
----
-
 ## 5. Pre-Commit Design Verification Checklist
 
 - [ ] **High-Action Negative Space & Surface Rule**: Do high-action components (`lil-gui`, `.viewport-dock`, `#code-pane`) have generous internal padding and a single subtle translucent/tinted surface (`#F7F7F8`), while passive readouts (`#info`, `.pane-pill`, diagram nodes, equations) have zero boxes and zero borders?
 - [ ] **Single Accent Hue (`Hue = 212°` Cobalt Azure)**: Are all UI accents restricted to the 3 shades of Cobalt Azure (`#0C71E4`, `#0A50A8`, `#5AA9FF`)?
 - [ ] **Matched 2D & 3D Matplotlib `plasma` Heatmap**: Do both 2D and 3D thermal viewports use the exact Matplotlib `plasma` colormap (`#0D0887 → #7E03A8 → #CC4778 → #F89540 → #F0F921`) with sRGB-to-linear compensation so 3D and 2D colors match closely?
 - [ ] **Single Font Family**: Is `IBM Plex Mono` the sole font family across UI, covers, and diagrams (with weight `300`–`700`, size, and spacing creating all hierarchy)?
-
-
----
 
 ## 6. Social & Announcement Post Templates (`4:3`, `1:1`, `3:4`)
 

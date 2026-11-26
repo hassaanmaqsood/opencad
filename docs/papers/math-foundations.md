@@ -14,8 +14,6 @@ To fit a B-Rep modeler, a constraint solver, a CSG bridge, and an implicit meshe
 
 ![Figure 1: System Architecture and Size Comparison/assets/math/fig1-system-architecture.png)
 
----
-
 ## 1. One Bytecode Tape, Two Algebraic Rings
 
 In OpenCAD, users author geometry in **CDML v1.0 (Computational Design Markup Language)**. The TypeScript builder in [cdml.ts](https://github.com/hassaanmaqsood/opencad/blob/main/packages/core-sdk/src/cdml.ts) and the Python builder in [bindings/python/opencad](https://github.com/hassaanmaqsood/opencad/tree/main/bindings/python/opencad) also emit CDML XML. Every numeric attribute, constraint residual, sweep trajectory, and scalar field is a mathematical expression.
@@ -59,8 +57,6 @@ To prevent missed features, [autodiff.zig](https://github.com/hassaanmaqsood/ope
 - During a kinematic sweep, evaluating $\Vert\frac{\partial \mathbf{S}}{\partial u} \times \frac{\partial \mathbf{S}}{\partial v}\Vert$ over parameter intervals checks whether the surface normal collapses to zero (`ERR_SWEEP_SELF_INTERSECT`).
 
 ![Figure 2: Dual-Ring SSA Evaluation Diagram/assets/math/fig2-dual-ring-ssa.png)
-
----
 
 ## 2. Why `min` and `max` Break Booleans (Rvachev R-Functions)
 
@@ -109,8 +105,6 @@ pub fn rIntersect(u: Dual, v: Dual) Dual {
 These functions preserve the exact zero-level set of the boolean boundary while keeping gradients $C^1$-smooth off the seam. Because `r_union` and `r_intersect` are monotonically non-decreasing in both arguments, `Interval.rUnion` and `Interval.rIntersect` evaluate exact interval bounds at endpoints in $O(1)$ time.
 
 ![Figure 3: Gradient Field Comparison — Standard min/max vs. Rvachev R-Functions/assets/math/fig3-rvachev-r-functions.png)
-
----
 
 ## 3. Solving Geometry Without Primitives: Charts, Sketches, and Householder QR
 
@@ -174,8 +168,6 @@ From that factorization, `getDof` computes the exact **Degrees of Freedom** ($\t
 
 The solver damps updates with Levenberg-Marquardt regularization and applies homotopy sub-stepping when $\Vert\Delta\mathbf{q}\Vert_\infty$ exceeds 25% of the parameter span.
 
----
-
 ## 4. Rational Curves, Kinematic $SE(3)$ Sweeps, and the Starter Toroidal Prism
 
 Once the solver converges on $\mathbf{q}$, `NurbsCurve` in [curve_wire.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/curve_wire.zig) reads control points and weights directly from the solved parameter slots:
@@ -237,8 +229,6 @@ Meanwhile, the default starter model loaded in the web studio (`DEFAULT_TORUS_CD
 
 ![Figure 4: OpenCAD Web Studio Light-Theme Screenshot with Starter Toroidal Prism/assets/math/fig4-studio-torus.png)
 
----
-
 ## 5. Bridging B-Rep, CSG, and Implicit Fields
 
 All three geometry representations sit behind a single 64-bit `solid_t` handle. Its top two bits `[63:62]` tag the active representation:
@@ -296,8 +286,6 @@ For any resolved solid, `BRepSolid.computeEnclosedVolume` in [surface_brep.zig](
 
 $$V = \left\vert \frac{1}{6} \sum_{t=0}^{T-1} \mathbf{p}_{0,t} \cdot (\mathbf{p}_{1,t} \times \mathbf{p}_{2,t}) \right\vert$$
 
----
-
 ## 6. Direct Simulation Coupling via Zero-Copy Shared Memory
 
 Most browser CAD tools isolate geometry and simulation in separate heaps and pass JSON or files between them. OpenCAD allocates **one `WebAssembly.Memory` (`SharedArrayBuffer`)** shared by `cad_kernel.wasm`, external WASM solvers, and the Three.js worker bridge ([memory_map.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/memory_map.zig)):
@@ -346,8 +334,6 @@ In [test_canary_extension.mjs](https://github.com/hassaanmaqsood/opencad/blob/ma
 
 ![Figure 5: SharedArrayBuffer Memory Map and Field-Driven Gyroid Cutaway/assets/math/fig5-shared-memory-gyroid.png)
 
----
-
 ## 7. Where It Still Hurts (Current Experimental Limits)
 
 The 9 verification gates in [verify_gates.sh](https://github.com/hassaanmaqsood/opencad/blob/main/scripts/verify_gates.sh) and 199 native Zig unit tests pass with zero memory leaks. In addition, [test_1000_models.mjs](https://github.com/hassaanmaqsood/opencad/blob/main/scripts/test_1000_models.mjs) tests over 1,000 CDML models. Even so, five areas remain experimental in the current codebase:
@@ -357,8 +343,6 @@ The 9 verification gates in [verify_gates.sh](https://github.com/hassaanmaqsood/
 3. **Rolling-Ball Fillets at High-Curvature Apex Corners:** Constant-radius rolling-ball fillets work on uniform convex and concave sweep edges and cap boundaries (`filletSweptSolid` in [surface_brep.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/surface_brep.zig)). Multi-edge apex corners and variable-radius sweeps with high curvature remain unfinished.
 4. **Multi-Field Metric Distortion:** Composing several R-function branches with external voxel fields can push $\vert\nabla F\vert$ away from $1$. Without periodic re-normalization, wall-thickness offsets can drift on deep composition trees.
 5. **Boolean Thread Cutting (`cad_op_thread`):** Fastener models in CDML build threads through revolved ridge profiles or helical `SE(3)` sweeps. However, the standalone C-ABI function `cad_op_thread` in [main.zig](https://github.com/hassaanmaqsood/opencad/blob/main/kernel-zig/src/main.zig) remains a pass-through stub until helical B-Rep boolean cutting becomes available.
-
----
 
 ## 8. What Is Next
 

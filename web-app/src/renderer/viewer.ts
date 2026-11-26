@@ -171,6 +171,11 @@ export class CadViewer {
     });
   }
 
+  public setTheme(theme: 'light' | 'dark'): void {
+    const clearHex = theme === 'dark' ? 0x0A0B0D : 0xFFFFFF;
+    this.renderer.setClearColor(clearHex, 1.0);
+  }
+
   public setSelection(selection: SubShapeSelection): void {
     this.currentSelection = selection;
 

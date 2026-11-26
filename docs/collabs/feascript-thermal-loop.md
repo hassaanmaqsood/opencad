@@ -5,8 +5,6 @@ This collaboration links **[OpenCAD](https://github.com/hassaanmaqsood/opencad)*
 - **Live Interactive Demo:** [`https://hassaanmaqsood.github.io/opencad/feascript-demo.html`](https://hassaanmaqsood.github.io/opencad/feascript-demo.html)
 - **Modular Source Code:** [`examples/feascript-loop/`](https://github.com/hassaanmaqsood/opencad/tree/main/examples/feascript-loop)
 
----
-
 ## 1. Closed-Loop Architecture
 
 You do not describe the part geometry twice. FEAScript reads its 2D planar domain and boundary names directly from OpenCAD's `<sketch>` through `cdmlToFEAScriptGeometry()`:
@@ -26,8 +24,6 @@ $$\nabla \cdot (k \nabla T) = 0 \text{ in }\Omega, \qquad -k\frac{\partial T}{\p
 3. **Pass 3 — Nearest-Wall Voxel Extrapolation & `0x1F0000` Memory Injection:**
    - Projects the 2D FEM temperature field onto a $32 \times 32 \times 8$ 3D voxel grid at WASM offset `0x1F0000`.
    - Grid points inside the bore hole copy the temperature of the nearest point on the bore wall. This removes trilinear blending error when OpenCAD evaluates `<probe id="mean_bore_temp">`.
-
----
 
 ## 2. Drop-In Reusable ES Modules (`examples/feascript-loop/js/`)
 
@@ -92,8 +88,6 @@ const result = await runCustomFEAScriptLoop({
   },
 });
 ```
-
----
 
 ## 3. Analytical Benchmark Verification (Annular Disk)
 

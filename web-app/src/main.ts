@@ -261,6 +261,7 @@ async function initApp() {
   const btnCameraFit = document.getElementById('btn-camera-fit');
   const btnToggleWireframe = document.getElementById('btn-toggle-wireframe');
   const btnToggleGui = document.getElementById('btn-toggle-gui');
+  const btnToggleTheme = document.getElementById('btn-toggle-theme');
   const telemetryDims = document.getElementById('telemetry-dims');
   const telemetryVol = document.getElementById('telemetry-vol');
   const statTriangles = document.getElementById('stat-triangles');
@@ -687,6 +688,52 @@ async function initApp() {
     });
   }
 
+  // Dark / Light Studio Theme Toggle (Persisted in localStorage, overridden by ?theme=light|dark or ?figure=true)
+  const THEME_STORAGE_KEY = 'opencad_theme';
+  const themeParam = urlParams.get('theme')?.toLowerCase();
+  let currentTheme: 'light' | 'dark' = 'light';
+  if (isFigure) {
+    currentTheme = 'light';
+  } else if (themeParam === 'dark' || themeParam === 'light') {
+    currentTheme = themeParam;
+  } else {
+    try {
+      const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+      if (savedTheme === 'dark' || savedTheme === 'light') {
+        currentTheme = savedTheme;
+      }
+    } catch {}
+  }
+
+  const applyTheme = (theme: 'light' | 'dark', persist = false) => {
+    currentTheme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    viewer.setTheme(theme);
+    if (btnToggleTheme) {
+      const isDark = theme === 'dark';
+      btnToggleTheme.classList.toggle('active', isDark);
+      btnToggleTheme.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+      btnToggleTheme.title = isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme';
+      const moonIcon = btnToggleTheme.querySelector('.theme-icon-moon') as HTMLElement | null;
+      const sunIcon = btnToggleTheme.querySelector('.theme-icon-sun') as HTMLElement | null;
+      if (moonIcon) moonIcon.style.display = isDark ? 'none' : 'block';
+      if (sunIcon) sunIcon.style.display = isDark ? 'block' : 'none';
+    }
+    if (persist) {
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+      } catch {}
+    }
+  };
+
+  applyTheme(currentTheme, false);
+
+  if (btnToggleTheme) {
+    btnToggleTheme.addEventListener('click', () => {
+      applyTheme(currentTheme === 'dark' ? 'light' : 'dark', true);
+    });
+  }
+
   // Splitter Dragging
   if (paneSplitter && codePane) {
     let isDragging = false;
@@ -797,41 +844,41 @@ async function initApp() {
   const openCadLightTheme = EditorView.theme({
     '&': {
       backgroundColor: 'var(--surface, #F7F7F8)',
-      color: '#18181B',
+      color: 'var(--ink, #18181B)',
       fontFamily: "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
     },
     '.cm-content': {
-      caretColor: '#0C71E4',
+      caretColor: 'var(--accent, #0C71E4)',
     },
     '.cm-cursor, .cm-dropCursor': {
-      borderLeftColor: '#0C71E4',
+      borderLeftColor: 'var(--accent, #0C71E4)',
     },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-      backgroundColor: 'rgba(12, 113, 228, 0.14)',
+      backgroundColor: 'rgba(12, 113, 228, 0.16)',
     },
     '.cm-activeLine': {
-      backgroundColor: 'rgba(12, 113, 228, 0.05)',
+      backgroundColor: 'rgba(12, 113, 228, 0.06)',
     },
     '.cm-gutters': {
       backgroundColor: 'transparent',
-      color: '#71717A',
+      color: 'var(--ink-3, #71717A)',
       borderRight: 'none',
     },
     '.cm-activeLineGutter': {
       backgroundColor: 'transparent',
-      color: '#0A50A8',
+      color: 'var(--accent, #0C71E4)',
     },
-  }, { dark: false });
+  });
 
   const openCadLightHighlight = HighlightStyle.define([
-    { tag: tags.tagName, color: '#18181B', fontWeight: '600' },
-    { tag: tags.angleBracket, color: '#71717A' },
-    { tag: tags.attributeName, color: '#52525B', fontWeight: '400' },
-    { tag: tags.attributeValue, color: '#0A50A8' },
-    { tag: tags.string, color: '#0A50A8' },
-    { tag: tags.number, color: '#0C71E4', fontWeight: '500' },
-    { tag: tags.comment, color: '#71717A', fontStyle: 'italic' },
-    { tag: tags.processingInstruction, color: '#71717A' },
+    { tag: tags.tagName, color: 'var(--ink, #18181B)', fontWeight: '600' },
+    { tag: tags.angleBracket, color: 'var(--ink-3, #71717A)' },
+    { tag: tags.attributeName, color: 'var(--ink-2, #52525B)', fontWeight: '400' },
+    { tag: tags.attributeValue, color: 'var(--accent, #0C71E4)' },
+    { tag: tags.string, color: 'var(--accent, #0C71E4)' },
+    { tag: tags.number, color: 'var(--accent, #0C71E4)', fontWeight: '500' },
+    { tag: tags.comment, color: 'var(--ink-3, #71717A)', fontStyle: 'italic' },
+    { tag: tags.processingInstruction, color: 'var(--ink-3, #71717A)' },
   ]);
 
   // Mount CodeMirror 6 in #codemirror-mount

@@ -2,8 +2,6 @@
 
 OpenCAD is an open-source computational engineering and parametric CAD platform. It combines a zero-primitive mathematical kernel, CDML v1.0, a shared WebAssembly memory map, and SDKs for TypeScript, Python, and Rust.
 
----
-
 ## 1. System Topology & Layered Architecture
 
 ```text
@@ -56,8 +54,6 @@ OpenCAD is an open-source computational engineering and parametric CAD platform.
 +---------------------------------------------------------------------------------------+
 ```
 
----
-
 ## 2. Shared Memory Layout & 18-Function Pure-Math C-ABI
 
 ### 2.1 Deterministic Shared Memory Map (`kernel-zig/src/memory_map.zig`)
@@ -106,8 +102,6 @@ The Zero-Primitive Mathematical Kernel Law forbids hardcoded primitive exports s
    - `solid_export_stl(solid_h, binary) -> usize`
    - `solid_eval_probe(solid_h, probe_type, pred_expr_h, qty_expr_h) -> f64`
 
----
-
 ## 3. Core Mathematical Subsystems
 
 ### 3.1 Forward-Mode AD, Vector Scalarisation & Interval Arithmetic (`kernel-zig/src/autodiff.zig`)
@@ -150,8 +144,6 @@ The Zero-Primitive Mathematical Kernel Law forbids hardcoded primitive exports s
 ### 3.6 Welded Manifold AP214 STEP & STL Export (`kernel-zig/src/tess_export.zig`)
 - **`solid_export_step`:** Welds coincident vertices within $10^{-5}\text{ mm}$ and deduplicates undirected `EDGE_CURVE` entities in `CLOSED_SHELL`.
 - Deduplicates coplanar `PLANE` entities with orthogonal `AXIS2_PLACEMENT_3D` vectors and exports full meshes without face-count truncation.
-
----
 
 ## 4. Verification Gates (`./scripts/verify_gates.sh all`)
 
