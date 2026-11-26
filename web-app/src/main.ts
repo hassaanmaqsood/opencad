@@ -35,12 +35,12 @@ export function renderOpenCadLogoSvg(
   size: number,
   statusState: 'nominal' | 'caution' | 'fault' | 'offline' | 'linked' | 'neutral' = 'neutral'
 ): string {
-  let originColor = 'var(--state-nominal, #14532D)';
-  if (statusState === 'caution') originColor = 'var(--state-caution, #92400E)';
-  else if (statusState === 'fault') originColor = 'var(--state-fault, #991B1B)';
-  else if (statusState === 'offline') originColor = 'var(--state-offline, #737373)';
-  else if (statusState === 'linked') originColor = 'var(--state-linked, #2E4E9E)';
-  else if (statusState === 'neutral') originColor = 'var(--ink, #111111)';
+  let originColor = 'var(--ink, #18181B)';
+  if (statusState === 'caution') originColor = 'var(--accent-soft, #5AA9FF)';
+  else if (statusState === 'fault') originColor = 'var(--accent-deep, #0A50A8)';
+  else if (statusState === 'offline') originColor = 'var(--ink-3, #71717A)';
+  else if (statusState === 'linked') originColor = 'var(--accent, #0C71E4)';
+  else if (statusState === 'neutral') originColor = 'var(--ink, #18181B)';
 
   return `<svg width="${size}" height="${size}" viewBox="200 272 440 440" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
     <path d="M563.007 619.631C600.066 592.791 623.926 549.741 627.141 503.606C630.591 458.728 613.885 411.863 580.951 379.622C549.216 347.738 501.76 330.45 456.395 336.919C411.31 342.488 369.573 372.525 351.254 414.45C381.957 403.697 414.826 402.872 447.17 405.497C479.045 408.319 510.948 419.831 535.154 442.041C558.976 463.435 575.045 493.706 579.657 525.966C584.429 557.569 578.335 591.291 563.007 619.631Z" fill="var(--ink, #111111)"/>
@@ -744,45 +744,45 @@ async function initApp() {
     }, 200);
   };
 
-  // Monograph & Paper Light Theme for CodeMirror 6 matching OpenCAD Design System
+  // Monograph & Executable Document Surface Theme for CodeMirror 6 matching OpenCAD Design System
   const openCadLightTheme = EditorView.theme({
     '&': {
-      backgroundColor: '#FFFFFF',
-      color: '#111111',
+      backgroundColor: 'var(--surface, #F7F7F8)',
+      color: '#18181B',
       fontFamily: "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
     },
     '.cm-content': {
-      caretColor: '#111111',
+      caretColor: '#0C71E4',
     },
     '.cm-cursor, .cm-dropCursor': {
-      borderLeftColor: '#111111',
+      borderLeftColor: '#0C71E4',
     },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-      backgroundColor: 'rgba(27, 59, 140, 0.12)',
+      backgroundColor: 'rgba(12, 113, 228, 0.14)',
     },
     '.cm-activeLine': {
-      backgroundColor: 'rgba(17, 17, 17, 0.04)',
+      backgroundColor: 'rgba(12, 113, 228, 0.05)',
     },
     '.cm-gutters': {
-      backgroundColor: '#F6F6F6',
-      color: '#737373',
-      borderRight: '1px solid #D4D4D4',
+      backgroundColor: 'transparent',
+      color: '#71717A',
+      borderRight: 'none',
     },
     '.cm-activeLineGutter': {
-      backgroundColor: '#ECECEC',
-      color: '#111111',
+      backgroundColor: 'transparent',
+      color: '#0A50A8',
     },
   }, { dark: false });
 
   const openCadLightHighlight = HighlightStyle.define([
-    { tag: tags.tagName, color: '#1B3B8C', fontWeight: '700' },
-    { tag: tags.angleBracket, color: '#737373' },
-    { tag: tags.attributeName, color: '#111111', fontWeight: '600' },
-    { tag: tags.attributeValue, color: '#14532D' },
-    { tag: tags.string, color: '#14532D' },
-    { tag: tags.number, color: '#1B3B8C' },
-    { tag: tags.comment, color: '#737373', fontStyle: 'italic' },
-    { tag: tags.processingInstruction, color: '#737373' },
+    { tag: tags.tagName, color: '#18181B', fontWeight: '600' },
+    { tag: tags.angleBracket, color: '#71717A' },
+    { tag: tags.attributeName, color: '#52525B', fontWeight: '400' },
+    { tag: tags.attributeValue, color: '#0A50A8' },
+    { tag: tags.string, color: '#0A50A8' },
+    { tag: tags.number, color: '#0C71E4', fontWeight: '500' },
+    { tag: tags.comment, color: '#71717A', fontStyle: 'italic' },
+    { tag: tags.processingInstruction, color: '#71717A' },
   ]);
 
   // Mount CodeMirror 6 in #codemirror-mount

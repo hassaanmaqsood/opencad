@@ -9,27 +9,51 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { evaluateSolution } from 'feascript';
 
 /**
- * Paper-harmonized 5-stop thermal colormap (DESIGN.md §4.6).
+ * Exact 13-stop Matplotlib `plasma` colormap LUT (sampled from matplotlib.cm.plasma).
+ * Used identically across 2D Canvas, 3D WebGL vertex colors, and CSS colorbar.
+ */
+const PLASMA_STOPS = [
+  [13, 8, 135],    // 0.000 #0d0887
+  [53, 4, 152],    // 0.083 #350498
+  [84, 2, 163],    // 0.167 #5402a3
+  [114, 1, 168],   // 0.250 #7201a8
+  [139, 10, 165],  // 0.333 #8b0aa5
+  [163, 30, 154],  // 0.417 #a31e9a
+  [185, 50, 137],  // 0.500 #b93289
+  [204, 71, 120],  // 0.583 #cc4778
+  [219, 92, 104],  // 0.667 #db5c68
+  [233, 114, 87],  // 0.750 #e97257
+  [244, 136, 73],  // 0.833 #f48849
+  [251, 162, 56],  // 0.917 #fba238
+  [254, 190, 42],  // 0.960 #febe2a
+  [240, 249, 33],  // 1.000 #f0f921
+];
+
+/**
+ * Matplotlib `plasma` colormap evaluator returning sRGB [0..255].
  * @param {number} tNorm - Normalized scalar in [0, 1]
- * @returns {[number, number, number]} RGB tuple in 0..255
+ * @returns {[number, number, number]} sRGB tuple in 0..255
  */
 export function thermalRGB(tNorm) {
   const t = Math.max(0, Math.min(1, tNorm));
-  const stops = [
-    [29, 53, 87],
-    [42, 157, 143],
-    [233, 196, 106],
-    [244, 162, 97],
-    [193, 18, 31],
-  ];
-  const s = t * (stops.length - 1);
-  const i = Math.min(stops.length - 2, Math.floor(s));
+  const s = t * (PLASMA_STOPS.length - 1);
+  const i = Math.min(PLASMA_STOPS.length - 2, Math.floor(s));
   const f = s - i;
   return [
-    Math.round(stops[i][0] + (stops[i + 1][0] - stops[i][0]) * f),
-    Math.round(stops[i][1] + (stops[i + 1][1] - stops[i][1]) * f),
-    Math.round(stops[i][2] + (stops[i + 1][2] - stops[i][2]) * f),
+    Math.round(PLASMA_STOPS[i][0] + (PLASMA_STOPS[i + 1][0] - PLASMA_STOPS[i][0]) * f),
+    Math.round(PLASMA_STOPS[i][1] + (PLASMA_STOPS[i + 1][1] - PLASMA_STOPS[i][1]) * f),
+    Math.round(PLASMA_STOPS[i][2] + (PLASMA_STOPS[i + 1][2] - PLASMA_STOPS[i][2]) * f),
   ];
+}
+
+/**
+ * Converts a normalized sRGB channel [0..1] to Linear-sRGB [0..1] so Three.js
+ * SRGBColorSpace output matches 2D HTML5 Canvas sRGB colors pixel-for-pixel.
+ * @param {number} c - sRGB value in [0, 1]
+ * @returns {number} Linear-sRGB value in [0, 1]
+ */
+function srgbToLinear(c) {
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
 export class Thermal3DViewport {
@@ -52,15 +76,15 @@ export class Thermal3DViewport {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.72));
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
     keyLight.position.set(120, -90, 160);
     this.scene.add(keyLight);
     const fillLight = new THREE.DirectionalLight(0xe5e5e5, 0.45);
     fillLight.position.set(-100, 100, -80);
     this.scene.add(fillLight);
 
-    const grid = new THREE.GridHelper(180, 18, 0xD4D4D4, 0xECECEC);
+    const grid = new THREE.GridHelper(180, 18, 0xD4D4D8, 0xECECEF);
     grid.rotation.x = Math.PI / 2;
     grid.position.z = -0.2;
     this.scene.add(grid);
@@ -71,7 +95,7 @@ export class Thermal3DViewport {
   }
 
   fitCamera(thickness = 12) {
-    this.camera.position.set(105, -100, 90);
+    this.camera.position.set(112, -108, 96);
     this.controls.target.set(0, 0, thickness * 0.4);
     this.controls.update();
   }
@@ -145,8 +169,9 @@ export class Thermal3DViewport {
 
     const geom = new THREE.BufferGeometry();
     const dispPos = new Float32Array(outPos);
+    const dispNrm = new Float32Array(outNrm);
     geom.setAttribute('position', new THREE.BufferAttribute(dispPos, 3));
-    geom.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(outNrm), 3));
+    geom.setAttribute('normal', new THREE.BufferAttribute(dispNrm, 3));
 
     const vCount = dispPos.length / 3;
     const qPts = Array.from({ length: vCount }, (_, i) => [dispPos[i * 3] / 1000, dispPos[i * 3 + 1] / 1000]);
@@ -175,26 +200,35 @@ export class Thermal3DViewport {
         }
       }
       const [r, g, b] = thermalRGB((tVal - fem.minT) / span);
-      colors[i * 3] = r / 255;
-      colors[i * 3 + 1] = g / 255;
-      colors[i * 3 + 2] = b / 255;
+      // Subtle normal-based depth cue (1.00 on top face so 3D top face matches 2D canvas 100%, 0.90 on vertical walls)
+      const nz = Math.abs(dispNrm[i * 3 + 2]);
+      const shade = 0.90 + 0.10 * nz;
+      colors[i * 3] = srgbToLinear((r / 255) * shade);
+      colors[i * 3 + 1] = srgbToLinear((g / 255) * shade);
+      colors[i * 3 + 2] = srgbToLinear((b / 255) * shade);
     }
     geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const useThermal = params.shading === 'Thermal Field';
-    this.cadMeshObj = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
-      vertexColors: useThermal,
-      color: useThermal ? 0xffffff : 0xd8d1c5,
-      roughness: 0.42,
-      metalness: 0.08,
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-    }));
+    const mat = useThermal
+      ? new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0xd4d4d8,
+          roughness: 0.42,
+          metalness: 0.08,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+        });
+    this.cadMeshObj = new THREE.Mesh(geom, mat);
     this.scene.add(this.cadMeshObj);
 
     if (params.wireframe) {
       this.cadWireObj = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({
-        color: 0x111111,
+        color: 0x18181b,
         wireframe: true,
         transparent: true,
         opacity: 0.18,
@@ -289,14 +323,14 @@ export class Fem2DViewport {
       ctx.closePath();
       ctx.fill();
       if (p.wireframe) {
-        ctx.strokeStyle = 'rgba(17, 17, 17, 0.20)';
+        ctx.strokeStyle = 'rgba(24, 24, 27, 0.22)';
         ctx.lineWidth = 0.65;
         ctx.stroke();
       }
     }
 
     const { shape, holes } = this.lastGeomData.geometry;
-    ctx.strokeStyle = '#111111';
+    ctx.strokeStyle = '#18181B';
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     const [sx, sy] = toS(shape.start[0], shape.start[1]);
@@ -319,27 +353,27 @@ export class Fem2DViewport {
       ctx.closePath();
       ctx.fillStyle = '#FFFFFF';
       ctx.fill();
-      ctx.strokeStyle = '#1B3B8C';
+      ctx.strokeStyle = '#0C71E4';
       ctx.lineWidth = 1.6;
       ctx.stroke();
     }
 
     const [cxS, cyS] = toS(0, 0);
     const rPx = (p.hole_r / 1000) * scale;
-    ctx.font = '600 11px "IBM Plex Mono", monospace';
+    ctx.font = '500 11px "IBM Plex Mono", monospace';
     ctx.textAlign = 'center';
     if (p.modelPreset === 'Annular Disk (Benchmark)') {
-      ctx.fillStyle = '#991B1B';
+      ctx.fillStyle = '#0A50A8';
       ctx.fillText(`rim = ${p.base_T}°C`, cxS, oy - maxY * scale - 10);
     } else {
-      ctx.fillStyle = '#991B1B';
+      ctx.fillStyle = '#0A50A8';
       ctx.fillText(`bottom = ${p.base_T}°C`, cxS, oy - minY * scale + 18);
-      ctx.fillStyle = '#1B3B8C';
+      ctx.fillStyle = '#52525B';
       ctx.fillText(`top_h = ${p.top_h} W/m²K`, cxS, oy - maxY * scale - 10);
     }
     if (rPx >= 24) {
-      ctx.font = rPx >= 36 ? '600 11px "IBM Plex Mono", monospace' : '600 10px "IBM Plex Mono", monospace';
-      ctx.fillStyle = '#14532D';
+      ctx.font = rPx >= 36 ? '500 11px "IBM Plex Mono", monospace' : '400 10px "IBM Plex Mono", monospace';
+      ctx.fillStyle = '#0A50A8';
       ctx.fillText(`T_∞=${p.hole_T}°C`, cxS, cyS + 3);
     }
   }

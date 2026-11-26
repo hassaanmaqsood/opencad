@@ -1,128 +1,90 @@
 /* ========================================================================== */
-/* OpenCAD Design System Tokens (assets/brand/DESIGN.md §2–§4)                */
+/* OpenCAD Design System Tokens (Zero-Box Slicer Layout & Safety Orange)      */
 /* ========================================================================== */
 
 :root {
-  /* §2.1 Primitive Palette — Light */
-  --color-paper-white:      #FFFFFF;
-  --color-archive-100:      #F6F6F6;
-  --color-archive-200:      #ECECEC;
-  --color-archive-300:      #E5E5E5;
+  /* 1. Achromatic Primitives */
+  --color-paper:          #FFFFFF;
+  --color-surface:        #F7F7F8;
+  --color-surface-dim:    #EFEFF1;
+  --color-ink:            #18181B; /* 17.8:1 AAA */
+  --color-ink-2:          #52525B; /* 7.43:1 AAA */
+  --color-ink-3:          #71717A; /* 4.62:1 AA  */
+  --color-hairline:       #E4E4E7;
 
-  --color-typeset-black:    #111111;
-  --color-graphite-ink:     #404040;
-  --color-graphite-mute:    #737373;
-  --color-hairline-gray:    #D4D4D4;
+  /* 2. Single Accent Hue: Cobalt Azure (Hue = 212°, 3 Shades Only) */
+  --accent:               #0C71E4; /* Shade 1: Core Cobalt Azure — hsl(212, 90%, 47%) */
+  --accent-deep:          #0A50A8; /* Shade 2: Deep Cobalt — hsl(213, 89%, 35%) */
+  --accent-soft:          #5AA9FF; /* Shade 3: Soft Azure — hsl(211, 100%, 68%) */
 
-  --color-hyperref-blue:    #1B3B8C;
+  /* RGB Triplets */
+  --paper-rgb:            255, 255, 255;
+  --surface-rgb:          247, 247, 248;
+  --ink-rgb:              24, 24, 27;
+  --accent-rgb:           12, 113, 228;
 
-  --color-forest-green:     #14532D;
-  --color-amber-ochre:      #92400E;
-  --color-crimson:          #991B1B;
-  --color-neutral-mute:     #737373;
-  --color-linked-blue:      #2E4E9E;
+  /* 3. Semantic Tokens */
+  --paper:            var(--color-paper);
+  --panel:            var(--color-surface);
+  --surface:          var(--color-surface);
+  --surface-2:        var(--color-surface-dim);
+  --surface-hover:    var(--color-surface-dim);
+  --surface-overlay:  rgba(var(--surface-rgb), 0.88);
 
-  --color-axis-red:         #B91C1C;
-  --color-axis-green:       #15803D;
-  --color-axis-cobalt:      #26418F;
+  --ink:              var(--color-ink);
+  --ink-2:            var(--color-ink-2);
+  --ink-3:            var(--color-ink-3);
+  --ink-inverse:      var(--color-paper);
+  --line:             var(--color-hairline);
+  --line-muted:       var(--color-ink-3);
+  --line-subtle:      rgba(var(--ink-rgb), 0.05);
+  --line-strong:      var(--color-ink);
 
-  --color-thermal-deep-blue:#1D3557;
-  --color-thermal-teal:     #2A9D8F;
-  --color-thermal-gold:     #E9C46A;
-  --color-thermal-orange:   #F4A261;
-  --color-thermal-scarlet:  #C1121F;
+  --accent-subtle:    rgba(var(--accent-rgb), 0.12);
+  --accent-academic:  var(--accent);
+  --accent-ink:       var(--color-paper);
 
-  --color-diverging-blue:   #1D4E89;
-  --color-diverging-cream:  #F5F0E8;
-  --color-diverging-red:    #B3261E;
+  --state-nominal:    var(--ink);
+  --state-caution:    var(--accent-soft);
+  --state-fault:      var(--accent-deep);
+  --state-offline:    var(--ink-3);
+  --state-linked:     var(--accent);
 
-  /* §2.2 Primitive Palette — Dark */
-  --color-carbon-black:     #161615;
-  --color-carbon-100:       #1F1F1E;
-  --color-carbon-200:       #2A2A28;
-  --color-carbon-300:       #353532;
+  --axis-x:           var(--accent-deep);
+  --axis-y:           var(--accent);
+  --axis-z:           var(--accent-soft);
 
-  --color-plaster-white:    #F4F4F2;
-  --color-plaster-mid:      #C7C7C2;
-  --color-plaster-mute:     #8A8A84;
-  --color-carbon-hairline:  #333330;
+  --cmap-thermal-0:   #0D0887;
+  --cmap-thermal-25:  #7201A8;
+  --cmap-thermal-50:  #B93289;
+  --cmap-thermal-75:  #E97257;
+  --cmap-thermal-100: #F0F921;
 
-  --color-sky-blue:         #6B93F5;
-  --color-mint-green:       #4ADE80;
-  --color-sun-amber:        #FBBF24;
-  --color-coral-red:        #F87171;
-  --color-ember-red:        #EF5350;
-
-  --color-thermal-deep-blue-dark: #3E6EA8;
-  --color-thermal-teal-dark:      #4FC3B3;
-  --color-thermal-scarlet-dark:   #E5484D;
-  --color-diverging-blue-dark:    #5A8FD6;
-  --color-diverging-red-dark:     #E5484D;
-
-  /* §2.3 Semantic Tokens — reference primitives only */
-  --paper:            var(--color-paper-white);
-  --surface:          var(--color-archive-100);
-  --surface-2:        var(--color-archive-200);
-  --surface-hover:    var(--color-archive-300);
-  --surface-overlay:  rgba(246, 246, 246, 0.94);
-
-  --ink:              var(--color-typeset-black);
-  --ink-2:            var(--color-graphite-ink);
-  --ink-3:            var(--color-graphite-mute);
-  --ink-inverse:      var(--color-paper-white);
-  --line:             var(--color-hairline-gray);
-  --line-subtle:      rgba(17, 17, 17, 0.07);
-  --line-strong:      var(--color-typeset-black);
-
-  --accent:           var(--color-hyperref-blue);
-  --accent-subtle:    rgba(27, 59, 140, 0.08);
-  --accent-ink:       var(--color-paper-white);
-
-  --state-nominal:    var(--color-forest-green);
-  --state-caution:    var(--color-amber-ochre);
-  --state-fault:      var(--color-crimson);
-  --state-offline:    var(--color-neutral-mute);
-  --state-linked:     var(--color-linked-blue);
-
-  --axis-x:           var(--color-axis-red);
-  --axis-y:           var(--color-axis-green);
-  --axis-z:           var(--color-axis-cobalt);
-
-  --cmap-thermal-0:    var(--color-thermal-deep-blue);
-  --cmap-thermal-25:   var(--color-thermal-teal);
-  --cmap-thermal-50:   var(--color-thermal-gold);
-  --cmap-thermal-75:   var(--color-thermal-orange);
-  --cmap-thermal-100:  var(--color-thermal-scarlet);
-  --cmap-diverging-neg: var(--color-diverging-blue);
-  --cmap-diverging-mid: var(--color-diverging-cream);
-  --cmap-diverging-pos: var(--color-diverging-red);
-
-  --shadow-dock:  0 1px 3px rgba(17, 17, 17, 0.12);
-  --shadow-modal: 0 8px 24px rgba(17, 17, 17, 0.16);
+  --shadow-subtle:    none;
+  --shadow-dock:      none;
+  --shadow-modal:     0 16px 48px rgba(var(--ink-rgb), 0.14);
 
   --stroke-contour: 1.6px;
   --stroke-mesh:    0.65px;
   --stroke-axis:    0.9px;
   --stroke-hidden:  0.85px;
 
-  /* §3 Typography (Three-Family Ceiling: Serif, Sans, Mono) */
-  --font-serif: 'STIX Two Text', 'CMU Serif', 'Latin Modern Roman', Georgia, serif;
-  --font-display: var(--font-serif);
-  --font-sans: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'CMU Typewriter Text', ui-monospace, monospace;
+  /* 4. Single Font Family: IBM Plex Mono */
+  --font-mono:    'IBM Plex Mono', ui-monospace, monospace;
+  --font-serif:   var(--font-mono);
+  --font-display: var(--font-mono);
+  --font-sans:    var(--font-mono);
 
-  /* Radii — Sharp Academic Geometry */
   --radius-none: 0px;
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 4px;
-  --radius-sheet: 8px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-sheet: 12px;
   --radius-full: 9999px;
 
-  /* Motion & Z-Index */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --duration-fast: 100ms;
-  --duration-base: 160ms;
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
   --z-canvas: 0;
   --z-hud: 90;
   --z-dock: 100;
@@ -130,57 +92,54 @@
   --z-modal-backdrop: 200;
   --z-modal: 210;
 
-  /* §2.4 Spacing Scale */
   --space-1: 2px;
   --space-2: 4px;
   --space-3: 8px;
-  --space-4: 12px;
-  --space-5: 16px;
-  --space-6: 24px;
-  --space-7: 32px;
+  --space-4: 13px;
+  --space-5: 21px;
+  --space-6: 34px;
+  --space-7: 55px;
 }
 
-/* Dark Studio Mode — Carbon Graphite & Plaster (§2.2 -> §2.3) */
+/* Dark Studio Mode */
 [data-theme="dark"] {
-  --paper:           var(--color-carbon-black);
-  --surface:         var(--color-carbon-100);
-  --surface-2:       var(--color-carbon-200);
-  --surface-hover:   var(--color-carbon-300);
-  --surface-overlay: rgba(31, 31, 30, 0.94);
+  --paper-rgb:        10, 11, 13;
+  --surface-rgb:      20, 20, 23;
+  --ink-rgb:          244, 244, 246;
 
-  --ink:         var(--color-plaster-white);
-  --ink-2:       var(--color-plaster-mid);
-  --ink-3:       var(--color-plaster-mute);
-  --ink-inverse: var(--color-carbon-black);
-  --line:        var(--color-carbon-hairline);
-  --line-subtle: rgba(244, 244, 242, 0.08);
-  --line-strong: var(--color-plaster-white);
+  --paper:           #0A0B0D;
+  --panel:           #141417;
+  --surface:         #141417;
+  --surface-2:       #1F1F23;
+  --surface-hover:   #27272A;
+  --surface-overlay: rgba(20, 20, 23, 0.86);
 
-  --accent:        var(--color-sky-blue);
-  --accent-subtle: rgba(107, 147, 245, 0.14);
-  --accent-ink:    var(--color-carbon-black);
+  --ink:         #F4F4F6;
+  --ink-2:       #A1A1AA;
+  --ink-3:       #71717A;
+  --ink-inverse: #0A0B0D;
+  --line:        #27272A;
+  --line-muted:  #52525B;
+  --line-subtle: rgba(244, 244, 246, 0.08);
+  --line-strong: #F4F4F6;
 
-  --state-nominal: var(--color-mint-green);
-  --state-caution: var(--color-sun-amber);
-  --state-fault:   var(--color-coral-red);
-  --state-offline: var(--color-plaster-mute);
-  --state-linked:  var(--color-sky-blue);
+  --state-nominal: #F4F4F6;
+  --state-caution: var(--accent-soft);
+  --state-fault:   var(--accent);
+}
 
-  --axis-x: var(--color-ember-red);
-  --axis-y: var(--color-mint-green);
-  --axis-z: var(--color-sky-blue);
-
-  --cmap-thermal-0:   var(--color-thermal-deep-blue-dark);
-  --cmap-thermal-25:  var(--color-thermal-teal-dark);
-  --cmap-thermal-50:  var(--color-thermal-gold);
-  --cmap-thermal-75:  var(--color-thermal-orange);
-  --cmap-thermal-100: var(--color-thermal-scarlet-dark);
-  --cmap-diverging-neg: var(--color-diverging-blue-dark);
-  --cmap-diverging-mid: var(--color-carbon-black);
-  --cmap-diverging-pos: var(--color-diverging-red-dark);
-
-  --shadow-dock:  0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.5);
+/* LaTeX Print-Strength Override */
+@media print {
+  :root, [data-theme="dark"] {
+    --paper: #FFFFFF !important;
+    --panel: #FFFFFF !important;
+    --surface: #FFFFFF !important;
+    --ink: #000000 !important;
+    --ink-2: #222222 !important;
+    --ink-3: #444444 !important;
+    --line: #CCCCCC !important;
+  }
+  .viewport-dock, .lil-gui, .lil-controller, #code-pane, #pane-splitter { display: none !important; }
 }
 
 /* ========================================================================== */
@@ -236,7 +195,7 @@ html, body {
   }
 
   #pane-splitter {
-    width: 4px;
+    width: 1px;
     height: 100%;
     cursor: col-resize;
     order: 2;
@@ -301,7 +260,7 @@ html, body {
 }
 
 /* ========================================================================== */
-/* Collapsible CDML / Code Pane                                              */
+/* Collapsible CDML / Code Pane (High-Action Executable Document Surface)     */
 /* ========================================================================== */
 #code-pane {
   background: var(--surface);
@@ -310,18 +269,19 @@ html, body {
   overflow: hidden;
   user-select: none;
   z-index: 10;
-  border-right: 1px solid var(--line);
+  border-right: none;
+  padding: 6px 0;
 }
 
 .pane-header {
-  height: 40px;
-  min-height: 40px;
+  height: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 16px;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  border-bottom: none;
 }
 
 .header-brand {
@@ -354,7 +314,7 @@ html, body {
   color: var(--ink-2);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
+  border: none;
 }
 
 .header-controls {
@@ -365,29 +325,29 @@ html, body {
 
 .example-select {
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  border: none;
   border-radius: var(--radius-sm);
   color: var(--ink);
   font-family: var(--font-mono);
   font-size: 11px;
-  padding: 4px 8px;
+  padding: 5px 10px;
   outline: none;
   cursor: pointer;
-  max-width: 180px;
-  transition: border-color 0.15s ease;
+  max-width: 185px;
+  transition: color 0.15s ease;
 }
 
 .example-select:focus {
-  border-color: var(--accent);
+  color: var(--accent-deep);
 }
 
 .btn-icon {
   background: var(--surface-2);
-  border: 1px solid var(--line);
+  border: none;
   border-radius: var(--radius-sm);
   color: var(--ink-2);
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -399,50 +359,43 @@ html, body {
 
 .btn-icon:hover {
   background: var(--surface-hover);
-  color: var(--ink);
-  border-color: var(--line-strong);
-}
-
-.editor-wrapper {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  position: relative;
-  background: var(--paper);
-}
-
-.btn-text-action {
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--ink-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-text-action:hover {
-  background: var(--surface-hover);
-  color: var(--ink);
-  border-color: var(--line-strong);
+  color: var(--accent);
 }
 
 .editor-wrapper {
   flex: 1;
   min-height: 0;
-  position: relative;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  background: var(--surface);
+  padding: 6px 10px;
+}
+
+.btn-text-action {
+  background: transparent;
+  border: none;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.btn-text-action:hover {
+  background: transparent;
+  color: var(--accent);
 }
 
 /* Underlying sync textarea (kept attached & visible for full Playwright/DOM test compatibility) */
 .cdml-editor {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: 6px 10px;
+  width: calc(100% - 20px);
+  height: calc(100% - 12px);
   opacity: 0.001;
   z-index: 0;
   pointer-events: auto;
@@ -458,7 +411,7 @@ html, body {
 /* CodeMirror 6 Active Highlighting Editor Container */
 .codemirror-mount {
   position: absolute;
-  inset: 0;
+  inset: 6px 10px;
   z-index: 1;
   overflow: hidden;
   display: flex;
@@ -470,13 +423,14 @@ html, body {
   width: 100%;
   font-family: var(--font-mono);
   font-size: 12.5px;
-  background-color: var(--paper) !important;
+  background-color: var(--surface) !important;
 }
 
 .cm-scroller {
   font-family: var(--font-mono);
   overflow: auto;
-  line-height: 1.5;
+  line-height: 1.55;
+  padding: 4px 6px;
 }
 
 .cm-focused {
@@ -484,9 +438,10 @@ html, body {
 }
 
 .cm-gutters {
-  background-color: var(--surface) !important;
-  border-right: 1px solid var(--line) !important;
+  background-color: transparent !important;
+  border-right: none !important;
   color: var(--ink-3) !important;
+  padding-right: 6px;
 }
 
 /* Diagnostic Details Drawer (Collapsible & Expandable) */
@@ -592,18 +547,19 @@ html, body {
   max-height: 120px;
 }
 
-/* Status Bar */
+/* Status Bar — Unified Code Editor Surface with Negative Space Padding */
 .code-status-bar {
-  min-height: 28px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
+  padding: 6px 16px;
   background: var(--surface);
-  border-top: 1px solid var(--line);
+  border-top: none;
   font-size: 11px;
+  font-weight: 300;
   font-family: var(--font-mono);
-  color: var(--ink-2);
+  color: var(--ink-3);
   gap: 8px;
 }
 
@@ -702,8 +658,7 @@ html, body {
 }
 
 .splitter-handle {
-  background: var(--ink-3);
-  border-radius: 1px;
+  display: none;
 }
 
 @media (min-width: 768px) {
@@ -736,24 +691,25 @@ html, body {
   display: block;
 }
 
-/* Minimalist Viewport Dock (Vertically Centered on Left Edge, DESIGN.md §4.1 & §5.2) */
+/* High-Action Component Rule: Side Viewport Dock with Negative Space & Subtle Surface */
 .viewport-dock {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  left: var(--space-4);
+  top: 50dvh;
+  transform: translate(0%, -50%);
+  left: 18px;
   right: auto;
   z-index: var(--z-dock);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  align-items: center;
+  gap: 8px;
   background: var(--surface-overlay);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  box-shadow: var(--shadow-dock);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: none;
+  border-radius: 10px;
+  box-shadow: none;
+  padding: 10px 8px;
   user-select: none;
 }
 
@@ -761,40 +717,42 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   background: transparent;
-  border: 1.5px solid var(--ink-2);
-  border-radius: var(--radius-sm);
-  color: var(--ink-2);
+  border: none;
+  border-radius: 6px;
+  color: var(--ink-3);
   cursor: pointer;
   padding: 0;
-  transition: all var(--duration-base) var(--ease-standard);
+  box-shadow: none;
+  transition: color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
   position: relative;
 }
 
 .dock-btn:hover {
-  background: var(--surface-hover);
+  background: transparent;
   color: var(--ink);
-  border: 1px solid var(--line);
+  transform: scale(1.08);
 }
 
 .dock-btn:active {
-  transform: scale(0.96);
+  transform: scale(0.95);
 }
 
 .dock-btn.active,
 .dock-btn[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--ink-inverse);
-  border-color: var(--ink);
+  background: transparent;
+  color: var(--accent);
+  border: none;
+  box-shadow: none;
 }
 
 .dock-btn.active:hover,
 .dock-btn[aria-pressed="true"]:hover {
-  background: var(--ink);
-  color: var(--ink-inverse);
-  border-color: var(--ink);
+  background: transparent;
+  color: var(--accent);
+  border: none;
 }
 
 .dock-btn:focus-visible {
@@ -804,7 +762,7 @@ html, body {
 
 .dock-btn:disabled {
   color: var(--ink-3);
-  opacity: 0.5;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
@@ -812,34 +770,41 @@ html, body {
   display: none;
 }
 
-/* Minimalist Unified Telemetry Display (Bottom-Right Corner matching DESIGN.md §5.4) */
+/* Zero-Box Floating Telemetry Display (Directly from tmp/slicer #info) */
 .viewport-telemetry {
   position: absolute;
-  bottom: var(--space-4);
-  right: var(--space-4);
+  bottom: 20px;
+  right: 20px;
   left: auto;
   z-index: var(--z-hud);
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--space-1);
+  gap: 2px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
+  font-weight: 300;
   color: var(--ink-2);
   pointer-events: none;
   user-select: none;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }
 
 .telemetry-brand {
-  font-family: var(--font-serif);
-  font-weight: 700;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
   color: var(--ink);
 }
 
 .telemetry-item {
   font-size: 11px;
+  font-weight: 300;
   color: var(--ink-2);
 }
 
@@ -848,6 +813,7 @@ html, body {
   align-items: center;
   gap: var(--space-1);
   font-size: 11px;
+  font-weight: 300;
   color: var(--ink-2);
 }
 
@@ -880,23 +846,24 @@ body.hide-code-toggle #viewport-container {
   padding: 0 !important;
 }
 
-/* ========================================================================== */
-/* Minimalist Floating lil-gui / lil-controller Inspector                     */
-/* ========================================================================== */
+/* High-Action Component Rule: Parameter Controller (lil-gui / lil-controller) with Negative Space & Subtle Surface */
 .lil-gui.root,
 .lil-controller.root {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 18px;
+  right: 18px;
   left: auto;
   width: 272px;
   max-height: calc(100% - 130px);
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--surface) !important;
-  border: 1px solid var(--line) !important;
-  border-radius: var(--radius-md) !important;
-  box-shadow: 0 4px 18px rgba(17, 17, 17, 0.08);
+  background: var(--surface-overlay) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: none !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  padding: 10px 12px;
   font-family: var(--font-mono) !important;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
@@ -905,63 +872,62 @@ body.hide-code-toggle #viewport-container {
   box-sizing: border-box;
   user-select: none;
 
-  --background-color: var(--surface) !important;
+  --background-color: transparent !important;
   --text-color: var(--ink-2) !important;
-  --title-background-color: var(--surface-2) !important;
+  --title-background-color: transparent !important;
   --title-text-color: var(--ink) !important;
-  --widget-color: var(--paper) !important;
-  --hover-color: var(--surface-hover) !important;
-  --focus-color: var(--paper) !important;
-  --number-color: var(--accent) !important;
+  --widget-color: var(--surface-2) !important;
+  --hover-color: var(--surface-2) !important;
+  --focus-color: var(--accent) !important;
+  --number-color: var(--accent-deep) !important;
   --string-color: var(--ink) !important;
   --font-family: var(--font-mono) !important;
   --font-family-mono: var(--font-mono) !important;
   --font-size: 11px;
   --input-font-size: 11px;
-  --padding: 5px;
-  --spacing: 5px;
+  --padding: 6px;
+  --spacing: 6px;
   --widget-height: 22px;
   --name-width: 44%;
 }
 
-/* Force monograph paper contrast on lil-gui internal elements */
 .lil-gui .title {
   color: var(--ink) !important;
-  background: var(--surface-2) !important;
-  border-bottom: 1px solid var(--line) !important;
+  background: transparent !important;
+  border: none !important;
 }
 
 .lil-gui .controller .name {
   color: var(--ink-2) !important;
+  font-weight: 300;
 }
 
 .lil-gui .controller.number .slider {
-  background: var(--paper) !important;
-  border: 1px solid var(--line) !important;
+  background: var(--surface-2) !important;
+  border: none !important;
 }
 
 .lil-gui .controller.number .slider .fill {
-  background: var(--ink) !important;
+  background: var(--accent) !important;
 }
 
 .lil-gui .controller input {
-  background: var(--paper) !important;
-  color: var(--accent) !important;
-  border: 1px solid var(--line) !important;
+  background: var(--surface-2) !important;
+  color: var(--ink) !important;
+  border: none !important;
   font-variant-numeric: tabular-nums;
 }
 
 .lil-gui .controller.function button {
-  background: var(--paper) !important;
+  background: var(--surface-2) !important;
   color: var(--ink) !important;
-  border: 1px solid var(--line) !important;
-  font-weight: 600 !important;
+  border: none !important;
+  font-weight: 500 !important;
 }
 
 .lil-gui .controller.function button:hover {
-  background: var(--ink) !important;
+  background: var(--accent) !important;
   color: var(--paper) !important;
-  border-color: var(--ink) !important;
 }
 
 /* Important: Nested lil-gui elements are folders! They must remain in normal vertical flow! */
@@ -1030,12 +996,14 @@ body.hide-code-toggle #viewport-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-3) var(--space-4);
-  background: var(--surface-2) !important;
-  border-bottom: 1px solid var(--line) !important;
+  padding: 8px 12px 4px 12px;
+  background: transparent !important;
+  border: none !important;
   font-family: var(--font-mono) !important;
   font-weight: 600;
   font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--ink) !important;
 }
 
@@ -1051,48 +1019,49 @@ body.hide-code-toggle #viewport-container {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--state-nominal);
+  background: var(--accent);
   flex-shrink: 0;
 }
 
 .lil-close {
   cursor: pointer;
-  color: var(--ink-2);
+  color: var(--ink-3);
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-  transition: all var(--duration-fast) var(--ease-standard);
+  transition: color var(--duration-fast) var(--ease-standard);
 }
 
 .lil-close:hover {
-  color: var(--ink);
-  background: var(--surface-hover);
+  color: var(--accent);
 }
 
 .lil-folder {
-  border-bottom: 1px solid var(--line) !important;
+  border: none !important;
 }
 
 .lil-folder-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  background: var(--surface-2) !important;
+  padding: 5px 12px;
+  background: transparent !important;
   font-family: var(--font-mono) !important;
-  font-weight: 600;
-  font-size: 11px;
-  color: var(--ink-2) !important;
+  font-weight: 500;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3) !important;
   cursor: pointer;
-  border-bottom: 1px solid var(--line);
-  transition: all var(--duration-fast) var(--ease-standard);
+  border: none;
+  transition: color var(--duration-fast) var(--ease-standard);
 }
 
 .lil-folder-header:hover {
   color: var(--ink) !important;
-  background: var(--surface-hover) !important;
+  background: transparent !important;
 }
 
 .lil-chevron {
@@ -1105,7 +1074,7 @@ body.hide-code-toggle #viewport-container {
 .lil-folder-children {
   display: flex;
   flex-direction: column;
-  padding: 8px 12px;
+  padding: 4px 12px 10px 12px;
   gap: 6px;
   background: transparent;
 }
@@ -1116,12 +1085,13 @@ body.hide-code-toggle #viewport-container {
   justify-content: space-between;
   align-items: center;
   padding: 2px 0;
-  min-height: 24px;
+  min-height: 22px;
 }
 
 .lil-param-label {
   color: var(--ink-2);
   font-size: 11px;
+  font-weight: 300;
   font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1136,24 +1106,23 @@ body.hide-code-toggle #viewport-container {
   width: 150px;
 }
 
-/* Minimalist Flat Slider with Accent Thumb */
+/* Minimalist Flat Slider with Safety Orange Thumb */
 .lil-slider {
   flex: 1;
-  height: 4px;
+  height: 3px;
   border-radius: 2px;
   -webkit-appearance: none;
   appearance: none;
   cursor: pointer;
-  background: var(--line);
+  background: var(--surface-2);
   outline: none;
-  transition: background 0.15s ease;
 }
 
 .lil-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
@@ -1162,12 +1131,12 @@ body.hide-code-toggle #viewport-container {
 }
 
 .lil-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
+  transform: scale(1.2);
 }
 
 .lil-slider::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
@@ -1177,19 +1146,19 @@ body.hide-code-toggle #viewport-container {
 .lil-number-input {
   width: 52px;
   background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: 3px;
   color: var(--ink);
   font-family: var(--font-mono);
   font-size: 11px;
-  padding: 2px 4px;
+  font-weight: 500;
+  padding: 2px 5px;
   text-align: right;
   outline: none;
-  transition: border-color 0.15s ease;
 }
 
 .lil-number-input:focus {
-  border-color: var(--accent);
+  color: var(--accent-deep);
 }
 
 .lil-stat-value {
@@ -1199,25 +1168,24 @@ body.hide-code-toggle #viewport-container {
   font-weight: 500;
 }
 
-/* Action Buttons: Minimal, Bordered, Refined (DESIGN.md §3.1 & §4.2) */
+/* Action Buttons: Borderless Flat Pills */
 .lil-action-btn {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: none;
+  border-radius: 4px;
   color: var(--ink);
-  padding: var(--space-2) var(--space-3);
+  padding: 6px 10px;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   width: 100%;
   text-align: center;
-  transition: all var(--duration-base) var(--ease-standard);
+  transition: all var(--duration-fast) var(--ease-standard);
 }
 
 .lil-action-btn:hover {
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--accent);
   color: var(--ink-inverse);
 }
 

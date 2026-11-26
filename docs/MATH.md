@@ -1,4 +1,4 @@
-# Inside a 926 KB CAD Kernel: Unifying B-Rep, CSG, and Implicit Fields with One Math Core
+# Inside a Zero-Primitive CAD Kernel: Merging B-Rep, CSG, and Implicit Fields in One Math Core
 
 Many browser CAD tools compile legacy C++ geometry engines to WebAssembly. That approach often produces binaries between 4 MB and 15 MB before rendering or simulation begins. Mechanical CAD also splits into three separate geometry models:
 
