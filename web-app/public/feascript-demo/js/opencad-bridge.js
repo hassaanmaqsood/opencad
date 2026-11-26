@@ -49,7 +49,7 @@ export class OpenCadBridge {
           // Patch WASM import section ("env"."memory" kind=0x02 flag=0x03 -> flag=0x01) so plain WebAssembly.Memory works without COOP/COEP
           const u8 = new Uint8Array(bytes.slice(0));
           const sig = [0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x02, 0x03]; // "memory", kind=memory, flag=shared+max
-          for (let i = 8; i < Math.min(u8.length - 8, 512); i++) {
+          for (let i = 8; i < Math.min(u8.length - 8, 4096); i++) {
             if (sig.every((b, k) => u8[i + k] === b)) {
               u8[i + 7] = 0x01;
               break;
