@@ -38,6 +38,7 @@ You can import the ES modules in `examples/feascript-loop/js/` directly into any
 | **`opencad-bridge.js`** | `OpenCadBridge.create(options)` | Instantiates `cad_kernel.wasm` with `SharedArrayBuffer` or plain `WebAssembly.Memory`, evaluates CDML, writes `0x1F0000` voxel grids, reads `<probe>` values, and exports STEP and STL. |
 | **`cdml-to-feascript.js`** | `cdmlToFEAScriptGeometry(xmlStr, opts)`<br>`evalCdmlScalar(expr, env)`<br>`evalNurbsPoint2D(ctrl, w, knots, p, t)` | Converts a CDML `<sketch>` (`outer` and `hole` wires, `<curve>`, `<param-curve>`, `<line>`) into FEAScript `{ shape, holes }` in SI meters. |
 | **`feascript-solver.js`** | `solveThermal2D(cdmlGeom, params)`<br>`buildNearestWallFieldGrid(fem, bbox, params)` | Runs FEAScript `0.4.1`, computes boundary temperature statistics, and builds the nearest-wall 3D voxel field buffer. |
+| **`custom-loop.js`** | `runCustomFEAScriptLoop(config)`<br>`runCustomCoupledStep(config)` | Couples a custom CDML generator with custom FEAScript boundary conditions, `0x1F0000` 3D field injection, and an iterative `step(state, iter)` loop. |
 | **`viewports.js`** | `Thermal3DViewport`<br>`Fem2DViewport`<br>`thermalRGB(tNorm)` | Renders the 3D Three.js B-Rep mesh and 2D HTML5 Canvas FEM mesh using a calibrated Matplotlib `plasma` colormap. |
 
 ### Minimal Usage Snippet
@@ -64,6 +65,32 @@ const pass2 = cad.evalCdml(cdmlXml);
 
 console.log('FEM Bore Wall Mean T:', fem.boreMeanT.toFixed(2), '°C');
 console.log('OpenCAD 3D Bore Probe T:', pass2.boreTempProbe.toFixed(2), '°C');
+```
+
+### Custom Closed-Loop Runner (`./js/custom-loop.js`)
+
+FEAScript users can run a custom multi-iteration loop with their own CDML XML, boundary conditions, and convergence logic:
+
+```js
+import { runCustomFEAScriptLoop } from './js/custom-loop.js';
+
+const result = await runCustomFEAScriptLoop({
+  cdml: (p) => buildCustomPartCdml(p),
+  params: { r: 6.0, k: 22.0, targetT: 98.0 },
+  gridSize: [36, 28, 4],
+  boundaryConditions: () => ({
+    hot_wall:     { type: 'constantTemperature', temperature: 165.0 },
+    top_wall:     { type: 'convection', h: 30.0, ambientTemperature: 25.0 },
+    cool_channel: { type: 'convection', h: 320.0, ambientTemperature: 25.0 },
+  }),
+  maxIterations: 6,
+  step: (state) => {
+    if (state.probes.channel_wall_temp <= state.params.targetT) {
+      return { done: true };
+    }
+    return { done: false, nextParams: { r: state.params.r + 2.0 } };
+  },
+});
 ```
 
 ---

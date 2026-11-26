@@ -22,6 +22,7 @@ examples/feascript-loop/
     ├── feascript-solver.js     # FEAScript 0.4.1 2D thermal solver & nearest-wall extrapolator
     ├── viewports.js            # 3D Three.js B-Rep + 2D HTML5 Canvas viewports (Plasma colormap)
     ├── cdml-presets.js         # Parametric CDML generators (Cooling Plate & Annular Disk)
+    ├── custom-loop.js          # Drop-in custom CDML + FEAScript closed-loop runner
     └── main.js                 # UI controller wiring lil-gui, dock actions, and closed loop
 ```
 
@@ -63,6 +64,31 @@ const fem = solveThermal2D(cdmlGeom, params);
 const fieldGrid = buildNearestWallFieldGrid(fem, pass1.bbox, params);
 cad.writeFieldBuffer(fieldGrid);
 const pass2 = cad.evalCdml(cdmlXml);
+```
+
+### 2.4 `runCustomFEAScriptLoop` & `runCustomCoupledStep` (`./js/custom-loop.js`)
+Allows FEAScript users to couple a custom CDML model with custom FEAScript solver settings, boundary conditions, `0x1F0000` 3D field injection, and a custom iteration callback:
+
+```js
+import { runCustomFEAScriptLoop } from './js/custom-loop.js';
+
+const loopResult = await runCustomFEAScriptLoop({
+  cdml: (p) => myCustomCdmlBuilder(p),
+  params: { r: 6.0, k: 22.0, targetT: 98.0 },
+  gridSize: [36, 28, 4],
+  boundaryConditions: () => ({
+    hot_wall:     { type: 'constantTemperature', temperature: 165.0 },
+    top_wall:     { type: 'convection', h: 30.0, ambientTemperature: 25.0 },
+    cool_channel: { type: 'convection', h: 320.0, ambientTemperature: 25.0 },
+  }),
+  maxIterations: 6,
+  step: (state) => {
+    if (state.probes.channel_wall_temp <= state.params.targetT) {
+      return { done: true };
+    }
+    return { done: false, nextParams: { r: state.params.r + 2.0 } };
+  },
+});
 ```
 
 ---

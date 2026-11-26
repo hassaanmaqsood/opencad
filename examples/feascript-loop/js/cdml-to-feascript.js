@@ -285,14 +285,15 @@ export function cdmlToFEAScriptGeometry(xmlStr, options = {}) {
   const doc = new DOMParser().parseFromString(xmlStr, 'application/xml');
   const env = {};
 
-  doc.querySelectorAll('defs > var').forEach((el) => {
-    env[el.getAttribute('id')] = evalCdmlScalar(el.getAttribute('value') || '0', env);
+  doc.querySelectorAll('defs > var, parameters > var').forEach((el) => {
+    const raw = el.getAttribute('value') ?? el.getAttribute('default') ?? '0';
+    env[el.getAttribute('id')] = evalCdmlScalar(raw, env);
   });
-  doc.querySelectorAll('defs > expr').forEach((el) => {
+  doc.querySelectorAll('defs > expr, parameters > expr').forEach((el) => {
     env[el.getAttribute('id')] = evalCdmlScalar(el.getAttribute('expr') || '0', env);
   });
 
-  const sketch = doc.querySelector('body > sketch');
+  const sketch = doc.querySelector('body > sketch, cdml > sketch, sketch');
   if (!sketch) {
     throw new Error('CDML document contains no <sketch> element');
   }
