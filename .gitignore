@@ -13,3 +13,9 @@ dist-publish/
 tmp/
 .agents/
 .antigravity/
+
+# VitePress
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+dist-pages/
+dist-publish/

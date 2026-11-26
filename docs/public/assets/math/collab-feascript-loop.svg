@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" fill="none">
+  <defs>
+    <marker id="arrFwd" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#18181B"/>
+    </marker>
+    <marker id="arrBack" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0 0, 10 4, 0 8" fill="#0C71E4"/>
+    </marker>
+    <!-- Matplotlib Plasma Linear Gradient (Bottom 180°C Yellow -> Top 91.3°C Indigo) -->
+    <linearGradient id="plasmaField" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#F0F921"/>
+      <stop offset="28%" stop-color="#F89540"/>
+      <stop offset="55%" stop-color="#CC4778"/>
+      <stop offset="80%" stop-color="#7E03A8"/>
+      <stop offset="100%" stop-color="#0D0887"/>
+    </linearGradient>
+  </defs>
+
+  <!-- LEFT: OpenCAD CDML <sketch> Domain (No Outer Frame, Pure Geometry + Curve IDs) -->
+  <g transform="translate(56, 86)">
+    <text x="135" y="-16" text-anchor="middle" fill="#0A50A8" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="500" font-size="13">id="top" (NURBS deg=1)</text>
+    <rect x="0" y="0" width="270" height="180" fill="#FFFFFF" stroke="#18181B" stroke-width="2.2"/>
+    <!-- Construction Centerlines -->
+    <line x1="0" y1="90" x2="270" y2="90" stroke="#E4E4E7" stroke-width="1" stroke-dasharray="4 4"/>
+    <line x1="135" y1="0" x2="135" y2="180" stroke="#E4E4E7" stroke-width="1" stroke-dasharray="4 4"/>
+    <!-- Parametric Bore Circle -->
+    <circle cx="135" cy="90" r="42" fill="#FFFFFF" stroke="#0C71E4" stroke-width="2.4"/>
+    <text x="135" y="94" text-anchor="middle" fill="#0C71E4" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="600" font-size="12.5">id="bore"</text>
+    <!-- Corner Control Points -->
+    <circle cx="0" cy="0" r="3.5" fill="#18181B"/>
+    <circle cx="270" cy="0" r="3.5" fill="#18181B"/>
+    <circle cx="270" cy="180" r="3.5" fill="#18181B"/>
+    <circle cx="0" cy="180" r="3.5" fill="#18181B"/>
+    <text x="135" y="204" text-anchor="middle" fill="#0A50A8" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="500" font-size="13">id="bottom"</text>
+    <text x="135" y="246" text-anchor="middle" fill="#18181B" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="600" font-size="14">OpenCAD CDML &lt;sketch&gt;</text>
+  </g>
+
+  <!-- CENTER: Closed-Loop Forward & Feedback Arrows -->
+  <g transform="translate(362, 122)">
+    <text x="118" y="-12" text-anchor="middle" fill="#18181B" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="500" font-size="12.5">cdmlToFEAScriptGeometry()</text>
+    <line x1="14" y1="4" x2="222" y2="4" stroke="#18181B" stroke-width="2" marker-end="url(#arrFwd)"/>
+
+    <line x1="222" y1="104" x2="14" y2="104" stroke="#0C71E4" stroke-width="2.2" marker-end="url(#arrBack)"/>
+    <text x="118" y="126" text-anchor="middle" fill="#0C71E4" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="600" font-size="12.5">0x1F0000 Voxel Field</text>
+    <text x="118" y="145" text-anchor="middle" fill="#52525B" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="400" font-size="11.5">&lt;probe id="bore_temp"&gt;</text>
+  </g>
+
+  <!-- RIGHT: FEAScript 2D Unstructured Triangular Mesh + Matplotlib Plasma Field -->
+  <g transform="translate(634, 86)">
+    <text x="135" y="-16" text-anchor="middle" fill="#52525B" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="400" font-size="13">T(y=H) = 112.1 °C</text>
+    <rect x="0" y="0" width="270" height="180" fill="url(#plasmaField)" stroke="#18181B" stroke-width="2"/>
+    <!-- Unstructured Triangular Mesh Overlay -->
+    <g stroke="#FFFFFF" stroke-opacity="0.26" stroke-width="0.8">
+      <line x1="0" y1="0" x2="68" y2="45"/><line x1="68" y1="0" x2="68" y2="45"/><line x1="68" y1="0" x2="135" y2="48"/>
+      <line x1="135" y1="0" x2="135" y2="48"/><line x1="202" y1="0" x2="135" y2="48"/><line x1="202" y1="0" x2="202" y2="45"/>
+      <line x1="270" y1="0" x2="202" y2="45"/><line x1="0" y1="45" x2="68" y2="45"/><line x1="68" y1="45" x2="93" y2="90"/>
+      <line x1="68" y1="45" x2="135" y2="48"/><line x1="135" y1="48" x2="202" y2="45"/><line x1="202" y1="45" x2="270" y2="45"/>
+      <line x1="202" y1="45" x2="177" y2="90"/><line x1="0" y1="90" x2="68" y2="45"/><line x1="0" y1="90" x2="93" y2="90"/>
+      <line x1="0" y1="90" x2="68" y2="135"/><line x1="270" y1="90" x2="202" y2="45"/><line x1="270" y1="90" x2="177" y2="90"/>
+      <line x1="270" y1="90" x2="202" y2="135"/><line x1="0" y1="135" x2="68" y2="135"/><line x1="68" y1="135" x2="93" y2="90"/>
+      <line x1="68" y1="135" x2="135" y2="132"/><line x1="135" y1="132" x2="202" y2="135"/><line x1="202" y1="135" x2="177" y2="90"/>
+      <line x1="202" y1="135" x2="270" y2="135"/><line x1="0" y1="180" x2="68" y2="135"/><line x1="68" y1="180" x2="68" y2="135"/>
+      <line x1="68" y1="180" x2="135" y2="132"/><line x1="135" y1="180" x2="135" y2="132"/><line x1="202" y1="180" x2="135" y2="132"/>
+      <line x1="202" y1="180" x2="202" y2="135"/><line x1="270" y1="180" x2="202" y2="135"/>
+    </g>
+    <!-- Cooling Bore Cutout -->
+    <circle cx="135" cy="90" r="42" fill="#FFFFFF" stroke="#0C71E4" stroke-width="2.2"/>
+    <text x="135" y="94" text-anchor="middle" fill="#0A50A8" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="600" font-size="12">T_∞=25°C</text>
+    <text x="135" y="204" text-anchor="middle" fill="#0A50A8" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="600" font-size="13">T_base = 180.0 °C</text>
+    <text x="135" y="246" text-anchor="middle" fill="#18181B" font-family="'IBM Plex Mono', ui-monospace, monospace" font-weight="600" font-size="14">FEAScript 2D FEM (Plasma)</text>
+  </g>
+</svg>

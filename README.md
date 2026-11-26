@@ -292,7 +292,9 @@ Execute all verification gates:
 
 ## Documentation Index
 
-- [**ARCHITECTURE.md**](./ARCHITECTURE.md) — Technical description of linear memory, C-ABI functions, constraint solver, and contouring algorithms.
-- [**CDML v1.0 Specification**](./docs/CDML%20v1.0%20%E2%80%94%20Computational%20Design%20Markup%20Language%20Format%20Specification.md) — Specification for the Computational Design Markup Language.
-- [**Skill Guide (`docs/SKILL.md` / public `skill.md`)**](https://hassaanmaqsood.github.io/opencad/skill.md) — Complete usage, troubleshooting, and code examples for all languages ([repo copy](./docs/SKILL.md)).
+- [**ARCHITECTURE.md**](./ARCHITECTURE.md) — Technical description of linear memory, C-ABI functions, constraint solver, and contouring algorithms ([VitePress Guide](./docs/guide/architecture.md)).
+- [**CDML v1.0 Specification**](./docs/reference/cdml-spec.md) — Specification for the Computational Design Markup Language.
+- [**Mathematical Foundations**](./docs/papers/math-foundations.md) — Dual-Ring SSA, Rvachev $R_\alpha$ $C^1$ blends, and Shewchuk exact predicates.
+- [**FEAScript × OpenCAD Thermal Loop**](./docs/collabs/feascript-thermal-loop.md) — Closed-loop multi-physics thermal solve and drop-in ES modules.
+- [**Skill Guide (`docs/reference/skill.md` / public `skill.md`)**](https://hassaanmaqsood.github.io/opencad/skill.md) — Complete usage, troubleshooting, and code examples for all languages ([repo copy](./docs/reference/skill.md)).
 - [**API Header (`abi/cad_kernel.h`)**](./abi/cad_kernel.h) — C header file defining kernel functions and data structures.

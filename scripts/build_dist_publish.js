@@ -327,7 +327,7 @@ fs.copyFileSync(path.resolve(distPublishDir, 'opencad-element.mjs'), path.resolv
 fs.copyFileSync(wasmSrc, path.resolve(cdnDir, 'cad_core.wasm'));
 fs.copyFileSync(path.resolve(distPublishDir, 'opencad-portable.html'), path.resolve(rootDir, 'web-app/dist/opencad-portable.html'));
 
-const skillSrc = path.resolve(rootDir, 'docs/SKILL.md');
+const skillSrc = path.resolve(rootDir, 'docs/reference/skill.md');
 if (fs.existsSync(skillSrc)) {
   fs.copyFileSync(skillSrc, path.resolve(distPublishDir, 'skill.md'));
   fs.copyFileSync(skillSrc, path.resolve(rootDir, 'web-app/dist/skill.md'));
