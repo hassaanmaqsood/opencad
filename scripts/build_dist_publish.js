@@ -19,7 +19,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distPublishDir = path.resolve(rootDir, 'dist-publish');
-const esbuildBin = path.resolve(rootDir, 'web-app/node_modules/.bin/esbuild');
+const rootEsbuild = path.resolve(rootDir, 'node_modules/.bin/esbuild');
+const webAppEsbuild = path.resolve(rootDir, 'web-app/node_modules/.bin/esbuild');
+const esbuildBin = fs.existsSync(rootEsbuild) ? rootEsbuild : webAppEsbuild;
 
 console.log('[dist-publish] Starting OpenCAD GitHub-only distribution assembly...');
 

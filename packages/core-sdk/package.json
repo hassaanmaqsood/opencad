@@ -20,7 +20,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "../../web-app/node_modules/.bin/tsc || tsc",
+    "build": "tsc",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
