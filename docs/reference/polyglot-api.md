@@ -1,74 +1,95 @@
 # OpenCAD Polyglot API Reference
 
-OpenCAD provides programmatic geometric modeling APIs across multiple programming languages and runtime environments.
+OpenCAD provides geometric modeling APIs for TypeScript, JavaScript, Python, Rust, and C.
 
 ---
 
 ## 1. Distribution and Release Artifacts
 
-OpenCAD does not distribute packages through public npm or PyPI registries. Obtain builds from GitHub Actions and GitHub Releases:
+OpenCAD distributes prebuilt artifacts through GitHub Releases and the `dist` branch:
 
-- **GitHub Releases:** Download precompiled zip archives, standalone ES modules, and WebAssembly binaries from the repository release page.
-- **GitHub Distribution Branch (`dist`):** Pull prebuilt ESM bundles and Web Components directly via Git or CDN URLs.
-- **GitHub Actions Workflows:** Download automated build artifacts from recent workflow runs on the GitHub Actions tab.
+- **GitHub Releases:** Download `opencad-wasm-sdk.zip`, `opencad-portable.html`, `cad_kernel.wasm`, and `opencad-examples.zip` from [GitHub Releases](https://github.com/hassaanmaqsood/opencad/releases).
+- **GitHub Distribution Branch (`dist`):** Import prebuilt ES modules and Web Components from `https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/`.
+- **GitHub Pages CDN (`/opencad/cdn/`):** Access `opencad.mjs`, `opencad-element.mjs`, `opencad.d.ts`, and `cad_core.wasm` from `https://hassaanmaqsood.github.io/opencad/cdn/`.
 
 ---
 
-## 2. TypeScript and JavaScript SDK
+## 2. TypeScript and JavaScript SDK (`@open-cad/core`)
 
 ### 2.1 Installation and Imports
 
 #### Option A: Import from CDN
-Import the ES module directly from the GitHub distribution branch:
-
 ```javascript
-import { Part, OpenCadKernel } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad.mjs';
+import { cdml, Part, OpenCadKernel } from 'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad.mjs';
 ```
 
-#### Option B: Install from GitHub
-Install the package directly from the distribution branch:
-
+#### Option B: Install from GitHub via npm
 ```bash
 npm install github:hassaanmaqsood/opencad#dist
 ```
 
-### 2.2 Fluent Modeling Example
+### 2.2 Declarative 4-Step `cdml()` Builder
 
 ```typescript
-import { Part } from '@open-cad/core';
+import { cdml } from '@open-cad/core';
 
-// Create a parametric bracket with sketch profile and extrusion
-const bracket = new Part('MountBracket')
-  .sketch('XY')
-  .rect(120, 80)
-  .circle(20, 40, 6.5, { cut: true })
-  .circle(100, 40, 6.5, { cut: true })
-  .fillet2D(5.0)
-  .extrude(20.0);
+const doc = cdml('mm', '1e-7', '1e-11')
+  .var('L', 100.0, { min: 50, max: 200, unit: 'mm' })
+  .var('W', 60.0, { min: 30, max: 120, unit: 'mm' })
+  .var('T', 12.0, { min: 4, max: 40, unit: 'mm' })
+  .chartXY('c_base')
+  .sketch('sk_plate', { chart: 'c_base', maxIter: 100 })
+    .rectWire('w_outer', { width: 'ref(L)', height: 'ref(W)', role: 'outer' })
+    .circleWire('w_bore', { radius: 10.0, role: 'hole' })
+  .brep('solid_plate', { material: 'al6061' })
+    .sweepExtrude('sw_base', { sketch: 'sk_plate', zExpr: 'ref(T) * v', capEnds: true })
+  .probe('plate_vol', { type: 'volume', target: 'solid_plate' })
+  .exportTessellate('solid_plate', { chordTol: 0.02, angleTol: 0.05 })
+  .exportStep('solid_plate', { schema: 'AP214' })
+  .exportStl('solid_plate', { binary: true });
 
-// Export production files
-const stepString = bracket.exportStep();
-const meshData = bracket.tessellate(0.01, 0.05);
+const res = await doc.evaluate();
+if (res.status === 0) {
+  console.log('Volume (mm^3):', res.probe('plate_vol'));
+  const stepText = res.toStep();
+  const stlBytes = res.toStl();
+}
+```
 
-// Release WebAssembly memory
-bracket.dispose();
+### 2.3 Fluent `Part` (`FluentPart`) API
+
+```typescript
+import { OpenCadKernel } from '@open-cad/core';
+
+const kernel = await OpenCadKernel.create();
+try {
+  const bracket = kernel.part('MountBracket')
+    .sketch('XY')
+      .rect(120, 80)
+      .circle(20, 40, 6.5, { cut: true })
+      .circle(100, 40, 6.5, { cut: true })
+      .fillet2D(5.0)
+    .extrude(20.0);
+
+  const stepString = bracket.exportStep();
+  const meshData = bracket.tessellate(0.01, 0.05);
+  bracket.dispose();
+} finally {
+  kernel.deinit();
+}
 ```
 
 ---
 
-## 3. Python SDK
+## 3. Python SDK (`wasmtime`)
 
 ### 3.1 Installation
-
-Install the Python bindings directly from the GitHub repository:
 
 ```bash
 pip install "git+https://github.com/hassaanmaqsood/opencad.git#subdirectory=bindings/python"
 ```
 
-You can also download `cad_kernel.wasm` from the GitHub Release page and run it with `wasmtime`.
-
-### 3.2 Python CDML Builder Example
+### 3.2 Python 4-Step CDML Builder
 
 ```python
 import opencad as cad
@@ -96,52 +117,60 @@ stl_bytes = res.to_stl()
 
 ---
 
-## 4. Rust Crate
+## 4. Rust Crate (`bindings/rust`)
 
-Add the GitHub repository to `Cargo.toml`:
+Install from the `dist` branch:
 
-```toml
-[dependencies]
-opencad = { git = "https://github.com/hassaanmaqsood/opencad.git" }
+```bash
+cargo add opencad --git https://github.com/hassaanmaqsood/opencad --branch dist
 ```
 
-### 4.1 Rust Example
-
 ```rust
-use opencad::{part, Solid};
+use opencad::{CAD_CORE_WASM, Solid};
 
 fn main() {
-    let solid = part("FlangeMount")
-        .sketch("XY")
-        .rect(100.0, 50.0)
-        .extrude(20.0);
-
-    let step_text = solid.export_step();
-    println!("Exported STEP ({} bytes)", step_text.len());
+    println!("Embedded WASM size: {} bytes", CAD_CORE_WASM.len());
+    let bracket = Solid::new("bracket", 6, 12, 8);
+    let step_ap214 = bracket.export_step();
+    let stl_binary = bracket.export_stl(true);
+    println!("STEP bytes: {}, STL bytes: {}", step_ap214.len(), stl_binary.len());
 }
 ```
 
 ---
 
-## 5. Web Component (`<opencad-viewer>`)
+## 5. Web Component (`<opencad-viewer>`) and Iframe Embed
 
-Embed an interactive 3D model into any web page without a build step:
+### 5.1 Iframe Studio Embed
+```html
+<iframe
+  src="https://hassaanmaqsood.github.io/opencad/studio/?embed=true&src=/opencad/examples/flange_normative.cdml&gui=true"
+  width="100%"
+  height="500"
+  style="border: 0;"
+  loading="lazy"
+  title="OpenCAD 3D Viewer">
+</iframe>
+```
 
+### 5.2 Custom Web Component
 ```html
 <script type="module" src="https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad-element.mjs"></script>
 
-<opencad-viewer 
-  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/examples/lib/0001_bracket.cdml"
+<opencad-viewer
+  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/examples/flange_normative.cdml"
   data-gui="true"
+  data-gui-vars="flange_w,bore_r"
+  data-gui-exports="step,stl"
   style="width: 100%; height: 500px; display: block;">
 </opencad-viewer>
 ```
 
 ---
 
-## 6. C-ABI Specification (`abi/cad_kernel.h`)
+## 6. C-ABI Header (`abi/cad_kernel.h`)
 
-For low-level integrations in C, C++, or Zig, include the C header and link to the WebAssembly kernel:
+Include `abi/cad_kernel.h` when linking `cad_kernel.wasm` in C, C++, or Zig:
 
 ```c
 #include "cad_kernel.h"
@@ -152,9 +181,9 @@ int main(void) {
         return 1;
     }
 
-    // Allocate document and execute operations
-    cad_solid_handle_t solid = 0;
-    // Perform operations through the 18 C-ABI functions
+    cad_solid_handle_t box = 0;
+    cad_primitive_box(80.0, 40.0, 20.0, &box);
+    cad_solid_release(box);
 
     cad_kernel_deinit();
     return 0;

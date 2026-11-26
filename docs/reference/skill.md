@@ -1,10 +1,11 @@
 # OpenCAD (`hassaanmaqsood.github.io/opencad/skill.md`)
 
-> Authoritative integration handbook, language reference, CDML v1.0 cookbook, and troubleshooting guide for the OpenCAD WebAssembly kernel (`cad_kernel.wasm` / `cad_core.wasm`).
+> Integration handbook, language reference, CDML v1.0 cookbook, and troubleshooting guide for the OpenCAD WebAssembly kernel (`cad_kernel.wasm` / `cad_core.wasm`).
 
 - **Public Skill URL:** `https://hassaanmaqsood.github.io/opencad/skill.md`
-- **Live Web Studio & Iframe Embed Endpoint:** `https://hassaanmaqsood.github.io/opencad/`
-- **Live OpenCAD ↔ FEAScript Closed-Loop Demo:** `https://hassaanmaqsood.github.io/opencad/feascript-demo.html` (`?embed=true` for frameless iframe embedding; requires COOP/COEP or `coi-serviceworker.js`)
+- **Documentation Portal:** `https://hassaanmaqsood.github.io/opencad/`
+- **Live Web Studio & Iframe Embed Endpoint:** `https://hassaanmaqsood.github.io/opencad/studio/` (root `/opencad/?embed=true` also forwards automatically)
+- **Live OpenCAD ↔ FEAScript Closed-Loop Demo:** `https://hassaanmaqsood.github.io/opencad/feascript-demo.html`
 - **GitHub Repository:** `https://github.com/hassaanmaqsood/opencad`
 - **CDN Distribution Branch (`@dist`):** `https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/`
 - **Releases & Offline Studio (`opencad-portable.html`, `opencad-wasm-sdk.zip`):** `https://github.com/hassaanmaqsood/opencad/releases`
@@ -13,10 +14,10 @@
 
 ## 1. Architecture & Core Laws
 
-OpenCAD is a zero-primitive mathematical CAD kernel written in freestanding Zig and compiled to WebAssembly (`~925 KB`).
+OpenCAD is a zero-primitive mathematical CAD kernel written in freestanding Zig and compiled to WebAssembly.
 
 ### Core Constraints for Code & Model Generation
-1. **Zero-Primitive Law:** Never build raw Three.js boxes, cylinders, or spheres and call them CAD models. Construct geometry through CDML v1.0 XML, the 4-step `cdml()` builder, `OpenCadKernel`, or the C-ABI so every solid has exact B-Rep/SDF definitions and AP214 STEP / STL exports.
+1. **Zero-Primitive Law:** Never build raw Three.js boxes, cylinders, or spheres and call them CAD models. Construct geometry through CDML v1.0 XML, the 4-step `cdml()` builder, `OpenCadKernel`, or the C-ABI. This ensures every solid has exact B-Rep or SDF definitions and AP214 STEP / STL exports.
 2. **Units & Tolerances:** Linear dimensions are millimeters (`mm`). Sketch solver default tolerance is `1e-7` (`0.1 nm`), and angular tolerance is `1e-11 rad`. Default viewport tessellation tolerances are `chord-tol="0.02"` (`mm`) and `angle-tol="0.05"` (`rad`).
 3. **Closed Non-Intersecting Wires:** All 2D sketch profiles intended for sweeps or revolves must form closed loops. Inner cutouts must set `role="hole"`.
 4. **Explicit Memory Lifetime:** Native handles in `OpenCadKernel`, C, and Rust must be freed via `releaseSolid()` / `cad_solid_release()` / `handle_free()` when done.
@@ -137,7 +138,7 @@ Every CDML document has up to four top-level blocks inside `<cdml version="1.0" 
 
 ### Example B: Continuous Helical Screw Thread & Lead-In/Lead-Out Run-Out via SE(3) Sweep
 
-Combine `<translate>`, `<rotate>`, and `<scale>` in `<trajectory>` — or bind a 3D `<curve>` via `path="curve_id" frame="rmf|axis-locked|fixed"` with `<twist>` and `<scale>`. Multi-section sweeps use `<section v="..." wire="..." / sketch="..."/>` with `continuity="G0|G1|G2"` (also shared with `<loft>`). The kernel validates local regularity in the co-moving body frame (`|C'(u) x (Omega_body(v) x C(u) + V_body(v))| > 0`) and global turn-to-turn axial pitch clearance (`delta_z_profile < pitch`), so low-lead-angle ISO threads (`r >> pitch / (2*PI)`) sweep cleanly without false `0x0401` rejections.
+Combine `<translate>`, `<rotate>`, and `<scale>` in `<trajectory>`, or bind a 3D `<curve>` via `path="curve_id" frame="rmf|axis-locked|fixed"`. Multi-section sweeps use `<section v="..." wire="..." / sketch="..."/>` with `continuity="G0|G1|G2"`. The kernel checks local regularity in the co-moving body frame and checks turn-to-turn axial pitch clearance (`delta_z_profile < pitch`). Low-lead-angle ISO threads sweep cleanly without false `0x0401` rejections.
 
 ```xml
 <cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
@@ -236,10 +237,10 @@ Embed the live GitHub Pages studio inside any page or documentation portal:
 
 ```html
 <iframe
-  src="https://hassaanmaqsood.github.io/opencad/?embed=true&src=https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml&code=false&params=false"
+  src="https://hassaanmaqsood.github.io/opencad/studio/?embed=true&src=/opencad/examples/flange_normative.cdml&code=false&params=false"
   width="100%"
   height="500"
-  style="border: 1px solid #C8C0B4; border-radius: 6px;"
+  style="border: 0; border-radius: 8px;"
   loading="lazy"
   title="OpenCAD 3D Viewer">
 </iframe>
@@ -249,7 +250,7 @@ Embed the live GitHub Pages studio inside any page or documentation portal:
 
 | Parameter | Values | Default (Studio / Embed) | Behavior |
 | :--- | :--- | :--- | :--- |
-| `embed` | `true` / `1` / `false` | `false` / `true` | Full-bleed viewport mode; hides stats bar and defaults code pane off. |
+| `embed` | `true` / `1` / `false` | `false` / `true` | Full-bleed viewport mode that hides the stats bar and collapses the code pane. |
 | `src` or `cdml` | URL, relative path, or raw `<cdml...>` XML | Twisted torus | Loads a CDML model from an HTTPS URL, relative path, or inline XML string. |
 | `code` or `code-toggle` (`editor`) | `true` / `false` | `true` / `false` | Shows or disables both `#btn-expand-pane` ("Code" dock button) and `#code-pane`. |
 | `params` or `gui` | `true` / `false` | `true` / `false` | Shows or disables the `Model Parameters` inspector and `#btn-toggle-gui`. |
@@ -264,7 +265,7 @@ Embed the live GitHub Pages studio inside any page or documentation portal:
 <script type="module" src="https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/opencad-element.mjs"></script>
 
 <opencad-viewer
-  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml"
+  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/examples/flange_normative.cdml"
   data-gui="true"
   data-gui-vars="flange_w,bore_r"
   data-gui-probes="housing_volume"
@@ -505,7 +506,7 @@ Read JSON error payloads from `get_string_ptr()` / `get_string_len()` whenever `
 | `0x0101` | `ERR_XML_SYNTAX` | Malformed XML tag, unclosed attribute quote, or mismatched closing tag. |
 | `0x0102` | `ERR_SCHEMA_VERSION` | Unsupported `<cdml version="...">`. Set `version="1.0"`. |
 | `0x0103` | `ERR_DAG_CYCLE` | Circular dependency between `<expr>`, `<var>`, `<probe>`, or `<assert>`. Break the cycle. |
-| `0x0104` | `ERR_UNDEFINED_REF` | `ref(name)` or target attribute points to a missing ID. Check spelling or prefix. |
+| `0x0104` | `ERR_UNDEFINED_REF` | `ref(name)` or target attribute points to a missing ID. Check the spelling or prefix. |
 | `0x0105` | `ERR_IMPORT_CONFLICT` | Duplicate imported prefix or ID collision across `<imports>`. Add distinct `prefix="..."`. |
 | `0x0106` | `ERR_IMPORT_NOT_FOUND` | Missing `<import src="...">` entry in `cdml_register_import`. Pre-register all imported files. |
 | `0x0201` | `ERR_EXPR_DIV_ZERO` | Division by zero during primal or dual-number evaluation. Guard denominators with `max(denom, 1e-9)`. |
@@ -513,7 +514,7 @@ Read JSON error payloads from `get_string_ptr()` / `get_string_len()` whenever `
 | `0x0203` | `ERR_ASSERT_VIOLATED` | `<assert expr="..."/>` evaluated `<= 0`. Adjust `<var>` values inside safe engineering margins. |
 | `0x0301` | `ERR_SKETCH_CONFLICT` | Over-constrained or conflicting sketch residuals. Remove redundant equations until `dof == 0`. |
 | `0x0302` | `ERR_SKETCH_DIVERGED` | Newton-Raphson did not converge within `max-iter`. Improve initial `<point2d u="..." v="..."/>` guesses. |
-| `0x0303` | `ERR_WIRE_OPEN_OR_SELF_INT` | Sketch wire is not closed or crosses itself. Verify last segment connects back to the first vertex. |
+| `0x0303` | `ERR_WIRE_OPEN_OR_SELF_INT` | Sketch wire is not closed or crosses itself. Check that the last segment connects to the first vertex. |
 | `0x0401` | `ERR_SWEEP_SELF_INTERSECT` | Local normal velocity reversed (`R_profile >= R_bend`), profile crossed its rotation axis, or multi-turn helical profile axial height `>= pitch`. Reduce bend curvature, keep meridional profile on one side of axis, or keep tooth axial width `< pitch`. |
 | `0x0402` | `ERR_FILLET_RADIUS_COLLAPSE` | Fillet radius consumes an entire adjacent face or edge. Reduce `radius-expr`. |
 | `0x0404` | `ERR_EULER_POINCARE` | Non-closed or non-manifold shell failed Euler-Poincaré invariant check. Check solid manifold closure. |
@@ -528,8 +529,8 @@ Read JSON error payloads from `get_string_ptr()` / `get_string_len()` whenever `
 2. **Coplanar CSG Boolean Faces (`0x0405` / Non-Manifold Edges):**
    Avoid coincident cutter faces. Extend subtractive cutters `0.5 mm` past stock boundaries and overlap additive bosses `>= 0.05 mm` into parent bodies.
 3. **Helical Sweep Aliasing & Pitch Clearance on Threads:**
-   The kernel automatically chooses adaptive angular `v`-subdivision (`<= pi/12` = `24` segments per revolution) and evaluates self-intersection in the co-moving body frame (`|C'(u) x (Omega_body x C(u) + V_body)|`), plus a global axial clearance check (`delta_z_profile < pitch`) for multi-turn sweeps (`|delta_theta| > 2*PI`). Ensure meridional tooth axial height stays strictly below `pitch` (`<= 0.85 * pitch` for ISO 60-degree crests). Note that standalone `cad_op_thread` in `c_abi.zig` is currently a stub (`CAD_STATUS_ERROR_NOT_IMPLEMENTED`); model threads in CDML with `<sweep>`.
+   The kernel chooses adaptive angular `v`-subdivision (`<= pi/12` = `24` segments per revolution). It checks self-intersection in the co-moving body frame and checks axial clearance (`delta_z_profile < pitch`) on multi-turn sweeps. Keep meridional tooth axial height below `pitch` (`<= 0.85 * pitch` for ISO 60-degree crests). The standalone `cad_op_thread` function in `c_abi.zig` is currently a stub (`CAD_STATUS_ERROR_NOT_IMPLEMENTED`). Model threads in CDML with `<sweep>`.
 4. **Browser `SharedArrayBuffer` / Worker Startup Errors:**
-   Static hosts without COOP/COEP headers (`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`) block `SharedArrayBuffer`. Ensure `coi-serviceworker.js` is served from the same origin or configure your HTTP server to send both isolation headers.
+   Static hosts without COOP/COEP headers (`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`) block `SharedArrayBuffer`. Serve `coi-serviceworker.js` from the same origin or configure your HTTP server to send both isolation headers.
 5. **Truncated Meshes Above `21,842` Triangles (`> 1 MiB`):**
    Do not read vertices from a hardcoded `0x0F0080` offset. Read `pos_offset` (`0x0F000C`), `nrm_offset` (`0x0F0010`), `idx_offset` (`0x0F0014`), and `is_heap_spillover` (`0x0F0050`) from the `0x0F0000` header so Tier-2 heap spillover meshes (`>= 0x600000`) load intact.

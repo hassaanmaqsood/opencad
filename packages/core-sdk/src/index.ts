@@ -7,6 +7,6 @@ export * from './types.js';
 export * from './loader.js';
 export * from './kernel.js';
 export * from './fluent.js';
+export { FluentPart as Part } from './fluent.js';
 export * from './element.js';
 export * from './cdml.js';
-

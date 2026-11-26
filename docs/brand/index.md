@@ -109,3 +109,17 @@ All visual hierarchy is achieved within **`IBM Plex Mono`** through **font-weigh
 - [ ] **Single Accent Hue (`Hue = 212°` Cobalt Azure)**: Are all UI accents restricted to the 3 shades of Cobalt Azure (`#0C71E4`, `#0A50A8`, `#5AA9FF`)?
 - [ ] **Matched 2D & 3D Matplotlib `plasma` Heatmap**: Do both 2D and 3D thermal viewports use the exact Matplotlib `plasma` colormap (`#0D0887 → #7E03A8 → #CC4778 → #F89540 → #F0F921`) with sRGB-to-linear compensation so 3D and 2D colors match closely?
 - [ ] **Single Font Family**: Is `IBM Plex Mono` the sole font family across UI, covers, and diagrams (with weight `300`–`700`, size, and spacing creating all hierarchy)?
+
+
+---
+
+## 6. Social & Announcement Post Templates (`4:3`, `1:1`, `3:4`)
+
+All official OpenCAD social, press, and release announcement graphics follow the **Zero-Box `slicer` Architecture** (`#FFFFFF` paper, `IBM Plex Mono` single font family, `#0C71E4` / `#0A50A8` Cobalt Azure single accent hue, and Matplotlib `plasma` for quantitative fields).
+
+| Category | `4:3` Landscape (`1440×1080`) | `1:1` Square (`1080×1080`) | `3:4` Portrait (`1080×1440`) | Core Concept |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Collaboration (`collab`)** | [SVG](/brand/posts/collab-4x3.svg) · [PNG](/brand/posts/collab-4x3.png) | [SVG](/brand/posts/collab-1x1.svg) · [PNG](/brand/posts/collab-1x1.png) | [SVG](/brand/posts/collab-3x4.svg) · [PNG](/brand/posts/collab-3x4.png) | `FEAScript × OpenCAD` closed-loop CDML `<sketch>` $\rightleftarrows$ 2D `plasma` FEM & `0x1F0000` field |
+| **2. Achievement (`achievement`)** | [SVG](/brand/posts/achievement-4x3.svg) · [PNG](/brand/posts/achievement-4x3.png) | [SVG](/brand/posts/achievement-1x1.svg) · [PNG](/brand/posts/achievement-1x1.png) | [SVG](/brand/posts/achievement-3x4.svg) · [PNG](/brand/posts/achievement-3x4.png) | `199/199 Native Zig Tests` & adaptive Shewchuk $\Delta \le 10^{-7}\text{ mm}$ precision escalation |
+| **3. Feature (`feature`)** | [SVG](/brand/posts/feature-4x3.svg) · [PNG](/brand/posts/feature-4x3.png) | [SVG](/brand/posts/feature-1x1.svg) · [PNG](/brand/posts/feature-1x1.png) | [SVG](/brand/posts/feature-3x4.svg) · [PNG](/brand/posts/feature-3x4.png) | `One Bytecode Tape, Two Rings` — Dual-number exact $\nabla F$ & interval octree pruning |
+| **4. Press (`press`)** | [SVG](/brand/posts/press-4x3.svg) · [PNG](/brand/posts/press-4x3.png) | [SVG](/brand/posts/press-1x1.svg) · [PNG](/brand/posts/press-1x1.png) | [SVG](/brand/posts/press-3x4.svg) · [PNG](/brand/posts/press-3x4.png) | `Merging B-Rep, CSG & Implicit Fields in One Math Core` with 4-lobe solid & $\nabla F$ |

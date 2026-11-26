@@ -1,125 +1,109 @@
-# OpenCAD Complex Mechanical Engineering Examples
+# Complex Mechanical Engineering Examples
 
-This guide documents 3 production-grade mechanical assemblies modeled, solved, and verified end-to-end with OpenCAD.
+This guide presents three verified parametric parts and multi-physics workflows built with the `@open-cad/core` TypeScript SDK and CDML v1.0.
 
 ---
 
-## Example 1: Precision Planetary Gearbox with Couplers & Exploded Views
+## Example 1: Parametric Planetary Gear Carrier & Sun Gear (`Part` Fluent API)
 
-A multi-body epicyclic reduction gearbox featuring a central sun gear, 3 planet gears on an equilateral carrier, and an annular ring gear.
+This example models a sun gear, a planet gear, and a 3-pin carrier using the fluent `Part` (`FluentPart`) API.
 
 ```typescript
-import { Part } from '@open-cad/core';
+import { OpenCadKernel } from '@open-cad/core';
 
-// 1. Sun Gear
-const sunGear = new Part('SunGear')
-  .cylinder(15.0, 20.0)
-  .holeWizard({
-    type: 'simple',
-    diameter: 6.0,
-    depth: 20.0,
-    position: [0, 0, 0],
-  })
-  .fillet(0.5);
+const kernel = await OpenCadKernel.create();
+try {
+  // 1. Central Sun Gear Blank with Bore and Edge Fillet
+  const sunGear = kernel.part('SunGear')
+    .cylinder(15.0, 20.0)
+    .holeWizard({
+      type: 'simple',
+      diameter: 6.0,
+      depth: 20.0,
+      position: [0, 0, 0],
+    })
+    .fillet(0.5);
 
-// 2. Planet Gears (Ratio 3:1)
-const planetGear1 = new Part('PlanetGear1')
-  .cylinder(25.0, 18.0)
-  .holeWizard({ type: 'simple', diameter: 5.0, depth: 18.0 });
+  // 2. Planet Gear Blank
+  const planetGear = kernel.part('PlanetGear1')
+    .cylinder(25.0, 18.0)
+    .holeWizard({ type: 'simple', diameter: 5.0, depth: 18.0 });
 
-// 3. Planet Carrier with 3 pins
-const carrier = new Part('Carrier')
-  .cylinder(45.0, 8.0)
-  .sketch('XY')
-  .circle(28, 0, 2.5)
-  .circle(-14, 24.25, 2.5)
-  .circle(-14, -24.25, 2.5)
-  .extrude(15.0);
+  // 3. Equilateral 3-Pin Planet Carrier
+  const carrier = kernel.part('Carrier')
+    .cylinder(45.0, 8.0)
+    .sketch('XY')
+      .circle(28, 0, 2.5)
+      .circle(-14, 24.25, 2.5)
+      .circle(-14, -24.25, 2.5)
+    .extrude(15.0);
 
-// 4. Assembly & Kinematic Gear Coupling
-// In OpenCAD Assembly workbench:
-// Mate 1: Concentric(SunGear.axis, Carrier.axis)
-// Mate 2: MATE_GEAR(SunGear, PlanetGear1, ratio = 3.0 / 1.0)
-// Mate 3: Exploded View Scrubber -> auto-generates 3D guideline trail lines along Z
+  const carrierStep = carrier.exportStep();
+  console.log('Exported carrier STEP bytes:', carrierStep.length);
+
+  sunGear.dispose();
+  planetGear.dispose();
+  carrier.dispose();
+} finally {
+  kernel.deinit();
+}
 ```
 
 ---
 
-## Example 2: Precision 2-DOF Parallel Guiding Flexure Stage with FACT
+## Example 2: 2-DOF Parallel Guiding Flexure Stage with Compliance Extraction
 
-A monolithic planar flexure stage machined from 7075-T6 aluminum providing sub-nanometer translational motion without friction, backlash, or wear.
+This example models a planar flexure stage with parallel leaf slots and extracts its $6 \times 6$ spatial compliance matrix.
 
 ```typescript
 import { Part } from '@open-cad/core';
 
-// Monolithic flexure blank with parallel leaf flexure cutouts
+// Monolithic flexure stage with two parallel leaf slot pairs
 const flexureStage = new Part('NanoStage')
   .box(100.0, 100.0, 15.0)
   .sketch('XY')
-  // Upper parallel leaf slot pair
-  .slot([20, 30], [80, 30], 1.0)
-  .slot([20, 35], [80, 35], 1.0)
-  // Lower parallel leaf slot pair
-  .slot([20, 65], [80, 65], 1.0)
-  .slot([20, 70], [80, 70], 1.0)
-  .cut()
-  // FACT Compliance & Stiffness Matrix Extraction
+    .slot([20, 30], [80, 30], 1.0)
+    .slot([20, 35], [80, 35], 1.0)
+    .slot([20, 65], [80, 65], 1.0)
+    .slot([20, 70], [80, 70], 1.0)
+  .extrude(15.0)
   .flexure.analyze({
-    fixed: '<X',   // Ground boundary condition on Left face
-    stage: '>X',   // Mobile motion stage on Right face
+    fixed: '<X', // Fixed ground boundary on the -X face
+    stage: '>X', // Motion stage on the +X face
   });
 
-// Inspect resulting 6x6 spatial compliance matrix
-console.log('Flexure Compliance Matrix:', flexureStage.metadata.flexureAnalysis.complianceMatrix);
+console.log('Compliance Matrix:', flexureStage.metadata.flexureAnalysis.complianceMatrix);
+flexureStage.dispose();
 ```
 
 ---
 
-## Example 3: Aerospace Drone Arm with Stress-Driven TPMS Gyroid Infill
+## Example 3: Field-Modulated TPMS Gyroid Flange (`flange_normative.cdml`)
 
-An ultralight quadcopter arm combining thin analytical mounting bosses, threaded motor inserts, and variable-density internal TPMS Gyroid lattices modulated by aerodynamic thrust loads.
+This example uses the 4-step `cdml()` builder to combine an exact $SE(3)$ swept B-Rep flange with an implicit TPMS Gyroid lattice core (`0b00 + 0b01 + 0b10`).
 
 ```typescript
-import { Part } from '@open-cad/core';
+import { cdml } from '@open-cad/core';
 
-const droneArm = new Part('AeroDroneArm')
-  // 1. Aerodynamic airfoil body
-  .sketch('XY')
-  .spline([
-    [0, 10], [30, 18], [90, 12], [140, 8],
-    [140, -8], [90, -12], [30, -18], [0, -10]
-  ])
-  .extrude(25.0)
-  // 2. Motor mounting boss & counterbore holes
-  .holeWizard({
-    type: 'cbore',
-    diameter: 3.2,
-    depth: 25.0,
-    cboreDiameter: 6.0,
-    cboreDepth: 3.0,
-    position: [125, 0, 25],
-    normal: [0, 0, 1],
-  })
-  // 3. M3 Modeled Helical Thread for motor screw
-  .thread({
-    standard: 'metric_coarse',
-    nominalDiameter: 3.0,
-    pitch: 0.5,
-    length: 10.0,
-    isModeled: true,
-    origin: [125, 0, 0],
-    direction: [0, 0, 1],
-  })
-  // 4. Stress-Modulated TPMS Gyroid Infill
-  // Low-stress middle zones: 0.8 mm wall thickness
-  // High-stress root zones: 2.4 mm wall thickness
-  .implicit.gyroidInfill({
-    preserve: ['@cylindrical_mounts', '<X'],
-    cellSize: 6.0,
-    wallThickness: 1.2,
-  })
-  .fillet(1.5);
+const doc = cdml('mm', '1e-7', '1e-11')
+  .var('flange_w', 90.0, { min: 60.0, max: 150.0, unit: 'mm' })
+  .var('flange_h', 16.0, { min: 8.0, max: 40.0, unit: 'mm' })
+  .var('bore_r', 15.0, { min: 8.0, max: 25.0, unit: 'mm' })
+  .expr('half_w', 'ref(flange_w) / 2')
+  .assert('bore_clearance', 'ref(half_w) - ref(bore_r) - 5.0', 'bore exceeds flange margin')
+  .chartXY('chart_xy')
+  .sketch('sk_flange', { chart: 'chart_xy', maxIter: 100 })
+    .rectWire('wire_outer', { width: 'ref(flange_w)', height: 'ref(flange_w)', role: 'outer' })
+    .circleWire('wire_bore', { radius: 'ref(bore_r)', role: 'hole' })
+  .brep('solid_flange', { material: 'al6061' })
+    .sweepExtrude('sw_extrude', { sketch: 'sk_flange', zExpr: 'ref(flange_h) * v', capEnds: true })
+  .probe('housing_volume', { type: 'volume', target: 'solid_flange' })
+  .exportTessellate('solid_flange', { chordTol: 0.02, angleTol: 0.05 })
+  .exportStep('solid_flange', { schema: 'AP214' })
+  .exportStl('solid_flange', { binary: true });
 
-// Export production 3MF with embedded lattice geometry
-droneArm.export3mf('aero_drone_arm.3mf');
+const res = await doc.evaluate();
+if (res.status === 0) {
+  console.log('Housing volume (mm^3):', res.probe('housing_volume'));
+}
 ```

@@ -1,34 +1,51 @@
 # CDML v1.0 Examples Catalog
 
-OpenCAD includes normative parametric parts, implicit TPMS lattices, and multi-physics demo models. Every `.cdml` file is a self-contained **executable engineering document** that compiles in `cad_kernel.wasm`.
+OpenCAD includes normative parametric parts, implicit TPMS lattices, and multi-physics demo models. Every `.cdml` file is a self-contained executable engineering document that runs in `cad_kernel.wasm`.
 
 ---
 
 ## 1. Featured Parametric & Multi-Physics Models
 
-| Model | Path | Geometry Formulations Demonstrated | Live Action |
+| Model | Path | Geometry Formulations | Live Action |
 | :--- | :--- | :--- | :--- |
-| **Twisted Toroidal Ring (Default Studio Model)** | Built-in (`DEFAULT_TORUS_CDML`) | `0b10` Implicit SDF + Rvachev $C^1$ `r_intersect` + support-free flat $z \ge 0$ print bed base | [Open in Studio ↗](https://hassaanmaqsood.github.io/opencad/) |
-| **Normative Parametric Flange** | [`/examples/flange_normative.cdml`](/examples/flange_normative.cdml) | `0b00` 2D Householder QR constrained `<sketch>`, degree-1 NURBS `<curve>` outer wire, `<param-curve>` bore, and kinematic `SE(3)` extrusion sweep | [Download `.cdml`](/examples/flange_normative.cdml) |
-| **Constrained Mounting Bracket** | [`/examples/constrained_bracket.cdml`](/examples/constrained_bracket.cdml) | `0b00` Multi-constraint 2D sketch + `0b01` boolean union/difference + `<probe type="volume">` | [Download `.cdml`](/examples/constrained_bracket.cdml) |
-| **FEAScript × OpenCAD Cooling Plate & Disk** | [`examples/feascript-loop/`](/collabs/feascript-thermal-loop) | Closed-loop CDML `<sketch>` $\rightarrow$ 2D unstructured FEM thermal solve $\rightarrow$ `0x1F0000` 3D voxel field injection | [Launch Thermal Demo ↗](https://hassaanmaqsood.github.io/opencad/feascript-demo.html) |
+| **Twisted Toroidal Ring (Default Studio Model)** | Built-in (`DEFAULT_TORUS_CDML`) | `0b10` Implicit SDF + Rvachev $C^1$ `r_intersect` + flat $z \ge 0$ print bed base | [Open in Studio ↗](/studio/) |
+| **Normative Parametric Flange** | [`/examples/flange_normative.cdml`](/examples/flange_normative.cdml) | `0b00` 2D Householder QR sketch, NURBS outer wire, `<param-curve>` bore, `SE(3)` sweep, and `0b10` Gyroid core | [Open in Studio ↗](/studio/?cdml=/opencad/examples/flange_normative.cdml) |
+| **Constrained Mounting Bracket** | [`/examples/constrained_bracket.cdml`](/examples/constrained_bracket.cdml) | `0b00` Multi-constraint 2D sketch + `0b01` boolean union/difference + `<probe type="volume">` | [Open in Studio ↗](/studio/?cdml=/opencad/examples/constrained_bracket.cdml) |
+| **FEAScript × OpenCAD Cooling Plate & Disk** | [`examples/feascript-loop/`](/collabs/feascript-thermal-loop) | Closed-loop CDML `<sketch>` to 2D unstructured FEM thermal solve and `0x1F0000` 3D voxel field injection | [Launch Thermal Demo ↗](https://hassaanmaqsood.github.io/opencad/feascript-demo.html) |
 
 ---
 
-## 2. Normative Flange Example (`flange_normative.cdml`)
+## 2. Verified Normative Flange Excerpt (`flange_normative.cdml`)
+
+Every tag in the snippet below matches the CDML v1.0 compiler grammar in `kernel-zig/src/cdml/`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
   <defs>
-    <var id="flange_w" value="90.0" unit="mm" min="50.0" max="140.0" public="true"/>
-    <var id="flange_h" value="14.0" unit="mm" min="6.0"  max="30.0"  public="true"/>
-    <var id="bore_r"   value="18.0" unit="mm" min="8.0"  max="35.0"  public="true"/>
-    <expr id="half_w"  expr="ref(flange_w) * 0.5"/>
-    <chart id="chart_xy" origin="0 0 0" normal="0 0 1" x-axis="1 0 0"/>
+    <var id="flange_w" value="90.0" unit="mm" min="60.0" max="150.0"/>
+    <var id="flange_h" value="16.0" unit="mm" min="8.0"  max="40.0"/>
+    <var id="bore_r"   value="15.0" unit="mm" min="8.0"  max="25.0"/>
+    <expr id="half_w"  expr="flange_w / 2"/>
+    <assert id="bore_clearance"
+      expr="half_w - bore_r - 5.0"
+      error="bore radius exceeds flange margin"/>
   </defs>
 
   <body>
+    <chart id="chart_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="unit_e2"  expr="dot(e2, e2) - 1.0"/>
+        <residual id="ortho"    expr="dot(e1, e2)"/>
+        <residual id="planar_z" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+
     <sketch id="sk_flange" chart="chart_xy" max-iter="100">
       <vars>
         <point2d id="v0" u="-45.0" v="-45.0"/>
@@ -47,23 +64,35 @@ OpenCAD includes normative parametric parts, implicit TPMS lattices, and multi-p
           u-expr="ref(bore_r) * cos(2 * PI * t)"
           v-expr="ref(bore_r) * sin(2 * PI * t)"/>
       </wire>
+      <constraints>
+        <residual id="cx"     expr="v0.u + v1.u"/>
+        <residual id="cy"     expr="v0.v + v3.v"/>
+        <residual id="sym"    expr="v2.u + v3.u"/>
+        <residual id="h0"     expr="v1.v - v0.v"/>
+        <residual id="h1"     expr="v2.v - v3.v"/>
+        <residual id="ortho"  expr="dot(v1 - v0, v2 - v1)"/>
+        <residual id="width"  expr="norm(v1 - v0) - ref(flange_w)"/>
+        <residual id="height" expr="norm(v2 - v1) - ref(flange_w)"/>
+      </constraints>
     </sketch>
 
-    <brep id="flange_body">
-      <sweep id="sw_base" profile="sk_flange" domain="0 1">
-        <se3-translation x-expr="0" y-expr="0" z-expr="ref(flange_h) * v"/>
+    <brep id="solid_flange">
+      <sweep id="sw_extrude" sketch="sk_flange" cap-ends="true">
+        <trajectory>
+          <translate x="0" y="0" z-expr="ref(flange_h) * v"/>
+        </trajectory>
       </sweep>
     </brep>
 
-    <probe id="part_volume" type="volume" target="flange_body"/>
+    <probe id="housing_volume" type="volume" target="solid_flange"/>
   </body>
 
   <exports>
-    <tessellate target="flange_body" chord-tol="0.02" angle-tol="0.05"/>
-    <step       target="flange_body" schema="AP214"/>
-    <stl        target="flange_body" binary="true"/>
+    <tessellate target="solid_flange" chord-tol="0.02" angle-tol="0.05"/>
+    <step       target="solid_flange" schema="AP214"/>
+    <stl        target="solid_flange" binary="true"/>
   </exports>
 </cdml>
 ```
 
-For more advanced multi-body boolean and field-driven lattice examples, see [Complex Examples Walkthrough](/guide/complex-examples).
+For multi-body boolean and field-driven lattice walkthroughs, see [Complex Examples](/guide/complex-examples).

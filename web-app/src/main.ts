@@ -339,7 +339,7 @@ async function initApp() {
       onParamChange: async (varId: string, val: number) => {
         (window as any).__cadBusy = true;
         try {
-          const res = await bridge.setCDMLVar(varId, val, probesFilter);
+          const res = await bridge.setCDMLVar(varId, val, probesFilter ?? activeProbeIds);
           if (res.status === 0) {
             if (res.mesh) {
               viewer.meshManager.updateFromCdmlMesh(res.mesh);
@@ -378,6 +378,38 @@ async function initApp() {
 
   // Live evaluation state
   let currentDocUrl = window.location.href;
+  let activeProbeIds: string[] = [];
+  let activeVolumeProbeId: string | null = null;
+
+  const computeMeshVolumeMm3 = (): number | null => {
+    const geom = viewer.meshManager.solidMesh?.geometry;
+    if (!geom) return null;
+    const posAttr = geom.getAttribute('position');
+    if (!posAttr || posAttr.count < 3) return null;
+    const pos = posAttr.array as ArrayLike<number>;
+    const idxAttr = geom.getIndex();
+    let signedVol6 = 0.0;
+    if (idxAttr && idxAttr.count >= 3) {
+      const idx = idxAttr.array as ArrayLike<number>;
+      for (let i = 0; i < idxAttr.count; i += 3) {
+        const i0 = idx[i] * 3, i1 = idx[i + 1] * 3, i2 = idx[i + 2] * 3;
+        const ax = pos[i0], ay = pos[i0 + 1], az = pos[i0 + 2];
+        const bx = pos[i1], by = pos[i1 + 1], bz = pos[i1 + 2];
+        const cx = pos[i2], cy = pos[i2 + 1], cz = pos[i2 + 2];
+        signedVol6 += ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+      }
+    } else {
+      for (let i = 0; i < posAttr.count; i += 3) {
+        const i0 = i * 3, i1 = (i + 1) * 3, i2 = (i + 2) * 3;
+        const ax = pos[i0], ay = pos[i0 + 1], az = pos[i0 + 2];
+        const bx = pos[i1], by = pos[i1 + 1], bz = pos[i1 + 2];
+        const cx = pos[i2], cy = pos[i2 + 1], cz = pos[i2 + 2];
+        signedVol6 += ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+      }
+    }
+    const vol = Math.abs(signedVol6) / 6.0;
+    return Number.isFinite(vol) && vol > 0 ? vol : null;
+  };
 
   const updateTelemetry = (probes?: Record<string, number | string>) => {
     if (viewer.meshManager.solidMesh?.geometry) {
@@ -391,7 +423,19 @@ async function initApp() {
       }
     }
     if (telemetryVol) {
-      const vol = probes?.logo_volume ?? probes?.housing_volume ?? probes?.volume;
+      let vol: number | string | undefined;
+      if (probes) {
+        if (activeVolumeProbeId && probes[activeVolumeProbeId] !== undefined) {
+          vol = probes[activeVolumeProbeId];
+        } else {
+          const volKey = Object.keys(probes).find((k) => /vol/i.test(k));
+          if (volKey !== undefined) vol = probes[volKey];
+        }
+      }
+      if (vol === undefined || (typeof vol === 'number' && !Number.isFinite(vol))) {
+        const meshVol = computeMeshVolumeMm3();
+        if (meshVol !== null) vol = meshVol;
+      }
       if (vol !== undefined) {
         const formatted = typeof vol === 'number' ? Math.round(vol).toLocaleString() : String(vol);
         telemetryVol.textContent = `${formatted} mm³`;
@@ -415,7 +459,12 @@ async function initApp() {
 
     try {
       const imports = await resolveImports(currentDocUrl, xml);
+      const volProbeMatch = xml.match(/<probe\s+[^>]*type="volume"[^>]*id="([^"]+)"|<probe\s+[^>]*id="([^"]+)"[^>]*type="volume"/);
+      activeVolumeProbeId = volProbeMatch ? (volProbeMatch[1] || volProbeMatch[2] || null) : null;
       const res = await bridge.evalCDML(xml, imports, runCanary);
+      if (res.probes) {
+        activeProbeIds = Object.keys(res.probes);
+      }
       (window as any).__cadBusy = false;
       const elapsed = Math.round(performance.now() - t0);
       if (statusTiming) statusTiming.textContent = `${elapsed} ms`;

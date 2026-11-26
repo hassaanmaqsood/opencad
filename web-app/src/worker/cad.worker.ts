@@ -321,6 +321,8 @@ function parseVarsFromXml(xml: string) {
   return vars;
 }
 
+let lastActiveProbeIds: string[] = [];
+
 function parseProbesFromXml(xml: string): string[] {
   const probeIds: string[] = [];
   const matches = xml.matchAll(/<probe\s+[^>]*id="([^"]+)"/g);
@@ -606,6 +608,7 @@ self.onmessage = async (e: MessageEvent) => {
 
       const vars = parseVarsFromXml(data.xml);
       const probeIds = parseProbesFromXml(data.xml);
+      lastActiveProbeIds = probeIds;
       const probes: Record<string, number> = {};
 
       for (const pid of probeIds) {
@@ -720,7 +723,8 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
     const mesh = readTessellationFromSharedMemory();
-    const probeIds = (data.probeIds as string[]) || [];
+    const requestedProbes = data.probeIds as string[] | undefined;
+    const probeIds = requestedProbes && requestedProbes.length > 0 ? requestedProbes : lastActiveProbeIds;
     const probes: Record<string, number> = {};
 
     for (const pid of probeIds) {

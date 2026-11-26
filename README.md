@@ -3,8 +3,9 @@
 > Parametric 3D CAD kernel, CDML v1.0 compiler, and web viewer.
 > The kernel compiles from Zig to freestanding WebAssembly. The browser interface uses TypeScript and Three.js.
 
-[![Live Studio](https://img.shields.io/badge/Live_Studio-hassaanmaqsood.github.io%2Fopencad-blue?style=for-the-badge&logo=googlechrome)](https://hassaanmaqsood.github.io/opencad/)
-[![FEAScript Loop Demo](https://img.shields.io/badge/FEAScript_FEM_Loop-Live_Demo-0A2351?style=for-the-badge)](https://hassaanmaqsood.github.io/opencad/feascript-demo.html)
+[![Live Studio](https://img.shields.io/badge/Live_Studio-hassaanmaqsood.github.io%2Fopencad%2Fstudio-0C71E4?style=for-the-badge&logo=googlechrome)](https://hassaanmaqsood.github.io/opencad/studio/)
+[![Docs Portal](https://img.shields.io/badge/Docs_Portal-hassaanmaqsood.github.io%2Fopencad-0A50A8?style=for-the-badge)](https://hassaanmaqsood.github.io/opencad/)
+[![FEAScript Loop Demo](https://img.shields.io/badge/FEAScript_FEM_Loop-Live_Demo-18181B?style=for-the-badge)](https://hassaanmaqsood.github.io/opencad/feascript-demo.html)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Zig Tests](https://img.shields.io/badge/Zig_Unit_Tests-199%2F199_Passed-brightgreen.svg)](./kernel-zig)
 [![Verification Gates](https://img.shields.io/badge/Verification_Gates-All_9_Passed-success.svg)](./scripts/verify_gates.sh)
@@ -124,10 +125,10 @@ Embed the live studio in any web page or documentation site with an `<iframe>` t
 
 ```html
 <iframe
-  src="https://hassaanmaqsood.github.io/opencad/?embed=true&src=https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml&code=false&params=false"
+  src="https://hassaanmaqsood.github.io/opencad/studio/?embed=true&src=/opencad/examples/flange_normative.cdml&code=false&params=false"
   width="100%"
   height="500"
-  style="border: 1px solid #C8C0B4; border-radius: 6px;"
+  style="border: 0; border-radius: 8px;"
   loading="lazy"
   title="OpenCAD 3D Model">
 </iframe>
@@ -138,7 +139,7 @@ Use these URL query parameters to control the embedded view:
 | Parameter | Values | Effect |
 | :--- | :--- | :--- |
 | `embed` | `true` / `false` | Hides the code editor pane and renders a full-bleed 3D viewport. |
-| `src` or `cdml` | URL or XML string | Loads a CDML model file from an HTTPS URL or inline XML string. |
+| `src` or `cdml` | URL or XML string | Loads a CDML model file from an HTTPS URL, relative path, or inline XML string. |
 | `code` or `code-toggle` | `true` / `false` | Hides or shows the Code toggle button and the editor pane. |
 | `params` or `gui` | `true` / `false` | Hides or shows the Parameters panel and its toggle button. |
 | `params-toggle` | `true` / `false` | Hides or shows the Parameters toggle button in the dock. |
@@ -150,7 +151,7 @@ Add `gui=true` and `params-toggle=false` when you want fixed parameter sliders w
 
 ```html
 <iframe
-  src="https://hassaanmaqsood.github.io/opencad/?embed=true&src=https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml&gui=true&code-toggle=false&params-toggle=false&vars=flange_w,bore_r&exports=stl"
+  src="https://hassaanmaqsood.github.io/opencad/studio/?embed=true&src=/opencad/examples/flange_normative.cdml&gui=true&code-toggle=false&params-toggle=false&vars=flange_w,bore_r&exports=stl"
   width="100%"
   height="500"
   style="border: 0;"
@@ -166,7 +167,7 @@ Load the custom element from the CDN:
 
 <!-- Embedded 3D viewer -->
 <opencad-viewer
-  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/web-app/public/examples/flange_normative.cdml"
+  src="https://raw.githubusercontent.com/hassaanmaqsood/opencad/main/examples/flange_normative.cdml"
   data-gui="true"
   data-gui-vars="flange_w,flange_h,bore_r"
   data-gui-exports="step,stl">
@@ -293,8 +294,9 @@ Execute all verification gates:
 ## Documentation Index
 
 - [**Architecture Guide (`docs/guide/architecture.md`)**](./docs/guide/architecture.md) — Technical description of linear memory, C-ABI functions, constraint solver, and contouring algorithms.
-- [**CDML v1.0 Specification**](./docs/reference/cdml-spec.md) — Specification for the Computational Design Markup Language.
-- [**Mathematical Foundations**](./docs/papers/math-foundations.md) — Dual-Ring SSA, Rvachev $R_\alpha$ $C^1$ blends, and Shewchuk exact predicates.
-- [**FEAScript × OpenCAD Thermal Loop**](./docs/collabs/feascript-thermal-loop.md) — Closed-loop multi-physics thermal solve and drop-in ES modules.
+- [**CDML v1.0 Specification (`docs/reference/cdml-spec.md`)**](./docs/reference/cdml-spec.md) — Specification for the Computational Design Markup Language.
+- [**Mathematical Foundations (`docs/papers/math-foundations.md`)**](./docs/papers/math-foundations.md) — Dual-Ring SSA, Rvachev $R_\alpha$ $C^1$ blends, and Shewchuk exact predicates.
+- [**FEAScript × OpenCAD Thermal Loop (`docs/collabs/feascript-thermal-loop.md`)**](./docs/collabs/feascript-thermal-loop.md) — Closed-loop multi-physics thermal solve and drop-in ES modules.
 - [**Skill Guide (`docs/reference/skill.md` / public `skill.md`)**](https://hassaanmaqsood.github.io/opencad/skill.md) — Complete usage, troubleshooting, and code examples for all languages ([repo copy](./docs/reference/skill.md)).
+- [**Design System & Brand (`docs/brand/index.md`)**](./docs/brand/index.md) — Zero-Box layout, Cobalt Azure color system, and `IBM Plex Mono` typography.
 - [**API Header (`abi/cad_kernel.h`)**](./abi/cad_kernel.h) — C header file defining kernel functions and data structures.

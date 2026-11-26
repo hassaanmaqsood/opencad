@@ -1,12 +1,12 @@
-# OpenCAD v2.0 Architecture & Technical Reference
+# OpenCAD Architecture & Technical Reference
 
-OpenCAD is an open-source, web-first computational engineering and parametric CAD platform engineered around a **Zero-Primitive Mathematical Kernel Law**, **CDML v1.0 (Computational Design Markup Language)**, a **Single SharedArrayBuffer Zero-Copy Memory Architecture**, and a **Polyglot 4-Step Surface SDK** across TypeScript/WebAssembly, Python (`wasmtime`), and Rust.
+OpenCAD is an open-source computational engineering and parametric CAD platform. It combines a zero-primitive mathematical kernel, CDML v1.0, a shared WebAssembly memory map, and SDKs for TypeScript, Python, and Rust.
 
 ---
 
 ## 1. System Topology & Layered Architecture
 
-```
+```text
 +---------------------------------------------------------------------------------------+
 |                        User Interfaces & Polyglot Surface SDKs                        |
 |   +-------------------------+   +-----------------------+   +---------------------+   |
@@ -62,21 +62,21 @@ OpenCAD is an open-source, web-first computational engineering and parametric CA
 
 ### 2.1 Deterministic Shared Memory Map (`kernel-zig/src/memory_map.zig`)
 
-All WASM modules (`cad_kernel.wasm` and secondary extensions such as `ext_field_canary.wasm`) share a single `WebAssembly.Memory({ initial: 128, maximum: 512, shared: true })` instance with fixed regions below `wasm.global_base = 0x600000`:
+All WASM modules share a single `WebAssembly.Memory({ initial: 128, maximum: 512, shared: true })` instance. The kernel pins fixed regions below `wasm.global_base = 0x600000`:
 
 | Offset Range | Constant | Purpose |
 | :--- | :--- | :--- |
-| `0x000000 .. 0x000040` | `CONTROL_BLOCK_OFFSET` | 64-byte `ControlBlock`: `magic = 0x4F434144` (`"OCAD"`), `version = 2`, buffer offsets, `active_solid_count`, and `tess_generation_counter` (`0x001C`). |
+| `0x000000 .. 0x000040` | `CONTROL_BLOCK_OFFSET` | 64-byte `ControlBlock` with `magic = 0x4F434144` (`"OCAD"`), `version = 2`, buffer offsets, and `tess_generation_counter`. |
 | `0x001000 .. 0x0F0000` | `SOLID_ARENA_OFFSET` | Persistent solid metadata arena. |
-| `0x0F0000 .. 0x1F0000` | `TESS_BUFFER_OFFSET` | Hybrid fixed/dynamic header-payload layout: 128-byte header pinned at `0x0F0000` (`solid_id`, `v_count`, `tri_count`, `pos_offset`, `nrm_offset`, `idx_offset`, 8-byte aligned `face_offset`, `tess_gen`, `bbox_min/max`, plus `is_heap_spillover` at `0x50` and `payload_byte_len` at `0x54`). Payloads $\le 1\text{ MiB}$ (`0x0FFF80` bytes) sit inline at `0x0F0080..0x1F0000`; larger payloads spill dynamically onto an 8-byte aligned heap buffer at `>= 0x600000` while keeping the header pointers and `0x1F0000` isolated. |
-| `0x1F0000 .. 0x3F0000` | `FIELD_BUFFER_OFFSET` | 3D voxel scalar/vector field slots (`field_count`, slot descriptors with `grid_x/y/z`, `world_origin`, `voxel_size`, and `f32` voxel arrays). |
+| `0x0F0000 .. 0x1F0000` | `TESS_BUFFER_OFFSET` | 128-byte header at `0x0F0000` plus inline payload at `0x0F0080..0x1F0000`. Payloads over $1\text{ MiB}$ spill onto the heap above `0x600000`. |
+| `0x1F0000 .. 0x3F0000` | `FIELD_BUFFER_OFFSET` | 3D voxel scalar and vector field slots (`field_count`, grid dimensions, world origin, voxel size, and `f32` arrays). |
 | `0x3F0000 .. 0x4F0000` | `STEP_EXPORT_OFFSET` | ISO-10303-21 AP214 STEP output buffer (`get_step_ptr`, `get_step_len`). |
-| `0x4F0000 .. 0x5F0000` | `STL_EXPORT_OFFSET` | Binary/ASCII STL output buffer (`get_stl_ptr`, `get_stl_len`). |
-| `>= 0x600000` | `HEAP_BASE_OFFSET` | WASM global base and Tier 2 dynamic tessellation spillover heap (`dynamic_tess_buf`) for meshes exceeding `0x0FFF80` bytes (`> ~21.8k` triangles). |
+| `0x4F0000 .. 0x5F0000` | `STL_EXPORT_OFFSET` | Binary and ASCII STL output buffer (`get_stl_ptr`, `get_stl_len`). |
+| `>= 0x600000` | `HEAP_BASE_OFFSET` | WASM global base and Tier 2 dynamic tessellation spillover heap (`dynamic_tess_buf`) for meshes above `21,842` triangles. |
 
 ### 2.2 The 18 Canonical Pure-Math C-ABI Functions (`kernel-zig/src/main_wasm.zig`)
 
-In compliance with the **Zero-Primitive Mathematical Kernel Law**, the kernel exports zero hardcoded geometric primitives (`box`, `cylinder`, `sphere`, etc. are banned). All geometry is synthesized mathematically through 18 canonical C-ABI entry points:
+The Zero-Primitive Mathematical Kernel Law forbids hardcoded primitive exports such as `box` or `cylinder`. The kernel synthesizes all geometry through 18 C-ABI entry points:
 
 1. **Lifecycle & Expressions (`autodiff.zig`):**
    - `kernel_init() -> void`
@@ -111,56 +111,60 @@ In compliance with the **Zero-Primitive Mathematical Kernel Law**, the kernel ex
 ## 3. Core Mathematical Subsystems
 
 ### 3.1 Forward-Mode AD, Vector Scalarisation & Interval Arithmetic (`kernel-zig/src/autodiff.zig`)
-- **Compile-Time Vector Scalarisation (CDML §3.3.1):** Expands `vec2(u, v)`, `vec3(x, y, z)`, vector variables (`p0`, `e1`, `v0`), vector addition/subtraction/scaling, `dot(a, b)`, `cross(a, b)`, and `norm(a)` into pure scalar Static Single Assignment (SSA) bytecode at compile time.
-- **Exact Dual-Number Differentiation:** Evaluates exact first-order analytical partial derivatives $\nabla F(\mathbf{x})$ for nonlinear constraint solving, implicit surface normals, and trilinear voxel field interpolation (`Opcode 0x40 .FieldSample`).
-- **Interval Arithmetic (`evalInterval`):** Propagates rigorous $[a, b]$ bounds through arithmetic, transcendental (`sin`, `cos`, `sqrt`, `atan2`), smooth R-functions (`r_union`, `r_intersect`, `abs_smooth`), and 3D voxel lattices (enclosing all 8 trilinear cell corners plus spanned grid voxels).
+- **Compile-Time Vector Scalarisation:** The compiler expands `vec2`, `vec3`, `dot`, `cross`, and `norm` into scalar Static Single Assignment (SSA) bytecode.
+- **Exact Dual-Number Differentiation:** The evaluator computes exact first-order partial derivatives $\nabla F(\mathbf{x})$ for constraint solving, surface normals, and trilinear voxel interpolation.
+- **Interval Arithmetic (`evalInterval`):** The evaluator propagates $[a, b]$ bounds through arithmetic, transcendental functions, R-functions, and 3D voxel lattices.
 
 ### 3.2 Rank-Revealing Householder QR Constraint Solver (`kernel-zig/src/constraint_sys.zig`)
-- Decomposes the sparse/dense Jacobian via **Householder QR with column pivoting** ($J P = Q R$, CDML §6.2).
-- Determines numerical rank $r = |\{i : |R_{ii}| > 10^{-10}\}|$, computes $\text{DOF} = N - r$, and classifies systems into `SOLVED`, `UNDER`, `OVER`, or `CONFLICTING` (via left-nullspace residual norm $\|(Q^T \mathbf{r})[r..M]\|_\infty > \epsilon_{\text{lin}}$).
-- Computes minimum-norm Gauss-Newton / Levenberg-Marquardt steps with automatic **homotopy sub-stepping** whenever $\|\Delta \mathbf{q}\|_\infty$ exceeds 25% of the parameter bounding box.
+- Decomposes the Jacobian matrix via Householder QR with column pivoting ($J P = Q R$, CDML §6.2).
+- Computes numerical rank $r = |\{i : |R_{ii}| > 10^{-10}\}|$ and $\text{DOF} = N - r$.
+- Classifies each constraint system into `SOLVED`, `UNDER`, `OVER`, or `CONFLICTING`.
+- Computes minimum-norm Gauss-Newton steps with homotopy sub-stepping when step size exceeds 25% of the bounding box.
 
-### 3.3 Analytic Regions, $SE(3)$ Sweeps, NURBS Lofts, Shells & Rolling-Ball Fillets (`kernel-zig/src/surface_brep.zig`)
+### 3.3 Analytic Regions, $SE(3)$ Sweeps, Lofts, Shells & Fillets (`kernel-zig/src/surface_brep.zig`)
 - **Analytic Region B-Rep (`constructAnalyticRegionBrep`):**
-  - Verifies boundedness along $\pm X, \pm Y, \pm Z$.
-  - Discovers interior seed points via a fast $Z$-axis scan or a **recursive 3D Interval-Arithmetic octree search** over $[-500, 500]^3$ followed by X/Y chord-bisection centering for off-axis regions.
-  - Performs cylindrical ray-bisection from $(x_c, y_c, z_c)$, tags every face with its originating `<ineq id="...">` `h64` hash, verifies 2-manifold edge pairing and Euler–Poincaré closure ($V - E + F - 2(S - G) = 0$), and caches compiled inequalities in [`RegionAnalyticalSolid`](file:///media/hassaan/x/coding/open-cad/kernel-zig/src/surface_brep.zig#L1919-L1945) for $O(1)$ CSG signed-distance queries.
-- **General $SE(3)$ Kinematic Sweep (`buildSweptSolid`, `solid_kinematic_sweep`):**
-  - Evaluates Rodrigues rotation $\mathbf{R}(v) = \exp(\theta(v)[\hat{\boldsymbol{\omega}}_\times])$ and translation $\mathbf{d}(v)$ across outer and inner (hole) wire loops simultaneously, triangulating end caps with holes via bridge-merging ear-clipping and checking $\min_{u,v} \|\partial\mathbf{S}/\partial u \times \partial\mathbf{S}/\partial v\| > 0$ (`ERR_SWEEP_SELF_INTERSECT`).
-- **Tangent Rolling-Ball Fillets (`filletSweptSolid`, `rebuildSweepWithCapFillets`):**
-  - Supports constant-radius rolling-ball fillets on straight and curved sweep-parallel lateral edges (`abs(tz) > 0.99`) as well as horizontal top/bottom cap boundary edges (`abs(tz) < 0.001`), checking $r \cdot \kappa_{\text{edge}} < 1 - \epsilon_{\text{lin}}$ (`ERR_FILLET_RADIUS_COLLAPSE`) and assigning analytical curvature $\kappa_{\max} = 1/r$.
-- **Bivariate Tensor-Product NURBS Loft (`solid_tensor_loft`) & Thick Offset Shell (`solid_offset_shell`):**
-  - Interpolates arbitrary $K \ge 2$ wire cross-sections with degree-$p_v$ B-splines and analytical first/second fundamental form curvatures.
-  - Offsets watertight or pierced (`face_pred_expr_h != 0`) shells by exact perpendicular wall thickness using distinct-plane miter vectors and stitches boundary rim quads.
+  - Checks boundedness along $\pm X, \pm Y, \pm Z$ and finds interior seed points via an interval-arithmetic octree search.
+  - Performs cylindrical ray-bisection, tags every face with its `<ineq>` `h64` hash, and checks Euler–Poincaré closure ($V - E + F - 2(S - G) = 0$).
+- **General $SE(3)$ Kinematic Sweep (`buildSweptSolid`):**
+  - Evaluates Rodrigues rotation $\mathbf{R}(v)$ and translation $\mathbf{d}(v)$ across outer and hole wire loops simultaneously.
+  - Triangulates end caps with holes via ear-clipping and checks $\min_{u,v} \|\partial\mathbf{S}/\partial u \times \partial\mathbf{S}/\partial v\| > 0$ (`ERR_SWEEP_SELF_INTERSECT`).
+- **Tangent Rolling-Ball Fillets (`filletSweptSolid`):**
+  - Sweeps constant-radius rolling-ball fillets along lateral and cap boundary edges.
+  - Checks $r \cdot \kappa_{\text{edge}} < 1 - \epsilon_{\text{lin}}$ (`ERR_FILLET_RADIUS_COLLAPSE`) and assigns analytical curvature $\kappa_{\max} = 1/r$.
+- **Bivariate Tensor-Product NURBS Loft & Thick Offset Shell:**
+  - Interpolates $K \ge 2$ wire cross-sections with degree-$p_v$ B-splines and analytical surface curvatures.
+  - Offsets watertight or pierced shells by perpendicular wall thickness using plane miter vectors.
 
 ### 3.4 Interval-Pruned Octree QEF Dual Contouring (`kernel-zig/src/implicit_field.zig`)
-- Subdivides the domain box recursively up to `octree-depth="5"` ($32^3$ leaf cells), pruning empty/full octants in $O(1)$ time via `expr.evalInterval(X, Y, Z)`.
-- Locates edge zero-crossings via safeguarded secant/bisection root-finding, evaluates exact Dual-Number unit normals $\hat{\mathbf{n}}_k = \nabla F / \|\nabla F\|$ (emitting `ERR_IMPLICIT_GRAD_ZERO` if $\|\nabla F\| < 10^{-12}$), solves the regularized $3 \times 3$ Quadratic Error Function (QEF), projects the dual vertex onto $F(\mathbf{x}) = 0$ via **4-step damped Newton-Gradient refinement**, and computes analytical Goldman level-set curvatures ($\kappa_H, \kappa_G, \kappa_{\min}, \kappa_{\max}$).
+- Subdivides the domain box recursively up to `octree-depth="5"`, pruning empty or full octants via `expr.evalInterval(X, Y, Z)`.
+- Finds edge zero-crossings via secant and bisection root-finding and evaluates exact Dual-Number unit normals $\hat{\mathbf{n}}_k = \nabla F / \|\nabla F\|$.
+- Solves the regularized $3 \times 3$ Quadratic Error Function (QEF) and projects the dual vertex onto $F(\mathbf{x}) = 0$ via damped Newton-Gradient refinement.
 
 ### 3.5 Straddling-Triangle CSG Subdivision & 192-Bit `TopoId`s (`kernel-zig/src/surface_brep.zig`)
-- **Sub-Triangle Zero-Crossing Clipping (`materializeCsgNode`, `clipAndEmitCsgTriangle`, `findEdgeZeroCrossing`):**
-  - Evaluates per-vertex signed distance against the opposing solid (`s_cache_a`, `s_cache_b`) and subdivides straddling triangles ($1$ kept vertex $\to 1$ sub-triangle; $2$ kept vertices $\to 2$ sub-triangles) along the $F(\mathbf{x}) = 0$ curve using 6-step safeguarded secant root-finding with canonical lexicographic endpoint ordering.
-  - Welds shared intersection vertices (`addWeldedCsgVertex`) to produce crisp, non-jagged boolean seams with zero protruding shards across cylindrical bores.
+- **Sub-Triangle Zero-Crossing Clipping (`materializeCsgNode`):**
+  - Evaluates per-vertex signed distance against the opposing solid and subdivides straddling triangles along $F(\mathbf{x}) = 0$ using 6-step secant root-finding.
+  - Welds shared intersection vertices (`addWeldedCsgVertex`) to produce watertight boolean seams across cylindrical bores.
 - **Deterministic 192-Bit `TopoId` (`kernel-zig/src/cdml/topo_id.zig`):**
-  - Every triangle carries `[feature_hash: u64 (`h64` SHA-256), branch_hash: u64, subshape_type: u16, topo_flags: u16, split_generation: u32]` preserved across sweeps, fillets, shells, and CSG booleans.
+  - Every triangle carries `[feature_hash: u64, branch_hash: u64, subshape_type: u16, topo_flags: u16, split_generation: u32]` across sweeps, fillets, shells, and booleans.
 
 ### 3.6 Welded Manifold AP214 STEP & STL Export (`kernel-zig/src/tess_export.zig`)
-- **`solid_export_step`:** Welds coincident vertices within $10^{-5}\text{ mm}$, deduplicates undirected `EDGE_CURVE` entities referenced with `.T.` and `.F.` in `ORIENTED_EDGE` (guaranteeing 2-manifold edge pairing in `CLOSED_SHELL`), deduplicates coplanar `PLANE` entities with orthogonal `AXIS2_PLACEMENT_3D` `ref_direction` vectors, and exports full meshes without face-count truncation.
+- **`solid_export_step`:** Welds coincident vertices within $10^{-5}\text{ mm}$ and deduplicates undirected `EDGE_CURVE` entities in `CLOSED_SHELL`.
+- Deduplicates coplanar `PLANE` entities with orthogonal `AXIS2_PLACEMENT_3D` vectors and exports full meshes without face-count truncation.
 
 ---
 
 ## 4. Verification Gates (`./scripts/verify_gates.sh all`)
 
-All commits are verified by an automated 8-gate anti-cheat pipeline:
+An automated 8-gate pipeline checks every commit:
 
 | Gate | Script / Command | Verification Scope |
 | :--- | :--- | :--- |
-| **Gate 0** | `verify_gates.sh` | Enforces Zero-Primitive Law (`box`, `cylinder`, `sphere`, `cone`, `torus` banned in `kernel-zig/src/`). |
-| **Gate 0B** | `verify_gates.sh` | Scans `kernel-zig/src/` for hardcoded model variable names (`flange_w`, `bore_r`, `solid_flange`, etc.) and cheat signatures. |
-| **Gate 1** | `verify_gates.sh` | Verifies zero JS/TS fallback geometry generators (`THREE.BoxGeometry`, etc.) in `web-app/src/`. |
-| **Gate 2** | `zig build test` | Runs all 39 native Zig test steps (198 unit tests) with `std.testing.allocator` zero-leak enforcement. |
-| **Gate 3** | `test_wasm_blackbox.mjs` | Black-box verification of the `ControlBlock` and 18-function pure-math WASM ABI. |
-| **Gate 3B** | `test_cdml_compiler.mjs` | Evaluates the normative CDML v1.0 specification (`flange_normative.cdml`), fault-tolerant error codes (`0x0102`–`0x0402`), and randomized Acid Tests A & B. |
-| **Gate 4** | `test_canary_extension.mjs` | Verifies single `SharedArrayBuffer` memory and zero-copy 3D stress field modulation via `ext_field_canary.wasm` at `0x1F0000`. |
-| **Gate 5** | Python `opencad` SDK | Verifies the 4-step fluent Python CDML builder (`cad.cdml()...evaluate()`) via `wasmtime`. |
-| **Gate 6** | `npx playwright test` | Runs 6 E2E Chromium tests covering desktop/mobile responsive flex layouts, fault-tolerant live CDML editing, minimal URL/attribute embed modes, and reactive 3D geometry updates. |
+| **Gate 0** | `verify_gates.sh` | Enforces Zero-Primitive Law (`box`, `cylinder`, `sphere`, `cone`, `torus` forbidden in `kernel-zig/src/`). |
+| **Gate 0B** | `verify_gates.sh` | Scans `kernel-zig/src/` for hardcoded model variable names (`flange_w`, `bore_r`, `solid_flange`) and cheat signatures. |
+| **Gate 1** | `verify_gates.sh` | Checks for zero JS/TS fallback geometry generators (`THREE.BoxGeometry`) in `web-app/src/`. |
+| **Gate 2** | `zig build test` | Runs all 39 native Zig test steps (199 unit tests) with `std.testing.allocator` zero-leak checks. |
+| **Gate 3** | `test_wasm_blackbox.mjs` | Black-box test of the `ControlBlock` and 18-function pure-math WASM ABI. |
+| **Gate 3B** | `test_cdml_compiler.mjs` | Evaluates `flange_normative.cdml`, fault-tolerant error codes (`0x0102`–`0x0402`), and randomized Acid Tests A & B. |
+| **Gate 4** | `test_canary_extension.mjs` | Checks single `SharedArrayBuffer` memory and zero-copy 3D stress field modulation at `0x1F0000`. |
+| **Gate 5** | Python `opencad` SDK | Checks the 4-step Python CDML builder (`cad.cdml()...evaluate()`) via `wasmtime`. |
+| **Gate 6** | `npx playwright test` | Runs 6 E2E Chromium tests covering responsive layouts, fault-tolerant live CDML editing, URL embed modes, and reactive 3D updates. |

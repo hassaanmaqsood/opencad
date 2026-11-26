@@ -10,6 +10,7 @@ export default defineConfig({
     math: true,
   },
   head: [
+    ['script', {}, `if (typeof window !== 'undefined' && (location.pathname === '/opencad/' || location.pathname === '/opencad/index.html' || location.pathname === '/') && /(?:^|[?&])(?:embed|cdml|src|gui|vars|probes|exports|figure)=/.test(location.search)) { location.replace('/opencad/studio/' + location.search); }`],
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/opencad/brand/opencad-logo-fill.svg' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
