@@ -1,6 +1,6 @@
 # OpenCAD × FEAScript Closed-Loop Thermal CAD/FEM Example
 
-This example demonstrates a complete, closed-loop browser integration between **[OpenCAD](https://github.com/hassaanmaqsood/open-cad)** (parametric B-Rep & implicit CAD kernel compiled to WebAssembly) and **[FEAScript](https://feascript.com/)** (browser/Node.js finite-element PDE library), rendered with **[Three.js](https://threejs.org/)**.
+This example demonstrates a complete, closed-loop browser integration between **[OpenCAD](https://github.com/hassaanmaqsood/opencad)** (parametric B-Rep & implicit CAD kernel compiled to WebAssembly) and **[FEAScript](https://feascript.com/)** (browser/Node.js finite-element PDE library), rendered with **[Three.js](https://threejs.org/)**.
 
 The codebase is intentionally structured so that **CSS**, **external CDN dependencies**, and **reusable JavaScript modules** are cleanly separated—allowing you to drop the helper classes and functions directly into your own CAD/CAE web applications.
 
