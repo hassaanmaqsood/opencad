@@ -28,26 +28,40 @@ export class OpenCadBridge {
    * @returns {Promise<OpenCadBridge>}
    */
   static async create(options = {}) {
-    if (typeof SharedArrayBuffer === 'undefined' || !self.crossOriginIsolated) {
-      throw new Error('SharedArrayBuffer requires COOP/COEP headers or coi-serviceworker.js');
-    }
     const candidates = options.wasmUrls || [
-      './cad_kernel.wasm',
-      './cad_core.wasm',
-      '../../web-app/public/cad_kernel.wasm',
-      'https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/cad_core.wasm',
+      "./cad_kernel.wasm",
+      "./cad_core.wasm",
+      "../../web-app/public/cad_kernel.wasm",
+      "https://cdn.jsdelivr.net/gh/hassaanmaqsood/opencad@dist/cad_core.wasm",
     ];
+    const canShare = typeof SharedArrayBuffer !== "undefined" && self.crossOriginIsolated;
     let lastErr;
     for (const url of candidates) {
       try {
         const resp = await fetch(url);
         if (!resp.ok) continue;
         const bytes = await resp.arrayBuffer();
-        const memory = new WebAssembly.Memory({ initial: 128, maximum: 512, shared: true });
-        const { instance } = await WebAssembly.instantiate(bytes, {
+        let wasmBytes = bytes;
+        let memory;
+        if (canShare) {
+          memory = new WebAssembly.Memory({ initial: 128, maximum: 2048, shared: true });
+        } else {
+          // Patch WASM import section ("env"."memory" kind=0x02 flag=0x03 -> flag=0x01) so plain WebAssembly.Memory works without COOP/COEP
+          const u8 = new Uint8Array(bytes.slice(0));
+          const sig = [0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x02, 0x03]; // "memory", kind=memory, flag=shared+max
+          for (let i = 8; i < Math.min(u8.length - 8, 512); i++) {
+            if (sig.every((b, k) => u8[i + k] === b)) {
+              u8[i + 7] = 0x01;
+              break;
+            }
+          }
+          wasmBytes = u8.buffer;
+          memory = new WebAssembly.Memory({ initial: 128, maximum: 2048, shared: false });
+        }
+        const { instance } = await WebAssembly.instantiate(wasmBytes, {
           env: {
             memory,
-            abort: () => { throw new Error('OpenCAD WASM abort'); },
+            abort: () => { throw new Error("OpenCAD WASM abort"); },
           },
           opencad: {
             field_alloc: () => 0,
@@ -62,15 +76,9 @@ export class OpenCadBridge {
         lastErr = err;
       }
     }
-    throw lastErr || new Error('Failed to load cad_kernel.wasm');
+    throw lastErr || new Error("Failed to load cad_kernel.wasm");
   }
 
-  /**
-   * Writes a UTF-8 string into the WASM linear memory scratch window.
-   * @param {string} str
-   * @param {number} [offset]
-   * @returns {{ ptr: number, len: number }}
-   */
   writeString(str, offset = SCRATCH_DOC_OFFSET) {
     const bytes = new TextEncoder().encode(str);
     new Uint8Array(this.memory.buffer, offset, bytes.length).set(bytes);
