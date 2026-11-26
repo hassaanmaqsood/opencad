@@ -80,10 +80,22 @@ if (fs.existsSync(feaSrc)) {
   fs.writeFileSync(path.resolve(pagesDir, 'feascript-demo.html'), indexHtml, 'utf8');
 }
 
-// 6. Copy canonical skill.md to /skill.md
+// 6. Copy canonical skill.md to /skill.md and canonical examples/*.cdml to /examples/ and /studio/examples/
 const skillSrc = path.resolve(rootDir, 'docs/reference/skill.md');
 if (fs.existsSync(skillSrc)) {
   fs.copyFileSync(skillSrc, path.resolve(pagesDir, 'skill.md'));
+}
+
+const examplesSrc = path.resolve(rootDir, 'examples');
+if (fs.existsSync(examplesSrc)) {
+  for (const destBase of [path.resolve(pagesDir, 'examples'), path.resolve(studioOut, 'examples')]) {
+    fs.mkdirSync(destBase, { recursive: true });
+    for (const entry of fs.readdirSync(examplesSrc)) {
+      if (entry.endsWith('.cdml') || entry === 'lib') {
+        fs.cpSync(path.resolve(examplesSrc, entry), path.resolve(destBase, entry), { recursive: true });
+      }
+    }
+  }
 }
 
 // 7. Copy CDN artifacts from dist-publish/ if present

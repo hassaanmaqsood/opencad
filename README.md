@@ -292,7 +292,7 @@ Execute all verification gates:
 
 ## Documentation Index
 
-- [**ARCHITECTURE.md**](./ARCHITECTURE.md) — Technical description of linear memory, C-ABI functions, constraint solver, and contouring algorithms ([VitePress Guide](./docs/guide/architecture.md)).
+- [**Architecture Guide (`docs/guide/architecture.md`)**](./docs/guide/architecture.md) — Technical description of linear memory, C-ABI functions, constraint solver, and contouring algorithms.
 - [**CDML v1.0 Specification**](./docs/reference/cdml-spec.md) — Specification for the Computational Design Markup Language.
 - [**Mathematical Foundations**](./docs/papers/math-foundations.md) — Dual-Ring SSA, Rvachev $R_\alpha$ $C^1$ blends, and Shewchuk exact predicates.
 - [**FEAScript × OpenCAD Thermal Loop**](./docs/collabs/feascript-thermal-loop.md) — Closed-loop multi-physics thermal solve and drop-in ES modules.

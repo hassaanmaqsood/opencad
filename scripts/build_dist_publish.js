@@ -161,7 +161,7 @@ fs.copyFileSync(wasmSrc, path.resolve(rustDest, 'cad_core.wasm'));
 
 // 10b. Stage Examples distribution & create opencad-examples.zip
 console.log('[dist-publish] Staging examples in dist-publish/examples/...');
-const examplesSrc = path.resolve(rootDir, 'web-app/public/examples');
+const examplesSrc = path.resolve(rootDir, 'examples');
 const examplesDest = path.resolve(distPublishDir, 'examples');
 fs.cpSync(examplesSrc, examplesDest, { recursive: true });
 
