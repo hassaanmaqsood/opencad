@@ -1,0 +1,95 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="plate_w" value="48.30" min="33.84" max="63.45" unit="mm"/>
+    <var id="pilot_d" value="22.00" min="17.60" max="26.40" unit="mm"/>
+    <var id="plate_thk" value="5.00" min="2.0" max="15.0" unit="mm"/>
+    <assert expr="plate_w > pilot_d * 1.2" message="Mounting plate size must clear pilot boss" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_plate" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="sq_0" u="-24.1500" v="-24.1500"/>
+        <point2d id="sq_1" u="24.1500" v="-24.1500"/>
+        <point2d id="sq_2" u="24.1500" v="24.1500"/>
+        <point2d id="sq_3" u="-24.1500" v="24.1500"/>
+                <point2d id="pt_0" u="11.0000" v="0.0000"/>
+        <point2d id="pt_1" u="10.6252" v="2.8470"/>
+        <point2d id="pt_2" u="9.5263" v="5.5000"/>
+        <point2d id="pt_3" u="7.7782" v="7.7782"/>
+        <point2d id="pt_4" u="5.5000" v="9.5263"/>
+        <point2d id="pt_5" u="2.8470" v="10.6252"/>
+        <point2d id="pt_6" u="0.0000" v="11.0000"/>
+        <point2d id="pt_7" u="-2.8470" v="10.6252"/>
+        <point2d id="pt_8" u="-5.5000" v="9.5263"/>
+        <point2d id="pt_9" u="-7.7782" v="7.7782"/>
+        <point2d id="pt_10" u="-9.5263" v="5.5000"/>
+        <point2d id="pt_11" u="-10.6252" v="2.8470"/>
+        <point2d id="pt_12" u="-11.0000" v="0.0000"/>
+        <point2d id="pt_13" u="-10.6252" v="-2.8470"/>
+        <point2d id="pt_14" u="-9.5263" v="-5.5000"/>
+        <point2d id="pt_15" u="-7.7782" v="-7.7782"/>
+        <point2d id="pt_16" u="-5.5000" v="-9.5263"/>
+        <point2d id="pt_17" u="-2.8470" v="-10.6252"/>
+        <point2d id="pt_18" u="-0.0000" v="-11.0000"/>
+        <point2d id="pt_19" u="2.8470" v="-10.6252"/>
+        <point2d id="pt_20" u="5.5000" v="-9.5263"/>
+        <point2d id="pt_21" u="7.7782" v="-7.7782"/>
+        <point2d id="pt_22" u="9.5263" v="-5.5000"/>
+        <point2d id="pt_23" u="10.6252" v="-2.8470"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="sq_0" p1="sq_1"/>
+        <line p0="sq_1" p1="sq_2"/>
+        <line p0="sq_2" p1="sq_3"/>
+        <line p0="sq_3" p1="sq_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="pt_0" p1="pt_1"/>
+        <line p0="pt_1" p1="pt_2"/>
+        <line p0="pt_2" p1="pt_3"/>
+        <line p0="pt_3" p1="pt_4"/>
+        <line p0="pt_4" p1="pt_5"/>
+        <line p0="pt_5" p1="pt_6"/>
+        <line p0="pt_6" p1="pt_7"/>
+        <line p0="pt_7" p1="pt_8"/>
+        <line p0="pt_8" p1="pt_9"/>
+        <line p0="pt_9" p1="pt_10"/>
+        <line p0="pt_10" p1="pt_11"/>
+        <line p0="pt_11" p1="pt_12"/>
+        <line p0="pt_12" p1="pt_13"/>
+        <line p0="pt_13" p1="pt_14"/>
+        <line p0="pt_14" p1="pt_15"/>
+        <line p0="pt_15" p1="pt_16"/>
+        <line p0="pt_16" p1="pt_17"/>
+        <line p0="pt_17" p1="pt_18"/>
+        <line p0="pt_18" p1="pt_19"/>
+        <line p0="pt_19" p1="pt_20"/>
+        <line p0="pt_20" p1="pt_21"/>
+        <line p0="pt_21" p1="pt_22"/>
+        <line p0="pt_22" p1="pt_23"/>
+        <line p0="pt_23" p1="pt_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_plate" distance="plate_thk" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="motor_mount_plate_nema17_v14.step" schema="AP214"/>
+    <stl source="b_solid" filename="motor_mount_plate_nema17_v14.stl" format="binary"/>
+  </exports>
+</cdml>

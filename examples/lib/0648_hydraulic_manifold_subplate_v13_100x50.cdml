@@ -1,0 +1,88 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="block_w" value="100.00" min="40.0" max="200.0" unit="mm"/>
+    <var id="block_h" value="50.00" min="30.0" max="150.0" unit="mm"/>
+    <var id="block_thk" value="40.00" min="20.0" max="120.0" unit="mm"/>
+    <var id="port_dia" value="8.00" min="4.0" max="25.0" unit="mm"/>
+    <assert expr="block_w > port_dia * 3.0" message="Block width must safely clear valve port galleries" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_block" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="vmb_0" u="-50.0000" v="-25.0000"/>
+        <point2d id="vmb_1" u="50.0000" v="-25.0000"/>
+        <point2d id="vmb_2" u="50.0000" v="25.0000"/>
+        <point2d id="vmb_3" u="-50.0000" v="25.0000"/>
+                <point2d id="vmp_0" u="4.0000" v="0.0000"/>
+        <point2d id="vmp_1" u="3.8042" v="1.2361"/>
+        <point2d id="vmp_2" u="3.2361" v="2.3511"/>
+        <point2d id="vmp_3" u="2.3511" v="3.2361"/>
+        <point2d id="vmp_4" u="1.2361" v="3.8042"/>
+        <point2d id="vmp_5" u="0.0000" v="4.0000"/>
+        <point2d id="vmp_6" u="-1.2361" v="3.8042"/>
+        <point2d id="vmp_7" u="-2.3511" v="3.2361"/>
+        <point2d id="vmp_8" u="-3.2361" v="2.3511"/>
+        <point2d id="vmp_9" u="-3.8042" v="1.2361"/>
+        <point2d id="vmp_10" u="-4.0000" v="0.0000"/>
+        <point2d id="vmp_11" u="-3.8042" v="-1.2361"/>
+        <point2d id="vmp_12" u="-3.2361" v="-2.3511"/>
+        <point2d id="vmp_13" u="-2.3511" v="-3.2361"/>
+        <point2d id="vmp_14" u="-1.2361" v="-3.8042"/>
+        <point2d id="vmp_15" u="-0.0000" v="-4.0000"/>
+        <point2d id="vmp_16" u="1.2361" v="-3.8042"/>
+        <point2d id="vmp_17" u="2.3511" v="-3.2361"/>
+        <point2d id="vmp_18" u="3.2361" v="-2.3511"/>
+        <point2d id="vmp_19" u="3.8042" v="-1.2361"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="vmb_0" p1="vmb_1"/>
+        <line p0="vmb_1" p1="vmb_2"/>
+        <line p0="vmb_2" p1="vmb_3"/>
+        <line p0="vmb_3" p1="vmb_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="vmp_0" p1="vmp_1"/>
+        <line p0="vmp_1" p1="vmp_2"/>
+        <line p0="vmp_2" p1="vmp_3"/>
+        <line p0="vmp_3" p1="vmp_4"/>
+        <line p0="vmp_4" p1="vmp_5"/>
+        <line p0="vmp_5" p1="vmp_6"/>
+        <line p0="vmp_6" p1="vmp_7"/>
+        <line p0="vmp_7" p1="vmp_8"/>
+        <line p0="vmp_8" p1="vmp_9"/>
+        <line p0="vmp_9" p1="vmp_10"/>
+        <line p0="vmp_10" p1="vmp_11"/>
+        <line p0="vmp_11" p1="vmp_12"/>
+        <line p0="vmp_12" p1="vmp_13"/>
+        <line p0="vmp_13" p1="vmp_14"/>
+        <line p0="vmp_14" p1="vmp_15"/>
+        <line p0="vmp_15" p1="vmp_16"/>
+        <line p0="vmp_16" p1="vmp_17"/>
+        <line p0="vmp_17" p1="vmp_18"/>
+        <line p0="vmp_18" p1="vmp_19"/>
+        <line p0="vmp_19" p1="vmp_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_block" distance="block_thk" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="hydraulic_manifold_subplate_v13_100x50.step" schema="AP214"/>
+    <stl source="b_solid" filename="hydraulic_manifold_subplate_v13_100x50.stl" format="binary"/>
+  </exports>
+</cdml>

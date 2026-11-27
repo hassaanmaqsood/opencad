@@ -1,0 +1,135 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="outer_d" value="55.00" min="44.00" max="66.00" unit="mm"/>
+    <var id="inner_d" value="43.00" min="34.40" max="51.60" unit="mm"/>
+    <var id="length" value="95.00" min="47.50" max="142.50" unit="mm"/>
+    <assert expr="outer_d > inner_d" message="Outer diameter must exceed bore" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_hollow" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="po_0" u="27.5000" v="0.0000"/>
+        <point2d id="po_1" u="26.5630" v="7.1175"/>
+        <point2d id="po_2" u="23.8157" v="13.7500"/>
+        <point2d id="po_3" u="19.4454" v="19.4454"/>
+        <point2d id="po_4" u="13.7500" v="23.8157"/>
+        <point2d id="po_5" u="7.1175" v="26.5630"/>
+        <point2d id="po_6" u="0.0000" v="27.5000"/>
+        <point2d id="po_7" u="-7.1175" v="26.5630"/>
+        <point2d id="po_8" u="-13.7500" v="23.8157"/>
+        <point2d id="po_9" u="-19.4454" v="19.4454"/>
+        <point2d id="po_10" u="-23.8157" v="13.7500"/>
+        <point2d id="po_11" u="-26.5630" v="7.1175"/>
+        <point2d id="po_12" u="-27.5000" v="0.0000"/>
+        <point2d id="po_13" u="-26.5630" v="-7.1175"/>
+        <point2d id="po_14" u="-23.8157" v="-13.7500"/>
+        <point2d id="po_15" u="-19.4454" v="-19.4454"/>
+        <point2d id="po_16" u="-13.7500" v="-23.8157"/>
+        <point2d id="po_17" u="-7.1175" v="-26.5630"/>
+        <point2d id="po_18" u="-0.0000" v="-27.5000"/>
+        <point2d id="po_19" u="7.1175" v="-26.5630"/>
+        <point2d id="po_20" u="13.7500" v="-23.8157"/>
+        <point2d id="po_21" u="19.4454" v="-19.4454"/>
+        <point2d id="po_22" u="23.8157" v="-13.7500"/>
+        <point2d id="po_23" u="26.5630" v="-7.1175"/>
+                <point2d id="pi_0" u="21.5000" v="0.0000"/>
+        <point2d id="pi_1" u="20.7674" v="5.5646"/>
+        <point2d id="pi_2" u="18.6195" v="10.7500"/>
+        <point2d id="pi_3" u="15.2028" v="15.2028"/>
+        <point2d id="pi_4" u="10.7500" v="18.6195"/>
+        <point2d id="pi_5" u="5.5646" v="20.7674"/>
+        <point2d id="pi_6" u="0.0000" v="21.5000"/>
+        <point2d id="pi_7" u="-5.5646" v="20.7674"/>
+        <point2d id="pi_8" u="-10.7500" v="18.6195"/>
+        <point2d id="pi_9" u="-15.2028" v="15.2028"/>
+        <point2d id="pi_10" u="-18.6195" v="10.7500"/>
+        <point2d id="pi_11" u="-20.7674" v="5.5646"/>
+        <point2d id="pi_12" u="-21.5000" v="0.0000"/>
+        <point2d id="pi_13" u="-20.7674" v="-5.5646"/>
+        <point2d id="pi_14" u="-18.6195" v="-10.7500"/>
+        <point2d id="pi_15" u="-15.2028" v="-15.2028"/>
+        <point2d id="pi_16" u="-10.7500" v="-18.6195"/>
+        <point2d id="pi_17" u="-5.5646" v="-20.7674"/>
+        <point2d id="pi_18" u="-0.0000" v="-21.5000"/>
+        <point2d id="pi_19" u="5.5646" v="-20.7674"/>
+        <point2d id="pi_20" u="10.7500" v="-18.6195"/>
+        <point2d id="pi_21" u="15.2028" v="-15.2028"/>
+        <point2d id="pi_22" u="18.6195" v="-10.7500"/>
+        <point2d id="pi_23" u="20.7674" v="-5.5646"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="po_0" p1="po_1"/>
+        <line p0="po_1" p1="po_2"/>
+        <line p0="po_2" p1="po_3"/>
+        <line p0="po_3" p1="po_4"/>
+        <line p0="po_4" p1="po_5"/>
+        <line p0="po_5" p1="po_6"/>
+        <line p0="po_6" p1="po_7"/>
+        <line p0="po_7" p1="po_8"/>
+        <line p0="po_8" p1="po_9"/>
+        <line p0="po_9" p1="po_10"/>
+        <line p0="po_10" p1="po_11"/>
+        <line p0="po_11" p1="po_12"/>
+        <line p0="po_12" p1="po_13"/>
+        <line p0="po_13" p1="po_14"/>
+        <line p0="po_14" p1="po_15"/>
+        <line p0="po_15" p1="po_16"/>
+        <line p0="po_16" p1="po_17"/>
+        <line p0="po_17" p1="po_18"/>
+        <line p0="po_18" p1="po_19"/>
+        <line p0="po_19" p1="po_20"/>
+        <line p0="po_20" p1="po_21"/>
+        <line p0="po_21" p1="po_22"/>
+        <line p0="po_22" p1="po_23"/>
+        <line p0="po_23" p1="po_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="pi_0" p1="pi_1"/>
+        <line p0="pi_1" p1="pi_2"/>
+        <line p0="pi_2" p1="pi_3"/>
+        <line p0="pi_3" p1="pi_4"/>
+        <line p0="pi_4" p1="pi_5"/>
+        <line p0="pi_5" p1="pi_6"/>
+        <line p0="pi_6" p1="pi_7"/>
+        <line p0="pi_7" p1="pi_8"/>
+        <line p0="pi_8" p1="pi_9"/>
+        <line p0="pi_9" p1="pi_10"/>
+        <line p0="pi_10" p1="pi_11"/>
+        <line p0="pi_11" p1="pi_12"/>
+        <line p0="pi_12" p1="pi_13"/>
+        <line p0="pi_13" p1="pi_14"/>
+        <line p0="pi_14" p1="pi_15"/>
+        <line p0="pi_15" p1="pi_16"/>
+        <line p0="pi_16" p1="pi_17"/>
+        <line p0="pi_17" p1="pi_18"/>
+        <line p0="pi_18" p1="pi_19"/>
+        <line p0="pi_19" p1="pi_20"/>
+        <line p0="pi_20" p1="pi_21"/>
+        <line p0="pi_21" p1="pi_22"/>
+        <line p0="pi_22" p1="pi_23"/>
+        <line p0="pi_23" p1="pi_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_hollow" distance="length" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="hollow_drive_sleeve_v04_od55_id43.step" schema="AP214"/>
+    <stl source="b_solid" filename="hollow_drive_sleeve_v04_od55_id43.stl" format="binary"/>
+  </exports>
+</cdml>

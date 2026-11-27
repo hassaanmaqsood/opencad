@@ -1,0 +1,45 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="major_od" value="70.00" min="30.0" max="250.0" unit="mm"/>
+    <var id="minor_od" value="58.00" min="15.0" max="200.0" unit="mm"/>
+    <var id="reducer_len" value="40.00" min="25.0" max="150.0" unit="mm"/>
+    <assert expr="major_od > minor_od" message="Major reducer diameter must exceed minor diameter" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_revolve">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="0.0" z="1.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="py" expr="dot(e2, vec3(0, 1, 0))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_reducer" chart="ch_revolve" max-iter="100">
+      <vars>
+                <point2d id="p0" u="30.0000" v="0.0"/>
+        <point2d id="p1" u="35.0000" v="0.0"/>
+        <point2d id="p2" u="29.0000" v="40.0000"/>
+        <point2d id="p3" u="24.0000" v="40.0000"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="p0" p1="p1"/>
+        <line p0="p1" p1="p2"/>
+        <line p0="p2" p1="p3"/>
+        <line p0="p3" p1="p0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_revolve sketch="sk_reducer" axis_origin="vec3(0, 0, 0)" axis_direction="vec3(0, 0, 1)" angle="360.0"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="concentric_pipe_reducer_d70_to_d58_v21.step" schema="AP214"/>
+    <stl source="b_solid" filename="concentric_pipe_reducer_d70_to_d58_v21.stl" format="binary"/>
+  </exports>
+</cdml>

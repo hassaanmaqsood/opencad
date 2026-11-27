@@ -1,0 +1,88 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="base_w" value="110.00" min="88.00" max="132.00" unit="mm"/>
+    <var id="base_h" value="70.00" min="56.00" max="84.00" unit="mm"/>
+    <var id="bearing_bore" value="30.00" min="24.00" max="36.00" unit="mm"/>
+    <var id="base_thk" value="17.00" min="8.0" max="30.0" unit="mm"/>
+    <assert expr="base_w > bearing_bore * 2.0" message="Base width must accommodate bearing cartridge" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_pblock" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="pbb_0" u="-55.0000" v="-35.0000"/>
+        <point2d id="pbb_1" u="55.0000" v="-35.0000"/>
+        <point2d id="pbb_2" u="55.0000" v="35.0000"/>
+        <point2d id="pbb_3" u="-55.0000" v="35.0000"/>
+                <point2d id="pbh_0" u="15.0000" v="0.0000"/>
+        <point2d id="pbh_1" u="14.2658" v="4.6353"/>
+        <point2d id="pbh_2" u="12.1353" v="8.8168"/>
+        <point2d id="pbh_3" u="8.8168" v="12.1353"/>
+        <point2d id="pbh_4" u="4.6353" v="14.2658"/>
+        <point2d id="pbh_5" u="0.0000" v="15.0000"/>
+        <point2d id="pbh_6" u="-4.6353" v="14.2658"/>
+        <point2d id="pbh_7" u="-8.8168" v="12.1353"/>
+        <point2d id="pbh_8" u="-12.1353" v="8.8168"/>
+        <point2d id="pbh_9" u="-14.2658" v="4.6353"/>
+        <point2d id="pbh_10" u="-15.0000" v="0.0000"/>
+        <point2d id="pbh_11" u="-14.2658" v="-4.6353"/>
+        <point2d id="pbh_12" u="-12.1353" v="-8.8168"/>
+        <point2d id="pbh_13" u="-8.8168" v="-12.1353"/>
+        <point2d id="pbh_14" u="-4.6353" v="-14.2658"/>
+        <point2d id="pbh_15" u="-0.0000" v="-15.0000"/>
+        <point2d id="pbh_16" u="4.6353" v="-14.2658"/>
+        <point2d id="pbh_17" u="8.8168" v="-12.1353"/>
+        <point2d id="pbh_18" u="12.1353" v="-8.8168"/>
+        <point2d id="pbh_19" u="14.2658" v="-4.6353"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="pbb_0" p1="pbb_1"/>
+        <line p0="pbb_1" p1="pbb_2"/>
+        <line p0="pbb_2" p1="pbb_3"/>
+        <line p0="pbb_3" p1="pbb_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="pbh_0" p1="pbh_1"/>
+        <line p0="pbh_1" p1="pbh_2"/>
+        <line p0="pbh_2" p1="pbh_3"/>
+        <line p0="pbh_3" p1="pbh_4"/>
+        <line p0="pbh_4" p1="pbh_5"/>
+        <line p0="pbh_5" p1="pbh_6"/>
+        <line p0="pbh_6" p1="pbh_7"/>
+        <line p0="pbh_7" p1="pbh_8"/>
+        <line p0="pbh_8" p1="pbh_9"/>
+        <line p0="pbh_9" p1="pbh_10"/>
+        <line p0="pbh_10" p1="pbh_11"/>
+        <line p0="pbh_11" p1="pbh_12"/>
+        <line p0="pbh_12" p1="pbh_13"/>
+        <line p0="pbh_13" p1="pbh_14"/>
+        <line p0="pbh_14" p1="pbh_15"/>
+        <line p0="pbh_15" p1="pbh_16"/>
+        <line p0="pbh_16" p1="pbh_17"/>
+        <line p0="pbh_17" p1="pbh_18"/>
+        <line p0="pbh_18" p1="pbh_19"/>
+        <line p0="pbh_19" p1="pbh_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_pblock" distance="base_thk" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="pillow_block_bearing_flange_v08_b30.step" schema="AP214"/>
+    <stl source="b_solid" filename="pillow_block_bearing_flange_v08_b30.stl" format="binary"/>
+  </exports>
+</cdml>

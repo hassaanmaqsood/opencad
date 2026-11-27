@@ -1,0 +1,91 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="hex_width" value="52.00" min="15.0" max="80.0" unit="mm"/>
+    <var id="flow_bore" value="14.00" min="5.0" max="50.0" unit="mm"/>
+    <var id="fitting_len" value="49.00" min="15.0" max="80.0" unit="mm"/>
+    <assert expr="hex_width > flow_bore * 1.5" message="Hex flat must exceed internal flow bore" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_nipple" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="vh_0" u="26.0000" v="15.0111"/>
+        <point2d id="vh_1" u="0.0000" v="30.0222"/>
+        <point2d id="vh_2" u="-26.0000" v="15.0111"/>
+        <point2d id="vh_3" u="-26.0000" v="-15.0111"/>
+        <point2d id="vh_4" u="-0.0000" v="-30.0222"/>
+        <point2d id="vh_5" u="26.0000" v="-15.0111"/>
+                <point2d id="nb_0" u="7.0000" v="0.0000"/>
+        <point2d id="nb_1" u="6.6574" v="2.1631"/>
+        <point2d id="nb_2" u="5.6631" v="4.1145"/>
+        <point2d id="nb_3" u="4.1145" v="5.6631"/>
+        <point2d id="nb_4" u="2.1631" v="6.6574"/>
+        <point2d id="nb_5" u="0.0000" v="7.0000"/>
+        <point2d id="nb_6" u="-2.1631" v="6.6574"/>
+        <point2d id="nb_7" u="-4.1145" v="5.6631"/>
+        <point2d id="nb_8" u="-5.6631" v="4.1145"/>
+        <point2d id="nb_9" u="-6.6574" v="2.1631"/>
+        <point2d id="nb_10" u="-7.0000" v="0.0000"/>
+        <point2d id="nb_11" u="-6.6574" v="-2.1631"/>
+        <point2d id="nb_12" u="-5.6631" v="-4.1145"/>
+        <point2d id="nb_13" u="-4.1145" v="-5.6631"/>
+        <point2d id="nb_14" u="-2.1631" v="-6.6574"/>
+        <point2d id="nb_15" u="-0.0000" v="-7.0000"/>
+        <point2d id="nb_16" u="2.1631" v="-6.6574"/>
+        <point2d id="nb_17" u="4.1145" v="-5.6631"/>
+        <point2d id="nb_18" u="5.6631" v="-4.1145"/>
+        <point2d id="nb_19" u="6.6574" v="-2.1631"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="vh_0" p1="vh_1"/>
+        <line p0="vh_1" p1="vh_2"/>
+        <line p0="vh_2" p1="vh_3"/>
+        <line p0="vh_3" p1="vh_4"/>
+        <line p0="vh_4" p1="vh_5"/>
+        <line p0="vh_5" p1="vh_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="nb_0" p1="nb_1"/>
+        <line p0="nb_1" p1="nb_2"/>
+        <line p0="nb_2" p1="nb_3"/>
+        <line p0="nb_3" p1="nb_4"/>
+        <line p0="nb_4" p1="nb_5"/>
+        <line p0="nb_5" p1="nb_6"/>
+        <line p0="nb_6" p1="nb_7"/>
+        <line p0="nb_7" p1="nb_8"/>
+        <line p0="nb_8" p1="nb_9"/>
+        <line p0="nb_9" p1="nb_10"/>
+        <line p0="nb_10" p1="nb_11"/>
+        <line p0="nb_11" p1="nb_12"/>
+        <line p0="nb_12" p1="nb_13"/>
+        <line p0="nb_13" p1="nb_14"/>
+        <line p0="nb_14" p1="nb_15"/>
+        <line p0="nb_15" p1="nb_16"/>
+        <line p0="nb_16" p1="nb_17"/>
+        <line p0="nb_17" p1="nb_18"/>
+        <line p0="nb_18" p1="nb_19"/>
+        <line p0="nb_19" p1="nb_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_nipple" distance="fitting_len" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="hex_pipe_fitting_nipple_s52_b14_v12.step" schema="AP214"/>
+    <stl source="b_solid" filename="hex_pipe_fitting_nipple_s52_b14_v12.stl" format="binary"/>
+  </exports>
+</cdml>

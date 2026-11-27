@@ -1,0 +1,55 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="case_w" value="105.00" min="30.0" max="250.0" unit="mm"/>
+    <var id="case_h" value="76.00" min="25.0" max="200.0" unit="mm"/>
+    <var id="case_depth" value="40.00" min="15.0" max="150.0" unit="mm"/>
+    <assert expr="case_w > 10.0" message="Case width must exceed boundary walls" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_box" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="bxo_0" u="-52.5000" v="-38.0000"/>
+        <point2d id="bxo_1" u="52.5000" v="-38.0000"/>
+        <point2d id="bxo_2" u="52.5000" v="38.0000"/>
+        <point2d id="bxo_3" u="-52.5000" v="38.0000"/>
+                <point2d id="bxi_0" u="-50.0000" v="-35.5000"/>
+        <point2d id="bxi_1" u="50.0000" v="-35.5000"/>
+        <point2d id="bxi_2" u="50.0000" v="35.5000"/>
+        <point2d id="bxi_3" u="-50.0000" v="35.5000"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="bxo_0" p1="bxo_1"/>
+        <line p0="bxo_1" p1="bxo_2"/>
+        <line p0="bxo_2" p1="bxo_3"/>
+        <line p0="bxo_3" p1="bxo_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="bxi_0" p1="bxi_1"/>
+        <line p0="bxi_1" p1="bxi_2"/>
+        <line p0="bxi_2" p1="bxi_3"/>
+        <line p0="bxi_3" p1="bxi_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_box" distance="case_depth" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="electronic_chassis_enclosure_105x76_d40.step" schema="AP214"/>
+    <stl source="b_solid" filename="electronic_chassis_enclosure_105x76_d40.stl" format="binary"/>
+  </exports>
+</cdml>

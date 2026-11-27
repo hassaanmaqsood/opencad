@@ -1,0 +1,48 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="arm_l" value="35.00" min="20.0" max="120.0" unit="mm"/>
+    <var id="lever_thk" value="5.00" min="3.0" max="25.0" unit="mm"/>
+    <assert expr="arm_l > 15.0" message="Arm stroke must provide mechanical advantage" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_bell" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="p0" u="0.0" v="0.0"/>
+        <point2d id="p1" u="35.0000" v="0.0"/>
+        <point2d id="p2" u="35.0000" v="12.0000"/>
+        <point2d id="p3" u="12.0000" v="12.0000"/>
+        <point2d id="p4" u="12.0000" v="35.0000"/>
+        <point2d id="p5" u="0.0" v="35.0000"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="p0" p1="p1"/>
+        <line p0="p1" p1="p2"/>
+        <line p0="p2" p1="p3"/>
+        <line p0="p3" p1="p4"/>
+        <line p0="p4" p1="p5"/>
+        <line p0="p5" p1="p0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_bell" distance="lever_thk" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="bell_crank_90deg_lever_35mm_v19.step" schema="AP214"/>
+    <stl source="b_solid" filename="bell_crank_90deg_lever_35mm_v19.stl" format="binary"/>
+  </exports>
+</cdml>

@@ -1,0 +1,217 @@
+<cdml version="1.0" units="mm" linear_tol="1e-7" angular_tol="1e-11">
+  <imports/>
+  <defs>
+    <var id="module" value="1.50" min="0.5" max="10.0" unit="mm"/>
+    <var id="teeth" value="34" min="10" max="120" unit=""/>
+    <var id="bore_dia" value="7.50" min="4.0" max="50.0" unit="mm"/>
+    <var id="face_width" value="20.00" min="5.0" max="100.0" unit="mm"/>
+    <expr id="pitch_dia" expr="module * teeth"/>
+    <assert expr="pitch_dia > bore_dia * 2.0" message="Pitch circle must exceed bore diameter" level="error"/>
+  </defs>
+  <body>
+    <chart id="ch_xy">
+      <vars>
+        <vec3 id="p0" x="0.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e1" x="1.0" y="0.0" z="0.0" fixed="true"/>
+        <vec3 id="e2" x="0.0" y="1.0" z="0.0" fixed="false"/>
+      </vars>
+      <constraints>
+        <residual id="u2" expr="dot(e2, e2) - 1.0"/>
+        <residual id="or" expr="dot(e1, e2)"/>
+        <residual id="pz" expr="dot(e2, vec3(0, 0, 1))"/>
+      </constraints>
+    </chart>
+    <sketch id="sk_gear" chart="ch_xy" max-iter="100">
+      <vars>
+                <point2d id="gt_0" u="27.0000" v="0.0000"/>
+        <point2d id="gt_1" u="23.5242" v="2.1798"/>
+        <point2d id="gt_2" u="26.5403" v="4.9612"/>
+        <point2d id="gt_3" u="22.7231" v="6.4653"/>
+        <point2d id="gt_4" u="25.1768" v="9.7535"/>
+        <point2d id="gt_5" u="21.1482" v="10.5306"/>
+        <point2d id="gt_6" u="22.9559" v="14.2137"/>
+        <point2d id="gt_7" u="18.8532" v="14.2372"/>
+        <point2d id="gt_8" u="19.9532" v="18.1898"/>
+        <point2d id="gt_9" u="15.9161" v="17.4591"/>
+        <point2d id="gt_10" u="16.2711" v="21.5465"/>
+        <point2d id="gt_11" u="12.4370" v="20.0864"/>
+        <point2d id="gt_12" u="12.0349" v="24.1694"/>
+        <point2d id="gt_13" u="8.5343" v="22.0297"/>
+        <point2d id="gt_14" u="7.3889" v="25.9693"/>
+        <point2d id="gt_15" u="4.3411" v="23.2227"/>
+        <point2d id="gt_16" u="2.4912" v="26.8848"/>
+        <point2d id="gt_17" u="0.0000" v="23.6250"/>
+        <point2d id="gt_18" u="-2.4912" v="26.8848"/>
+        <point2d id="gt_19" u="-4.3411" v="23.2227"/>
+        <point2d id="gt_20" u="-7.3889" v="25.9693"/>
+        <point2d id="gt_21" u="-8.5343" v="22.0297"/>
+        <point2d id="gt_22" u="-12.0349" v="24.1694"/>
+        <point2d id="gt_23" u="-12.4370" v="20.0864"/>
+        <point2d id="gt_24" u="-16.2711" v="21.5465"/>
+        <point2d id="gt_25" u="-15.9161" v="17.4591"/>
+        <point2d id="gt_26" u="-19.9532" v="18.1898"/>
+        <point2d id="gt_27" u="-18.8532" v="14.2372"/>
+        <point2d id="gt_28" u="-22.9559" v="14.2137"/>
+        <point2d id="gt_29" u="-21.1482" v="10.5306"/>
+        <point2d id="gt_30" u="-25.1768" v="9.7535"/>
+        <point2d id="gt_31" u="-22.7231" v="6.4653"/>
+        <point2d id="gt_32" u="-26.5403" v="4.9612"/>
+        <point2d id="gt_33" u="-23.5242" v="2.1798"/>
+        <point2d id="gt_34" u="-27.0000" v="0.0000"/>
+        <point2d id="gt_35" u="-23.5242" v="-2.1798"/>
+        <point2d id="gt_36" u="-26.5403" v="-4.9612"/>
+        <point2d id="gt_37" u="-22.7231" v="-6.4653"/>
+        <point2d id="gt_38" u="-25.1768" v="-9.7535"/>
+        <point2d id="gt_39" u="-21.1482" v="-10.5306"/>
+        <point2d id="gt_40" u="-22.9559" v="-14.2137"/>
+        <point2d id="gt_41" u="-18.8532" v="-14.2372"/>
+        <point2d id="gt_42" u="-19.9532" v="-18.1898"/>
+        <point2d id="gt_43" u="-15.9161" v="-17.4591"/>
+        <point2d id="gt_44" u="-16.2711" v="-21.5465"/>
+        <point2d id="gt_45" u="-12.4370" v="-20.0864"/>
+        <point2d id="gt_46" u="-12.0349" v="-24.1694"/>
+        <point2d id="gt_47" u="-8.5343" v="-22.0297"/>
+        <point2d id="gt_48" u="-7.3889" v="-25.9693"/>
+        <point2d id="gt_49" u="-4.3411" v="-23.2227"/>
+        <point2d id="gt_50" u="-2.4912" v="-26.8848"/>
+        <point2d id="gt_51" u="-0.0000" v="-23.6250"/>
+        <point2d id="gt_52" u="2.4912" v="-26.8848"/>
+        <point2d id="gt_53" u="4.3411" v="-23.2227"/>
+        <point2d id="gt_54" u="7.3889" v="-25.9693"/>
+        <point2d id="gt_55" u="8.5343" v="-22.0297"/>
+        <point2d id="gt_56" u="12.0349" v="-24.1694"/>
+        <point2d id="gt_57" u="12.4370" v="-20.0864"/>
+        <point2d id="gt_58" u="16.2711" v="-21.5465"/>
+        <point2d id="gt_59" u="15.9161" v="-17.4591"/>
+        <point2d id="gt_60" u="19.9532" v="-18.1898"/>
+        <point2d id="gt_61" u="18.8532" v="-14.2372"/>
+        <point2d id="gt_62" u="22.9559" v="-14.2137"/>
+        <point2d id="gt_63" u="21.1482" v="-10.5306"/>
+        <point2d id="gt_64" u="25.1768" v="-9.7535"/>
+        <point2d id="gt_65" u="22.7231" v="-6.4653"/>
+        <point2d id="gt_66" u="26.5403" v="-4.9612"/>
+        <point2d id="gt_67" u="23.5242" v="-2.1798"/>
+                <point2d id="gb_0" u="3.7500" v="0.0000"/>
+        <point2d id="gb_1" u="3.5665" v="1.1588"/>
+        <point2d id="gb_2" u="3.0338" v="2.2042"/>
+        <point2d id="gb_3" u="2.2042" v="3.0338"/>
+        <point2d id="gb_4" u="1.1588" v="3.5665"/>
+        <point2d id="gb_5" u="0.0000" v="3.7500"/>
+        <point2d id="gb_6" u="-1.1588" v="3.5665"/>
+        <point2d id="gb_7" u="-2.2042" v="3.0338"/>
+        <point2d id="gb_8" u="-3.0338" v="2.2042"/>
+        <point2d id="gb_9" u="-3.5665" v="1.1588"/>
+        <point2d id="gb_10" u="-3.7500" v="0.0000"/>
+        <point2d id="gb_11" u="-3.5665" v="-1.1588"/>
+        <point2d id="gb_12" u="-3.0338" v="-2.2042"/>
+        <point2d id="gb_13" u="-2.2042" v="-3.0338"/>
+        <point2d id="gb_14" u="-1.1588" v="-3.5665"/>
+        <point2d id="gb_15" u="-0.0000" v="-3.7500"/>
+        <point2d id="gb_16" u="1.1588" v="-3.5665"/>
+        <point2d id="gb_17" u="2.2042" v="-3.0338"/>
+        <point2d id="gb_18" u="3.0338" v="-2.2042"/>
+        <point2d id="gb_19" u="3.5665" v="-1.1588"/>
+      </vars>
+      <wire id="w_outer" closed="true" role="outer">
+                <line p0="gt_0" p1="gt_1"/>
+        <line p0="gt_1" p1="gt_2"/>
+        <line p0="gt_2" p1="gt_3"/>
+        <line p0="gt_3" p1="gt_4"/>
+        <line p0="gt_4" p1="gt_5"/>
+        <line p0="gt_5" p1="gt_6"/>
+        <line p0="gt_6" p1="gt_7"/>
+        <line p0="gt_7" p1="gt_8"/>
+        <line p0="gt_8" p1="gt_9"/>
+        <line p0="gt_9" p1="gt_10"/>
+        <line p0="gt_10" p1="gt_11"/>
+        <line p0="gt_11" p1="gt_12"/>
+        <line p0="gt_12" p1="gt_13"/>
+        <line p0="gt_13" p1="gt_14"/>
+        <line p0="gt_14" p1="gt_15"/>
+        <line p0="gt_15" p1="gt_16"/>
+        <line p0="gt_16" p1="gt_17"/>
+        <line p0="gt_17" p1="gt_18"/>
+        <line p0="gt_18" p1="gt_19"/>
+        <line p0="gt_19" p1="gt_20"/>
+        <line p0="gt_20" p1="gt_21"/>
+        <line p0="gt_21" p1="gt_22"/>
+        <line p0="gt_22" p1="gt_23"/>
+        <line p0="gt_23" p1="gt_24"/>
+        <line p0="gt_24" p1="gt_25"/>
+        <line p0="gt_25" p1="gt_26"/>
+        <line p0="gt_26" p1="gt_27"/>
+        <line p0="gt_27" p1="gt_28"/>
+        <line p0="gt_28" p1="gt_29"/>
+        <line p0="gt_29" p1="gt_30"/>
+        <line p0="gt_30" p1="gt_31"/>
+        <line p0="gt_31" p1="gt_32"/>
+        <line p0="gt_32" p1="gt_33"/>
+        <line p0="gt_33" p1="gt_34"/>
+        <line p0="gt_34" p1="gt_35"/>
+        <line p0="gt_35" p1="gt_36"/>
+        <line p0="gt_36" p1="gt_37"/>
+        <line p0="gt_37" p1="gt_38"/>
+        <line p0="gt_38" p1="gt_39"/>
+        <line p0="gt_39" p1="gt_40"/>
+        <line p0="gt_40" p1="gt_41"/>
+        <line p0="gt_41" p1="gt_42"/>
+        <line p0="gt_42" p1="gt_43"/>
+        <line p0="gt_43" p1="gt_44"/>
+        <line p0="gt_44" p1="gt_45"/>
+        <line p0="gt_45" p1="gt_46"/>
+        <line p0="gt_46" p1="gt_47"/>
+        <line p0="gt_47" p1="gt_48"/>
+        <line p0="gt_48" p1="gt_49"/>
+        <line p0="gt_49" p1="gt_50"/>
+        <line p0="gt_50" p1="gt_51"/>
+        <line p0="gt_51" p1="gt_52"/>
+        <line p0="gt_52" p1="gt_53"/>
+        <line p0="gt_53" p1="gt_54"/>
+        <line p0="gt_54" p1="gt_55"/>
+        <line p0="gt_55" p1="gt_56"/>
+        <line p0="gt_56" p1="gt_57"/>
+        <line p0="gt_57" p1="gt_58"/>
+        <line p0="gt_58" p1="gt_59"/>
+        <line p0="gt_59" p1="gt_60"/>
+        <line p0="gt_60" p1="gt_61"/>
+        <line p0="gt_61" p1="gt_62"/>
+        <line p0="gt_62" p1="gt_63"/>
+        <line p0="gt_63" p1="gt_64"/>
+        <line p0="gt_64" p1="gt_65"/>
+        <line p0="gt_65" p1="gt_66"/>
+        <line p0="gt_66" p1="gt_67"/>
+        <line p0="gt_67" p1="gt_0"/>
+      </wire>
+      <wire id="w_inner" closed="true" role="inner">
+                <line p0="gb_0" p1="gb_1"/>
+        <line p0="gb_1" p1="gb_2"/>
+        <line p0="gb_2" p1="gb_3"/>
+        <line p0="gb_3" p1="gb_4"/>
+        <line p0="gb_4" p1="gb_5"/>
+        <line p0="gb_5" p1="gb_6"/>
+        <line p0="gb_6" p1="gb_7"/>
+        <line p0="gb_7" p1="gb_8"/>
+        <line p0="gb_8" p1="gb_9"/>
+        <line p0="gb_9" p1="gb_10"/>
+        <line p0="gb_10" p1="gb_11"/>
+        <line p0="gb_11" p1="gb_12"/>
+        <line p0="gb_12" p1="gb_13"/>
+        <line p0="gb_13" p1="gb_14"/>
+        <line p0="gb_14" p1="gb_15"/>
+        <line p0="gb_15" p1="gb_16"/>
+        <line p0="gb_16" p1="gb_17"/>
+        <line p0="gb_17" p1="gb_18"/>
+        <line p0="gb_18" p1="gb_19"/>
+        <line p0="gb_19" p1="gb_0"/>
+      </wire>
+    </sketch>
+    <brep id="b_solid">
+      <solid_extrude sketch="sk_gear" distance="face_width" direction="vec3(0, 0, 1)"/>
+    </brep>
+  </body>
+  <exports>
+    <tessellate source="b_solid" linear_deflection="0.01" angular_deflection="0.1"/>
+    <step source="b_solid" filename="spur_gear_m1.5_z34_f20.step" schema="AP214"/>
+    <stl source="b_solid" filename="spur_gear_m1.5_z34_f20.stl" format="binary"/>
+  </exports>
+</cdml>
