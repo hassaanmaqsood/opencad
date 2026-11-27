@@ -36,8 +36,8 @@ features:
     <p class="collab-desc">
       Extract 2D domains and rational NURBS boundaries directly from CDML sketches. Solve unstructured triangular PDEs in FEAScript v0.4.1 and write 3D thermal fields into OpenCAD memory at 0x1F0000.
     </p>
-    <div class="collab-actions">
-      <a class="collab-btn-primary" href="/opencad/feascript-demo.html">Launch Live Thermal Demo ↗</a>
+    <div class="collab-actions vp-raw">
+      <a class="collab-btn-primary" href="/opencad/feascript-demo.html" target="_self">Launch Live Thermal Demo ↗</a>
       <a class="collab-btn-secondary" href="/opencad/collabs/feascript-thermal-loop">Drop-In ES Modules + Benchmark →</a>
     </div>
   </div>

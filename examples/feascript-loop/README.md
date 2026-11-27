@@ -102,8 +102,9 @@ Switch **CDML Model** in the parameter panel to **`Annular Disk (Benchmark)`**:
 
 Exact radial solution:
 $$T(r) = 180 - \frac{q' \ln(b/r)}{2\pi k}, \quad q' = 3404.9\text{ W/m}$$
-- Exact temperature at bore ($r = 9\text{ mm}$): **$136.50\text{ °C}$**
-- Exact temperature at mid-radius ($r = 15\text{ mm}$): **$154.96\text{ °C}$**
+- Exact temperature on bore wall ($r = 9.00\text{ mm}$): **$136.50\text{ °C}$**
+- Exact temperature at probe sampling radius ($r = 9.15\text{ mm}$): **$137.10\text{ °C}$**
+- Exact temperature at mid-radius ($r = 15.00\text{ mm}$): **$154.96\text{ °C}$**
 
 ---
 

@@ -19,8 +19,8 @@ $$\nabla \cdot (k \nabla T) = 0 \text{ in }\Omega, \qquad -k\frac{\partial T}{\p
    - Degree-1 `<curve>` segments stay single straight lines.
    - The converter splits degree $\ge 2$ NURBS curves and `<param-curve>` elements into short straight pieces that keep their CDML `id` as FEAScript boundary names.
 2. **Pass 2 — FEAScript 2D Unstructured Triangular Thermal Solve (`feascript-solver.js`):**
-   - Runs `FEAScriptModel` (`heatConductionScript`, 2D unstructured triangular mesh via Gmsh WASM).
-   - Maps Dirichlet (`constantTemp`) and Robin (`convection`) boundary conditions directly to the CDML curve IDs.
+   - Runs `FEAScriptModel` (`heatConduction`) with FEAScript's built-in 2D triangle mesher (`generateTriangleMesh`), which applies Delaunay refinement on top of Delaunator and Constrainautor with `robust-predicates` for geometric tests.
+   - Maps Dirichlet (`constantTemperature`) and Robin (`convection`) boundary conditions directly to the CDML curve IDs.
 3. **Pass 3 — Nearest-Wall Voxel Extrapolation & `0x1F0000` Memory Injection:**
    - Projects the 2D FEM temperature field onto a $32 \times 32 \times 8$ 3D voxel grid at WASM offset `0x1F0000`.
    - Grid points inside the bore hole copy the temperature of the nearest point on the bore wall. This removes trilinear blending error when OpenCAD evaluates `<probe id="mean_bore_temp">`.
@@ -34,7 +34,7 @@ You can import the ES modules in `examples/feascript-loop/js/` directly into any
 | **`opencad-bridge.js`** | `OpenCadBridge.create(options)` | Instantiates `cad_kernel.wasm` with `SharedArrayBuffer` or plain `WebAssembly.Memory`, evaluates CDML, writes `0x1F0000` voxel grids, reads `<probe>` values, and exports STEP and STL. |
 | **`cdml-to-feascript.js`** | `cdmlToFEAScriptGeometry(xmlStr, opts)`<br>`evalCdmlScalar(expr, env)`<br>`evalNurbsPoint2D(ctrl, w, knots, p, t)` | Converts a CDML `<sketch>` (`outer` and `hole` wires, `<curve>`, `<param-curve>`, `<line>`) into FEAScript `{ shape, holes }` in SI meters. |
 | **`feascript-solver.js`** | `solveThermal2D(cdmlGeom, params)`<br>`buildNearestWallFieldGrid(fem, bbox, params)` | Runs FEAScript `0.4.1`, computes boundary temperature statistics, and builds the nearest-wall 3D voxel field buffer. |
-| **`custom-loop.js`** | `runCustomFEAScriptLoop(config)`<br>`runCustomCoupledStep(config)` | Couples a custom CDML generator with custom FEAScript boundary conditions, `0x1F0000` 3D field injection, and an iterative `step(state, iter)` loop. |
+| **`custom-loop.js`** | `runCustomFEAScriptLoop(config)`<br>`runCustomCoupledStep(config)` | Browser ES module that replaces the legacy `run-closed-loop.mjs` script. Couples custom CDML generators, FEAScript boundary conditions, `0x1F0000` field injection, and `step(state, iter)` loops. |
 | **`viewports.js`** | `Thermal3DViewport`<br>`Fem2DViewport`<br>`thermalRGB(tNorm)` | Renders the 3D Three.js B-Rep mesh and 2D HTML5 Canvas FEM mesh using a calibrated Matplotlib `plasma` colormap. |
 
 ### Minimal Usage Snippet
@@ -65,7 +65,7 @@ console.log('OpenCAD 3D Bore Probe T:', pass2.boreTempProbe.toFixed(2), '°C');
 
 ### Custom Closed-Loop Runner (`./js/custom-loop.js`)
 
-FEAScript users can run a custom multi-iteration loop with their own CDML XML, boundary conditions, and convergence logic:
+In earlier drafts, a standalone script (`run-closed-loop.mjs`) ran the coupled loop. In the repository, `./examples/feascript-loop/js/custom-loop.js` replaces that script as a reusable ES module. FEAScript users can import `runCustomFEAScriptLoop` to run a custom multi-iteration loop with their own CDML XML, boundary conditions, and convergence logic:
 
 ```js
 import { runCustomFEAScriptLoop } from './js/custom-loop.js';
@@ -100,4 +100,4 @@ The exact radial temperature distribution is:
 
 $$T(r) = T_b - \frac{q'}{2\pi k}\ln\!\left(\frac{b}{r}\right), \qquad q' = \frac{2\pi(T_b - T_\infty)}{\frac{1}{h a} + \frac{\ln(b/a)}{k}} = 3404.9\text{ W/m}$$
 
-This equation gives $T(a) = 136.50\text{ °C}$ on the bore wall and $T(15\text{ mm}) = 154.96\text{ °C}$ at mid-radius. Both FEAScript and OpenCAD's 3D `<probe>` match the exact answer within $0.05\text{ K}$.
+This equation gives $T(a) = 136.50\text{ °C}$ on the bore wall ($r = 9.00\text{ mm}$) and $T(15.00\text{ mm}) = 154.96\text{ °C}$ at mid-radius. At the probe sampling radius ($r = 9.15\text{ mm}$), the exact temperature is $137.10\text{ °C}$. Both FEAScript and OpenCAD's 3D `<probe>` read at $r = 9.15\text{ mm}$ and match $137.10\text{ °C}$ within $0.05\text{ K}$.
